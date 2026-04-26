@@ -440,34 +440,52 @@ class HTMLGenerator:
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }}
 
-        .entry-header {{
+        /* ── Entry title line ── */
+        .entry-title-line {{
             display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 8px;
+            align-items: baseline;
+            gap: 7px;
             flex-wrap: wrap;
+            margin-bottom: 8px;
         }}
-        .entry-title {{
-            font-size: 0.95em;
-            font-weight: bold;
-            color: #1e3c72;
-            font-family: 'Monaco', 'Courier New', monospace;
-            margin-bottom: 3px;
-        }}
-        .entry-description {{ color: #555; font-size: 0.9em; margin-bottom: 10px; }}
-
-        .badge {{
+        .title-day, .title-scene, .title-code, .title-desc {{
             display: inline-block;
             padding: 3px 9px;
             border-radius: 12px;
-            font-size: 0.8em;
-            font-weight: 600;
+            font-weight: 700;
         }}
-        .badge-day      {{ background: #d4edda; color: #155724; }}
-        .badge-scene    {{ background: #d1ecf1; color: #0c5460; }}
-        .badge-code     {{ background: #fff3cd; color: #856404; }}
-        .badge-has-data {{ background: #28a745; color: white; }}
-        .badge-empty    {{ background: #6c757d; color: white; }}
+        .title-day   {{
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.85em;
+            background: #d4edda;
+            color: #155724;
+        }}
+        .title-scene {{
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.85em;
+            background: #d1ecf1;
+            color: #0c5460;
+        }}
+        .title-code  {{
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.85em;
+            background: #fff3cd;
+            color: #856404;
+        }}
+        .title-desc  {{
+            font-size: 1.0em;
+            background: #e8eaf6;
+            color: #1e3c72;
+        }}
+        .badge-no-data {{
+            background: #fd7e14;
+            color: white;
+            padding: 2px 9px;
+            border-radius: 10px;
+            font-size: 0.78em;
+            font-weight: 600;
+            align-self: center;
+        }}
 
         mark {{
             background: #ffe066;
@@ -729,27 +747,20 @@ function renderSubdirs(subdirs) {{
 // ── Entry rendering ───────────────────────────────────────────────────────────
 
 function renderEntry(entry, q) {{
+    const dayHtml    = `<span class="title-day">${{highlight(entry.day, q)}}</span>`;
     const scenesHtml = entry.scenes.map(s =>
-        `<span class="badge badge-scene">${{highlight(s, q)}}</span>`
-    ).join(' ');
-
-    const codesHtml = entry.code.split('_').map(c =>
-        `<span class="badge badge-code">${{highlight(c, q)}}</span>`
-    ).join(' ');
-
-    const dataStatus = entry.has_data
-        ? '<span class="badge badge-has-data">Has Data</span>'
-        : '<span class="badge badge-empty">Empty</span>';
+        `<span class="title-scene">${{highlight(s, q)}}</span>`
+    ).join('');
+    const codesHtml  = entry.code.split('_').map(c =>
+        `<span class="title-code">${{highlight(c, q)}}</span>`
+    ).join('');
+    const descHtml   = `<span class="title-desc">${{highlight(entry.description.replace(/_/g,' '), q)}}</span>`;
+    const noData     = entry.has_data ? '' : '<span class="badge-no-data">No Data</span>';
 
     return `<div class="entry">
-        <div class="entry-header">
-            <span class="badge badge-day">${{highlight(entry.day, q)}}</span>
-            ${{scenesHtml}}
-            ${{codesHtml}}
-            ${{dataStatus}}
+        <div class="entry-title-line">
+            ${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}
         </div>
-        <div class="entry-title">${{highlight(entry.directory_name, q)}}</div>
-        <div class="entry-description">${{highlight(entry.description.replace(/_/g,' '), q)}}</div>
         ${{renderSubdirs(entry.subdirs)}}
     </div>`;
 }}
