@@ -40,6 +40,17 @@ class SceneCodeMapping:
     codes: List[str]  # List of codes for this scene
 
 
+@dataclass
+class HDRSubdirIssue:
+    """Information about an HDR subdirectory naming issue"""
+    dir_path: Path
+    parent_day_path: Path
+    hdr_type: str  # 'F', 'T', or 'U'
+    hdr_parent_name: str  # '__Fisheye', '__Theta', or '__Theta_Underwater'
+    available_scenes: List[str]  # Scenes from parent day directory (e.g., ['S37', 'S38'])
+    relative_path: Path
+
+
 class SanityChecker:
     """Main class for validating VFX shoot directory structure"""
 
@@ -74,6 +85,10 @@ class SanityChecker:
         self.scene_code_map: Dict[str, List[str]] = {}  # Scene -> List of codes
         self.csv_loaded: bool = False
         self.csv_inconsistent_dirs: List[str] = []  # Directories with CSV issues
+
+        # HDR subdirectory fix tracking
+        self.hdr_fixed_count: int = 0
+        self.hdr_unfixed_issues: List[str] = []  # Relative paths of unfixed HDR subdirectories
 
     def parse_template(self) -> bool:
         """Parse the J00_TEMPLATE directory structure"""
@@ -405,6 +420,281 @@ class SanityChecker:
         return issues
 
     # ========================================================================
+    # HDR SUBDIRECTORY VALIDATION FEATURE
+    # ========================================================================
+
+    def check_hdr_subdirectories(self, dir_info: DirectoryInfo, collect_fixes: bool = False) -> Tuple[List[str], List[HDRSubdirIssue]]:
+        """
+        Check HDR subdirectory naming in __20_HDR/__Fisheye, __Theta, __Theta_Underwater
+        Subdirectories should follow pattern: SXX__TYPE__ where SXX is a scene from parent
+        """
+        issues = []
+        fixable_issues = []
+
+        # HDR subdirectory base names and their type codes
+        # These can exist with or without __ prefix
+        hdr_base_names = {
+            'Fisheye': 'F',
+            'Theta': 'T',
+            'Theta_Underwater': 'U'
+        }
+
+        # Find __20_HDR or 20_HDR directory
+        hdr_dir = None
+        for potential_name in ['__20_HDR', '20_HDR']:
+            potential_path = dir_info.path / potential_name
+            if potential_path.exists() and potential_path.is_dir():
+                hdr_dir = potential_path
+                break
+
+        if not hdr_dir:
+            return issues, fixable_issues
+
+        # Check each HDR subdirectory type (with or without __ prefix)
+        for base_name, type_code in hdr_base_names.items():
+            # Try both with and without __ prefix
+            hdr_subdir_path = None
+            actual_name = None
+
+            for prefix in ['__', '']:
+                candidate_name = prefix + base_name
+                candidate_path = hdr_dir / candidate_name
+                if candidate_path.exists() and candidate_path.is_dir():
+                    hdr_subdir_path = candidate_path
+                    actual_name = candidate_name
+                    break
+
+            if not hdr_subdir_path:
+                continue
+
+            # Check subdirectories inside
+            try:
+                for item in hdr_subdir_path.iterdir():
+                    if not item.is_dir() or item.name.startswith('.'):
+                        continue
+
+                    # Check if name follows pattern: SXX__TYPE__*
+                    if not self._validate_hdr_subdir_name(item.name, type_code, dir_info.scenes):
+                        rel_path = item.relative_to(dir_info.path)
+                        issues.append(
+                            f"  ❌ HDR subdirectory doesn't follow pattern SXX__{type_code}__: {rel_path}"
+                        )
+
+                        if collect_fixes:
+                            fixable_issues.append(HDRSubdirIssue(
+                                dir_path=item,
+                                parent_day_path=dir_info.path,
+                                hdr_type=type_code,
+                                hdr_parent_name=actual_name,
+                                available_scenes=dir_info.scenes,
+                                relative_path=rel_path
+                            ))
+
+            except PermissionError:
+                issues.append(f"  ⚠️  Permission denied scanning {hdr_subdir_path}")
+
+        return issues, fixable_issues
+
+    def _validate_hdr_subdir_name(self, name: str, expected_type: str, valid_scenes: List[str]) -> bool:
+        """Check if HDR subdirectory name follows pattern SXX__TYPE__ or GLOBAL__TYPE__"""
+        # Pattern 1: SXX__TYPE__ (e.g., S37__F__, S38__T__)
+        scene_pattern = re.compile(r'^(S\d{2})__([FTU])__')
+        match = scene_pattern.match(name)
+
+        if match:
+            scene = match.group(1)
+            type_code = match.group(2)
+
+            # Type must match expected
+            if type_code != expected_type:
+                return False
+
+            # Scene must be in parent's scene list
+            if scene not in valid_scenes:
+                return False
+
+            return True
+
+        # Pattern 2: GLOBAL__TYPE__ (e.g., GLOBAL__F__)
+        global_pattern = re.compile(r'^GLOBAL__([FTU])__')
+        match = global_pattern.match(name)
+
+        if match:
+            type_code = match.group(1)
+            # Type must match expected
+            return type_code == expected_type
+
+        return False
+
+    def _extract_base_name(self, name: str) -> str:
+        """
+        Extract base name by removing partial SXX__ prefix if present.
+        E.g., 'S19__toit_montparnasse' → 'toit_montparnasse'
+              'slate_P1-2' → 'slate_P1-2'
+        """
+        # Check if name starts with SXX__ pattern (partial prefix)
+        partial_pattern = re.compile(r'^S\d{2}__')
+        match = partial_pattern.match(name)
+
+        if match:
+            # Remove the SXX__ prefix
+            return name[match.end():]
+
+        return name
+
+    def fix_hdr_subdirectory(self, issue: HDRSubdirIssue) -> bool:
+        """Interactively fix an HDR subdirectory naming issue"""
+        old_path = issue.dir_path
+        old_name = old_path.name
+        parent = old_path.parent
+
+        # Extract base name (remove partial SXX__ prefix if present)
+        base_name = self._extract_base_name(old_name)
+
+        # Show if we detected a partial prefix
+        if base_name != old_name:
+            print(f"\n      📁 Fix HDR subdirectory: {issue.relative_path}")
+            print(f"         Current name: {old_name}")
+            print(f"         Detected partial prefix, base name: {base_name}")
+            print(f"         Location: {issue.hdr_parent_name}")
+            print(f"         Required pattern: SXX__{issue.hdr_type}__*")
+        else:
+            print(f"\n      📁 Fix HDR subdirectory: {issue.relative_path}")
+            print(f"         Current name: {old_name}")
+            print(f"         Location: {issue.hdr_parent_name}")
+            print(f"         Required pattern: SXX__{issue.hdr_type}__*")
+
+        print(f"\n      Available scenes from parent directory:")
+
+        # Build options using base_name (without partial prefix)
+        options = []
+        for i, scene in enumerate(issue.available_scenes, 1):
+            new_name = f"{scene}__{issue.hdr_type}__{base_name}"
+            print(f"         {i}. Add {scene}__ → {new_name}")
+            options.append((scene, new_name))
+
+        # Add GLOBAL option
+        global_option = len(options) + 1
+        global_name = f"GLOBAL__{issue.hdr_type}__{base_name}"
+        print(f"         {global_option}. Add GLOBAL__ → {global_name}")
+        options.append(('GLOBAL', global_name))
+
+        # Custom option
+        custom_option = len(options) + 1
+        print(f"         {custom_option}. Custom prefix (you enter)")
+        print(f"         0. Skip")
+
+        # Get user choice
+        while True:
+            try:
+                choice = input(f"\n      Choose option (0-{custom_option}): ").strip()
+
+                if choice == '0':
+                    return False
+
+                choice_num = int(choice)
+
+                if choice_num == custom_option:
+                    # Custom prefix (use base_name to avoid duplication)
+                    new_name = self._get_custom_hdr_prefix(base_name, issue.hdr_type, issue.available_scenes)
+                    if not new_name:
+                        return False
+                    break
+                elif 1 <= choice_num <= len(options):
+                    _, new_name = options[choice_num - 1]
+                    break
+                else:
+                    print(f"      Invalid choice. Enter 0-{custom_option}")
+            except ValueError:
+                print(f"      Invalid input. Enter a number 0-{custom_option}")
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return False
+
+        # Perform rename
+        new_path = parent / new_name
+
+        if new_path.exists():
+            print(f"      ⚠️  Target already exists: {new_name}")
+            return False
+
+        try:
+            old_path.rename(new_path)
+            print(f"      ✅ Renamed: {old_name} → {new_name}")
+            return True
+        except Exception as e:
+            print(f"      ❌ Error renaming: {e}")
+            return False
+
+    def _get_custom_hdr_prefix(self, old_name: str, hdr_type: str, valid_scenes: List[str]) -> Optional[str]:
+        """Get and validate custom prefix from user"""
+        print(f"\n      Enter custom prefix (must be SXX__{hdr_type}__ or GLOBAL__{hdr_type}__ format)")
+        print(f"      Valid scenes: {', '.join(valid_scenes)}")
+        print(f"      Example: S37__{hdr_type}__ or GLOBAL__{hdr_type}__")
+
+        try:
+            prefix = input(f"      Prefix: ").strip()
+
+            if not prefix:
+                return None
+
+            # Ensure it ends with __
+            if not prefix.endswith('__'):
+                prefix += '__'
+                print(f"      Added trailing '__': {prefix}")
+
+            # Validate pattern - accept both SXX__TYPE__ and GLOBAL__TYPE__
+            scene_pattern = re.compile(r'^(S\d{2})__([FTU])__$')
+            global_pattern = re.compile(r'^GLOBAL__([FTU])__$')
+
+            scene_match = scene_pattern.match(prefix)
+            global_match = global_pattern.match(prefix)
+
+            if scene_match:
+                # Pattern: SXX__TYPE__
+                scene = scene_match.group(1)
+                type_code = scene_match.group(2)
+
+                # Warn if type doesn't match
+                if type_code != hdr_type:
+                    print(f"      ⚠️  Type code '{type_code}' doesn't match expected '{hdr_type}'")
+                    confirm = input(f"      Use anyway? (y/n): ").strip().lower()
+                    if confirm not in ('y', 'yes'):
+                        return None
+
+                # Warn if scene not in parent's scenes
+                if scene not in valid_scenes:
+                    print(f"      ⚠️  Scene '{scene}' not in parent directory scenes: {', '.join(valid_scenes)}")
+                    confirm = input(f"      Use anyway? (y/n): ").strip().lower()
+                    if confirm not in ('y', 'yes'):
+                        return None
+
+            elif global_match:
+                # Pattern: GLOBAL__TYPE__
+                type_code = global_match.group(1)
+
+                # Warn if type doesn't match
+                if type_code != hdr_type:
+                    print(f"      ⚠️  Type code '{type_code}' doesn't match expected '{hdr_type}'")
+                    confirm = input(f"      Use anyway? (y/n): ").strip().lower()
+                    if confirm not in ('y', 'yes'):
+                        return None
+
+            else:
+                # Invalid pattern
+                print(f"      ⚠️  Invalid pattern. Expected: SXX__{hdr_type}__ or GLOBAL__{hdr_type}__")
+                confirm = input(f"      Use anyway? (y/n): ").strip().lower()
+                if confirm not in ('y', 'yes'):
+                    return None
+
+            new_name = prefix + old_name
+            return new_name
+
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+
+    # ========================================================================
     # PREFIX FIX FEATURE
     # ========================================================================
 
@@ -601,7 +891,50 @@ class SanityChecker:
                     for issue in csv_issues:
                         print(issue)
 
-            # Interactive fix mode
+            # Check HDR subdirectory naming (separate feature)
+            hdr_issues = []
+            hdr_fixable_issues = []
+            hdr_issues, hdr_fixable_issues = self.check_hdr_subdirectories(dir_info, collect_fixes=interactive)
+            if hdr_issues:
+                self.errors.extend(hdr_issues)
+                for issue in hdr_issues:
+                    print(issue)
+
+            # Interactive fix mode for HDR subdirectories (must be BEFORE prefix fixes)
+            if interactive and hdr_fixable_issues:
+                print(f"\n  Found {len(hdr_fixable_issues)} HDR subdirectory issue(s)")
+                print(f"  Fix HDR subdirectories? (y/n): ", end='', flush=True)
+                try:
+                    response = input().strip().lower()
+                    if response in ('y', 'yes'):
+                        fixed_count = 0
+                        for hdr_issue in hdr_fixable_issues:
+                            if self.fix_hdr_subdirectory(hdr_issue):
+                                fixed_count += 1
+                                self.hdr_fixed_count += 1
+                            else:
+                                # Track unfixed issues
+                                self.hdr_unfixed_issues.append(str(hdr_issue.relative_path))
+                        if fixed_count > 0:
+                            print(f"\n  ✅ Fixed {fixed_count}/{len(hdr_fixable_issues)} HDR subdirectory issue(s)")
+                        if fixed_count < len(hdr_fixable_issues):
+                            print(f"  ⚠️  {len(hdr_fixable_issues) - fixed_count} HDR subdirectory issue(s) remain")
+                    else:
+                        print("  ⏭️  Skipped HDR fixes")
+                        # All issues remain unfixed
+                        for hdr_issue in hdr_fixable_issues:
+                            self.hdr_unfixed_issues.append(str(hdr_issue.relative_path))
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    # Track as unfixed if interrupted
+                    for hdr_issue in hdr_fixable_issues:
+                        self.hdr_unfixed_issues.append(str(hdr_issue.relative_path))
+            elif hdr_fixable_issues:
+                # Not in interactive mode, track as unfixed
+                for hdr_issue in hdr_fixable_issues:
+                    self.hdr_unfixed_issues.append(str(hdr_issue.relative_path))
+
+            # Interactive fix mode for prefix issues
             if interactive and fixable_issues:
                 try:
                     if self.ask_to_fix_day(dir_info.path.name, fixable_issues):
@@ -629,7 +962,7 @@ class SanityChecker:
                     print("Some directories may have been renamed. Run again to check status.\n")
                     raise
 
-            if not compliance_issues and not prefix_issues and not csv_issues:
+            if not compliance_issues and not prefix_issues and not csv_issues and not hdr_issues:
                 print("  ✅ All checks passed")
 
         # Print summary
@@ -656,6 +989,17 @@ class SanityChecker:
             print("\n📋 DIRECTORIES WITH CSV INCONSISTENCIES:")
             for dir_name in self.csv_inconsistent_dirs:
                 print(f"   - {dir_name}")
+
+        # HDR subdirectory fix statistics
+        if self.hdr_fixed_count > 0 or self.hdr_unfixed_issues:
+            print(f"\n📷 HDR SUBDIRECTORY FIX STATISTICS:")
+            if self.hdr_fixed_count > 0:
+                print(f"   ✅ Fixed: {self.hdr_fixed_count} subdirectories")
+            if self.hdr_unfixed_issues:
+                print(f"   ⚠️  Remaining issues: {len(self.hdr_unfixed_issues)} subdirectories")
+                print(f"\n   Unfixed HDR subdirectories:")
+                for path in self.hdr_unfixed_issues:
+                    print(f"      - {path}")
 
         if not self.errors and not self.warnings:
             print("\n✅ All checks passed!")
