@@ -7,6 +7,7 @@ Validates directory structure against template and naming conventions
 import os
 import re
 import csv
+import json
 from pathlib import Path
 from typing import Dict, List, Set, Tuple, Optional
 from dataclasses import dataclass
@@ -62,8 +63,11 @@ class SanityChecker:
         r'^(J\d{2}|PJ\d{2})__(S\d{2}(?:_S\d{2})*)__([A-Z]{4}(?:_[A-Z]{4})*)__(.+)$'
     )
 
-    # Directories to skip
-    SKIP_DIRS = {'TODO__', '__RAPPORTS_SCRIPT', '__Souvenirs_Vrac', '__CALLSHEETS'}
+    # Default config values (overridden by config file if present)
+    DEFAULT_SKIP_DIRS = {'TODO__', '__RAPPORTS_SCRIPT', '__Souvenirs_Vrac', '__CALLSHEETS'}
+    DEFAULT_TEMPLATE_DIR = 'J00_TEMPLATE'
+    DEFAULT_HDR_SUBDIRS = {'Fisheye': 'F', 'Theta': 'T', 'Theta_Underwater': 'U'}
+    CONFIG_PATH = '__SHOOT_BROWSER/Config/sanity_check.json'
 
     def __init__(self, data_path: str):
         self.data_path = Path(data_path).resolve()  # Resolve to absolute path
@@ -74,13 +78,15 @@ class SanityChecker:
         if not self.data_path.is_dir():
             raise ValueError(f"Data path is not a directory: {self.data_path}")
 
-        self.template_path = self.data_path / 'J00_TEMPLATE'
+        # Load config file
+        self._load_config()
+
+        self.template_path = self.data_path / self.template_dir
         self.template_structure: Set[Path] = set()
         self.errors: List[str] = []
         self.warnings: List[str] = []
 
         # CSV validation data
-        self.csv_path = self.data_path / 'Editorial_VFX_Code_List.csv'
         self.valid_codes: Set[str] = set()  # All valid codes from CSV
         self.scene_code_map: Dict[str, List[str]] = {}  # Scene -> List of codes
         self.csv_loaded: bool = False
@@ -89,6 +95,24 @@ class SanityChecker:
         # HDR subdirectory fix tracking
         self.hdr_fixed_count: int = 0
         self.hdr_unfixed_issues: List[str] = []  # Relative paths of unfixed HDR subdirectories
+
+    def _load_config(self) -> None:
+        """Load configuration from JSON file, falling back to defaults if not found"""
+        config_path = self.data_path / self.CONFIG_PATH
+        config = {}
+
+        if config_path.exists():
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                print(f"⚙️  Config loaded: {config_path}")
+            except Exception as e:
+                print(f"⚠️  Could not load config file ({e}), using defaults")
+
+        self.csv_path = Path(config['vfx_codes_csv']) if 'vfx_codes_csv' in config else None
+        self.template_dir = config.get('template_dir', self.DEFAULT_TEMPLATE_DIR)
+        self.skip_dirs = set(config.get('skip_dirs', self.DEFAULT_SKIP_DIRS))
+        self.hdr_subdirs = config.get('hdr_subdirs', self.DEFAULT_HDR_SUBDIRS)
 
     def parse_template(self) -> bool:
         """Parse the J00_TEMPLATE directory structure"""
@@ -282,7 +306,7 @@ class SanityChecker:
                 continue
 
             # Skip special directories
-            if any(skip in item.name for skip in self.SKIP_DIRS):
+            if any(skip in item.name for skip in self.skip_dirs):
                 continue
 
             # Parse directory name
@@ -299,8 +323,12 @@ class SanityChecker:
     # ========================================================================
 
     def load_csv_code_list(self) -> bool:
-        """Load and parse the Editorial_VFX_Code_List.csv file"""
-        if not self.csv_path.exists():
+        """Load and parse the VFX codes CSV file"""
+        if not self.csv_path or not self.csv_path.exists():
+            if not self.csv_path:
+                print("⚠️  No vfx_codes_csv defined in config")
+            else:
+                print(f"⚠️  CSV file not found: {self.csv_path}")
             return False
 
         try:
@@ -431,13 +459,7 @@ class SanityChecker:
         issues = []
         fixable_issues = []
 
-        # HDR subdirectory base names and their type codes
-        # These can exist with or without __ prefix
-        hdr_base_names = {
-            'Fisheye': 'F',
-            'Theta': 'T',
-            'Theta_Underwater': 'U'
-        }
+        hdr_base_names = self.hdr_subdirs
 
         # Find __20_HDR or 20_HDR directory
         hdr_dir = None
