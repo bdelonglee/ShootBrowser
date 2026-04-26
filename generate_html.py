@@ -528,6 +528,47 @@ class HTMLGenerator:
             font-size: 0.78em;
             font-weight: 600;
         }}
+        .open-folder, .toggle-btn {{
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-muted);
+            opacity: 0.35;
+            padding: 2px;
+            line-height: 1;
+            flex-shrink: 0;
+            transition: opacity 0.15s, color 0.15s;
+        }}
+        .open-folder {{ margin-left: auto; }}
+        .entry:hover .open-folder,
+        .entry:hover .toggle-btn {{ opacity: 0.7; }}
+        .open-folder:hover, .toggle-btn:hover {{ opacity: 1 !important; color: var(--accent); }}
+        .open-folder.copied {{ opacity: 1 !important; color: #56d364; }}
+        .toggle-btn svg {{ transition: transform 0.2s; }}
+        .entry.expanded .toggle-btn {{ opacity: 0.7; }}
+        .entry.expanded .toggle-btn svg {{ transform: rotate(180deg); }}
+
+        /* ── Summary (collapsed) ── */
+        .entry-summary {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 8px;
+        }}
+        .entry.expanded .entry-summary {{ display: none; }}
+        .summary-subdir {{
+            font-size: 0.75em;
+            color: var(--text-muted);
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }}
+
+        /* ── Details (expanded) ── */
+        .entry-details {{ display: none; }}
+        .entry.expanded .entry-details {{ display: block; }}
 
         mark {{
             background: rgba(210,153,34,0.35);
@@ -645,6 +686,7 @@ class HTMLGenerator:
         <button class="mode-button active" onclick="setMode('days')"   id="btn-days">📅 By Days</button>
         <button class="mode-button"        onclick="setMode('scenes')" id="btn-scenes">🎞️ By Scenes</button>
         <button class="mode-button"        onclick="setMode('codes')"  id="btn-codes">🏷️ By Codes</button>
+        <button class="mode-button"        onclick="toggleAll()"       id="btn-toggle-all">⊕ Expand All</button>
 
         <div class="search-wrapper">
             <span class="search-icon">🔍</span>
@@ -683,6 +725,7 @@ const data = {data_json};
 
 let currentMode  = 'days';
 let currentQuery = '';
+const expandedPaths = new Set();
 
 // ── Mode ─────────────────────────────────────────────────────────────────────
 
@@ -783,6 +826,19 @@ function renderSubdirs(subdirs) {{
 
 // ── Entry rendering ───────────────────────────────────────────────────────────
 
+function renderSummary(subdirs) {{
+    if (!subdirs || subdirs.length === 0) return '';
+    const pills = [];
+    for (const s of subdirs) {{
+        if (s.kind === 'simple') {{
+            s.children.forEach(c => pills.push(`<span class="summary-subdir">${{escHtml(c.name)}}</span>`));
+        }} else {{
+            pills.push(`<span class="summary-subdir">📁 ${{escHtml(s.name)}}</span>`);
+        }}
+    }}
+    return pills.length ? `<div class="entry-summary">${{pills.join('')}}</div>` : '';
+}}
+
 function renderEntry(entry, q) {{
     const dayHtml    = `<span class="title-day">${{highlight(entry.day, q)}}</span>`;
     const scenesHtml = entry.scenes.map(s =>
@@ -793,12 +849,22 @@ function renderEntry(entry, q) {{
     ).join('');
     const descHtml   = `<span class="title-desc">${{highlight(entry.description.replace(/_/g,' '), q)}}</span>`;
     const noData     = entry.has_data ? '' : '<span class="badge-no-data">No Data</span>';
+    const copyBtn    = `<button class="open-folder" onclick="copyPath(this, ${{JSON.stringify(entry.path)}})" title="Copy path (then ⌘⇧G in Finder)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg></button>`;
+    const chevron    = `<button class="toggle-btn" onclick="toggleEntry(this)" title="Expand / Collapse">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+        </svg></button>`;
 
-    return `<div class="entry">
+    const isExpanded = expandedPaths.has(entry.path);
+    return `<div class="entry${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(entry.path)}}">
         <div class="entry-title-line">
-            ${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}
+            ${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{copyBtn}}${{chevron}}
         </div>
-        ${{renderSubdirs(entry.subdirs)}}
+        ${{renderSummary(entry.subdirs)}}
+        <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
     </div>`;
 }}
 
@@ -862,6 +928,52 @@ function updateStats(total, groups) {{
 }}
 function emptyState(msg) {{
     return `<div class="empty-state"><div class="empty-state-icon">📂</div><p>${{msg}}</p></div>`;
+}}
+
+// ── Fold / unfold ────────────────────────────────────────────────────────────
+
+function toggleEntry(btn) {{
+    const entry = btn.closest('.entry');
+    const path  = entry.dataset.path;
+    const expanded = entry.classList.toggle('expanded');
+    if (expanded) expandedPaths.add(path);
+    else           expandedPaths.delete(path);
+}}
+
+function toggleAll() {{
+    const entries     = document.querySelectorAll('.entry[data-path]');
+    const anyCollapsed = [...entries].some(e => !e.classList.contains('expanded'));
+    entries.forEach(e => {{
+        e.classList.toggle('expanded', anyCollapsed);
+        if (anyCollapsed) expandedPaths.add(e.dataset.path);
+        else              expandedPaths.delete(e.dataset.path);
+    }});
+    const btn = document.getElementById('btn-toggle-all');
+    if (btn) btn.textContent = anyCollapsed ? '⊖ Collapse All' : '⊕ Expand All';
+}}
+
+// ── Copy path ────────────────────────────────────────────────────────────────
+
+function copyPath(btn, path) {{
+    const ta = document.createElement('textarea');
+    ta.value = path;
+    ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+
+    if (ok) {{
+        const orig = btn.innerHTML;
+        btn.classList.add('copied');
+        btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+        setTimeout(() => {{
+            btn.classList.remove('copied');
+            btn.innerHTML = orig;
+        }}, 1500);
+    }} else {{
+        window.prompt('Copy path:', path);
+    }}
 }}
 
 render();
