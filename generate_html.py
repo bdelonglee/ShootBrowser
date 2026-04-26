@@ -293,52 +293,79 @@ class HTMLGenerator:
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 
+        :root {{
+            --bg:           #0d1117;
+            --surface:      #161b22;
+            --surface-2:    #1c2128;
+            --surface-3:    #22272e;
+            --border:       rgba(175,184,193,0.12);
+            --border-hover: rgba(175,184,193,0.22);
+            --text:         #cdd9e5;
+            --text-muted:   #768390;
+            --accent:       #4493f8;
+            --accent-glow:  rgba(68,147,248,0.15);
+        }}
+
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: #333;
-            padding: 20px;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px 20px;
             min-height: 100vh;
         }}
 
         .container {{ max-width: 1400px; margin: 0 auto; }}
 
+        /* ── Header ── */
         header {{
-            background: white;
-            border-radius: 12px;
-            padding: 24px 30px;
+            padding: 28px 0 20px;
             margin-bottom: 16px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-bottom: 1px solid var(--border);
         }}
-        h1 {{ color: #1e3c72; font-size: 2.2em; margin-bottom: 6px; }}
-        .subtitle {{ color: #666; font-size: 1em; }}
+        h1 {{
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -0.02em;
+            margin-bottom: 4px;
+        }}
+        .subtitle {{ color: var(--text-muted); font-size: 0.9em; }}
 
         /* ── Controls ── */
         .controls {{
-            background: white;
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 16px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 14px;
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: center;
             flex-wrap: wrap;
         }}
 
         .mode-button {{
-            background: #f0f0f0;
-            border: 2px solid #ddd;
-            padding: 10px 20px;
-            border-radius: 8px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 8px 18px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 0.95em;
+            font-size: 0.88em;
             font-weight: 600;
-            transition: all 0.2s;
+            transition: all 0.15s;
             white-space: nowrap;
         }}
-        .mode-button:hover {{ background: #e0e0e0; transform: translateY(-1px); }}
-        .mode-button.active {{ background: #1e3c72; color: white; border-color: #1e3c72; }}
+        .mode-button:hover {{
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-glow);
+        }}
+        .mode-button.active {{
+            background: var(--accent-glow);
+            border-color: var(--accent);
+            color: var(--accent);
+        }}
 
         /* ── Search ── */
         .search-wrapper {{
@@ -349,147 +376,162 @@ class HTMLGenerator:
         }}
         .search-icon {{
             position: absolute;
-            left: 12px;
+            left: 11px;
             top: 50%;
             transform: translateY(-50%);
-            color: #999;
+            color: var(--text-muted);
             pointer-events: none;
+            font-size: 0.9em;
         }}
         #search-input {{
             width: 100%;
-            padding: 10px 36px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 0.95em;
+            padding: 8px 34px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.9em;
             outline: none;
-            transition: border-color 0.2s;
+            transition: border-color 0.15s;
         }}
-        #search-input:focus {{ border-color: #1e3c72; }}
+        #search-input::placeholder {{ color: var(--text-muted); }}
+        #search-input:focus {{ border-color: var(--accent); }}
         #search-clear {{
             position: absolute;
-            right: 10px;
+            right: 9px;
             top: 50%;
             transform: translateY(-50%);
             background: none;
             border: none;
             cursor: pointer;
-            color: #aaa;
-            font-size: 1.1em;
+            color: var(--text-muted);
+            font-size: 1em;
             display: none;
             line-height: 1;
         }}
-        #search-clear:hover {{ color: #555; }}
+        #search-clear:hover {{ color: var(--text); }}
 
         /* ── Stats ── */
-        .stats {{ margin-left: auto; display: flex; gap: 20px; }}
+        .stats {{ margin-left: auto; display: flex; gap: 24px; }}
         .stat {{ text-align: center; }}
-        .stat-value {{ font-size: 1.6em; font-weight: bold; color: #1e3c72; }}
-        .stat-label {{ font-size: 0.8em; color: #666; }}
+        .stat-value {{ font-size: 1.5em; font-weight: 700; color: var(--accent); }}
+        .stat-label {{ font-size: 0.75em; color: var(--text-muted); margin-top: 1px; }}
 
         /* ── Search info ── */
         #search-info {{
-            background: #e8f0fe;
-            border-radius: 8px;
-            padding: 8px 16px;
+            background: var(--accent-glow);
+            border: 1px solid rgba(68,147,248,0.25);
+            border-radius: 6px;
+            padding: 7px 14px;
             margin-bottom: 12px;
-            font-size: 0.9em;
-            color: #1e3c72;
+            font-size: 0.85em;
+            color: var(--accent);
             display: none;
         }}
 
         /* ── Content ── */
         .content {{
-            background: white;
-            border-radius: 12px;
-            padding: 28px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             min-height: 400px;
         }}
 
-        .group {{ margin-bottom: 28px; }}
+        /* ── Groups ── */
+        .group {{ margin-bottom: 24px; }}
         .group-header {{
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            padding: 13px 18px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            color: var(--text);
+            padding: 11px 16px;
             border-radius: 8px;
-            font-size: 1.2em;
-            font-weight: bold;
-            margin-bottom: 12px;
+            font-size: 1em;
+            font-weight: 700;
+            margin-bottom: 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            letter-spacing: 0.01em;
         }}
         .group-count {{
-            background: rgba(255,255,255,0.2);
-            padding: 4px 10px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            padding: 3px 10px;
             border-radius: 20px;
-            font-size: 0.78em;
+            font-size: 0.75em;
+            color: var(--text-muted);
+            font-weight: 500;
         }}
 
+        /* ── Entry cards ── */
         .entry {{
-            background: #f8f9fa;
-            border-left: 4px solid #1e3c72;
-            padding: 16px 18px;
-            margin-bottom: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid transparent;
+            padding: 14px 16px;
+            margin-bottom: 8px;
             border-radius: 8px;
-            transition: all 0.2s;
+            transition: all 0.15s;
         }}
         .entry:hover {{
-            background: #e9ecef;
-            transform: translateX(4px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            background: var(--surface-2);
+            border-color: var(--border-hover);
+            border-left-color: var(--accent);
+            transform: translateX(3px);
         }}
 
         /* ── Entry title line ── */
         .entry-title-line {{
             display: flex;
-            align-items: baseline;
-            gap: 7px;
+            align-items: center;
+            gap: 6px;
             flex-wrap: wrap;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }}
         .title-day, .title-scene, .title-code, .title-desc {{
             display: inline-block;
             padding: 3px 9px;
-            border-radius: 12px;
-            font-weight: 700;
+            border-radius: 6px;
+            font-weight: 600;
         }}
-        .title-day   {{
+        .title-day {{
             font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.85em;
-            background: #d4edda;
-            color: #155724;
+            font-size: 0.8em;
+            background: rgba(86,211,100,0.12);
+            color: #56d364;
+            border: 1px solid rgba(86,211,100,0.2);
         }}
         .title-scene {{
             font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.85em;
-            background: #d1ecf1;
-            color: #0c5460;
+            font-size: 0.8em;
+            background: rgba(57,197,207,0.12);
+            color: #39c5cf;
+            border: 1px solid rgba(57,197,207,0.2);
         }}
-        .title-code  {{
+        .title-code {{
             font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.85em;
-            background: #fff3cd;
-            color: #856404;
+            font-size: 0.8em;
+            background: rgba(227,179,65,0.12);
+            color: #e3b341;
+            border: 1px solid rgba(227,179,65,0.2);
         }}
-        .title-desc  {{
-            font-size: 1.0em;
-            background: #e8eaf6;
-            color: #1e3c72;
+        .title-desc {{
+            font-size: 0.95em;
+            background: rgba(68,147,248,0.12);
+            color: #7eb8f7;
+            border: 1px solid rgba(68,147,248,0.2);
         }}
         .badge-no-data {{
-            background: #fd7e14;
-            color: white;
-            padding: 2px 9px;
-            border-radius: 10px;
+            background: rgba(248,81,73,0.15);
+            color: #f85149;
+            border: 1px solid rgba(248,81,73,0.3);
+            padding: 3px 9px;
+            border-radius: 6px;
             font-size: 0.78em;
             font-weight: 600;
-            align-self: center;
         }}
 
         mark {{
-            background: #ffe066;
-            color: inherit;
+            background: rgba(210,153,34,0.35);
+            color: #e3b341;
             border-radius: 2px;
             padding: 0 1px;
         }}
@@ -498,19 +540,17 @@ class HTMLGenerator:
         .subdir-sections {{
             margin-top: 10px;
             padding-top: 10px;
-            border-top: 1px solid #e0e0e0;
+            border-top: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             gap: 10px;
         }}
-
-        /* nested: 20_HDR, 32_Photog_Photos, 40_Photos */
         .subdir-section-label {{
-            font-size: 0.78em;
+            font-size: 0.72em;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #555;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
             margin-bottom: 5px;
         }}
         .subdir-children {{
@@ -522,72 +562,69 @@ class HTMLGenerator:
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 5px;
             padding: 4px 10px;
-            font-size: 0.82em;
+            font-size: 0.8em;
             font-family: 'Monaco', 'Courier New', monospace;
+            color: var(--text);
         }}
         .subdir-child-count {{
-            color: #888;
+            color: var(--text-muted);
             font-size: 0.9em;
             margin-left: 12px;
             white-space: nowrap;
         }}
 
-        /* count: 60_Temoin_Photos, 70_Temoin_Videos */
         .subdir-count-row {{
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 0.88em;
+            font-size: 0.85em;
         }}
         .subdir-count-name {{
             font-weight: 600;
-            color: #444;
+            color: var(--text);
         }}
 
-        /* files: 10_Infos, 00_Database, 80_References */
         .subdir-file {{
             display: flex;
             align-items: center;
             gap: 6px;
             padding: 3px 10px;
-            font-size: 0.82em;
+            font-size: 0.8em;
             font-family: 'Monaco', 'Courier New', monospace;
-            color: #444;
+            color: var(--text-muted);
         }}
 
-        /* simple: other non-__ subdirs */
         .subdir-simple-group {{
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            gap: 5px;
         }}
         .subdir-simple-item {{
-            background: white;
-            border: 1px solid #ddd;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
             padding: 3px 9px;
-            border-radius: 6px;
-            font-size: 0.82em;
+            border-radius: 5px;
+            font-size: 0.8em;
             font-family: 'Monaco', 'Courier New', monospace;
-            color: #555;
+            color: var(--text-muted);
         }}
 
         .empty-state {{
             text-align: center;
             padding: 60px 20px;
-            color: #999;
+            color: var(--text-muted);
         }}
-        .empty-state-icon {{ font-size: 3.5em; margin-bottom: 16px; }}
+        .empty-state-icon {{ font-size: 3em; margin-bottom: 16px; }}
 
         footer {{
             text-align: center;
-            margin-top: 24px;
-            color: white;
-            opacity: 0.7;
-            font-size: 0.85em;
+            margin-top: 28px;
+            color: var(--text-muted);
+            font-size: 0.8em;
         }}
 
         @media (max-width: 768px) {{
@@ -600,8 +637,8 @@ class HTMLGenerator:
 <div class="container">
 
     <header>
-        <h1>🎬 VFX Shoot Data Browser</h1>
-        <p class="subtitle">Browse shoot data by days, scenes, or codes</p>
+        <h1>VFX Shoot Browser</h1>
+        <p class="subtitle">POSEIDON — Browse shoot data by days, scenes, or codes</p>
     </header>
 
     <div class="controls">
