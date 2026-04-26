@@ -6,9 +6,11 @@ Validates directory structure against template and naming conventions
 
 import os
 import re
+import csv
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional
 from dataclasses import dataclass
+from collections import defaultdict
 
 
 @dataclass
@@ -29,6 +31,13 @@ class PrefixIssue:
     issue_type: str  # 'missing_prefix' or 'extra_prefix'
     is_empty: bool
     relative_path: Path
+
+
+@dataclass
+class SceneCodeMapping:
+    """Scene to Code mapping from Editorial CSV"""
+    scene: str  # Scene number (not padded, e.g., "1", "15", "100")
+    codes: List[str]  # List of codes for this scene
 
 
 class SanityChecker:
@@ -58,6 +67,13 @@ class SanityChecker:
         self.template_structure: Set[Path] = set()
         self.errors: List[str] = []
         self.warnings: List[str] = []
+
+        # CSV validation data
+        self.csv_path = self.data_path / 'Editorial_VFX_Code_List.csv'
+        self.valid_codes: Set[str] = set()  # All valid codes from CSV
+        self.scene_code_map: Dict[str, List[str]] = {}  # Scene -> List of codes
+        self.csv_loaded: bool = False
+        self.csv_inconsistent_dirs: List[str] = []  # Directories with CSV issues
 
     def parse_template(self) -> bool:
         """Parse the J00_TEMPLATE directory structure"""
@@ -263,6 +279,135 @@ class SanityChecker:
 
         return day_dirs
 
+    # ========================================================================
+    # CSV CODE VALIDATION FEATURE
+    # ========================================================================
+
+    def load_csv_code_list(self) -> bool:
+        """Load and parse the Editorial_VFX_Code_List.csv file"""
+        if not self.csv_path.exists():
+            return False
+
+        try:
+            with open(self.csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+
+            # Find the header row (contains "Scene" and "Sequence Code")
+            header_row = None
+            for i, row in enumerate(rows):
+                if len(row) > 2 and 'Scene' in row and 'Sequence Code' in row:
+                    header_row = i
+                    break
+
+            if header_row is None:
+                print(f"⚠️  Could not find header row in CSV")
+                return False
+
+            # Find column indices
+            scene_col = None
+            code_col = None
+            for i, cell in enumerate(rows[header_row]):
+                if cell.strip() == 'Scene':
+                    scene_col = i
+                elif cell.strip() == 'Sequence Code':
+                    code_col = i
+
+            if scene_col is None or code_col is None:
+                print(f"⚠️  Could not find Scene or Sequence Code columns")
+                return False
+
+            # Parse data rows
+            for row in rows[header_row + 1:]:
+                if len(row) <= max(scene_col, code_col):
+                    continue
+
+                scene = row[scene_col].strip()
+                code = row[code_col].strip()
+
+                # Skip empty rows
+                if not scene or not code:
+                    continue
+
+                # Parse scene (remove any non-numeric characters, handle special cases like "065A")
+                scene_num = scene.replace('A', '').replace('B', '').replace('?', '')
+                if not scene_num:
+                    continue
+
+                # Parse codes (can be multiple separated by /)
+                codes = [c.strip() for c in code.split('/')]
+                codes = [c for c in codes if c and not c.endswith('?')]  # Remove empty and uncertain codes
+
+                # Add to valid codes set
+                self.valid_codes.update(codes)
+
+                # Map scene to codes (store unpadded scene number)
+                if scene_num not in self.scene_code_map:
+                    self.scene_code_map[scene_num] = []
+                self.scene_code_map[scene_num].extend(codes)
+
+            # Remove duplicates from scene_code_map
+            for scene in self.scene_code_map:
+                self.scene_code_map[scene] = list(set(self.scene_code_map[scene]))
+
+            self.csv_loaded = True
+            return True
+
+        except Exception as e:
+            print(f"⚠️  Error loading CSV: {e}")
+            return False
+
+    def validate_codes_against_csv(self, dir_info: DirectoryInfo) -> List[str]:
+        """
+        Validate directory codes and scenes against CSV data.
+        Returns list of issues found.
+        """
+        if not self.csv_loaded:
+            return []
+
+        issues = []
+
+        # Extract individual codes from directory
+        # E.g., "PONT_PISC_PLAN" becomes ["PONT", "PISC", "PLAN"]
+        dir_codes = dir_info.code.split('_')
+
+        # Check 1: Are the codes valid (present in CSV)?
+        for code in dir_codes:
+            if code not in self.valid_codes:
+                issues.append(
+                    f"  ⚠️  Code '{code}' not found in Editorial_VFX_Code_List.csv"
+                )
+
+        # Check 2: Are scene-code combinations valid?
+        for scene in dir_info.scenes:
+            # Convert SXX to unpadded number (S19 -> "19", S01 -> "1")
+            scene_num = scene[1:].lstrip('0') or '0'
+
+            if scene_num not in self.scene_code_map:
+                issues.append(
+                    f"  ⚠️  Scene {scene} ({scene_num}) not found in Editorial_VFX_Code_List.csv"
+                )
+                continue
+
+            # Check if any of the directory codes are valid for this scene
+            valid_codes_for_scene = self.scene_code_map[scene_num]
+            matching_codes = [c for c in dir_codes if c in valid_codes_for_scene]
+
+            if not matching_codes:
+                # Show individual codes for clarity
+                codes_display = ' / '.join(dir_codes) if len(dir_codes) > 1 else dir_codes[0]
+                issues.append(
+                    f"  ⚠️  Scene {scene} / Codes [{codes_display}] - none match expected codes in CSV"
+                    f"\n      Expected codes for scene {scene}: {', '.join(valid_codes_for_scene)}"
+                    f"\n      Directory codes: {', '.join(dir_codes)}"
+                )
+
+        return issues
+
+    # ========================================================================
+    # PREFIX FIX FEATURE
+    # ========================================================================
+
     def fix_prefix_issue(self, issue: PrefixIssue) -> bool:
         """Fix a single prefix issue by renaming the directory"""
         try:
@@ -393,7 +538,7 @@ class SanityChecker:
             print()
             return False
 
-    def run(self, interactive: bool = False) -> bool:
+    def run(self, interactive: bool = False, validate_csv: bool = True) -> bool:
         """Run all sanity checks"""
         print("\n" + "="*70)
         print("🎬 VFX SHOOT DATA SANITY CHECK")
@@ -411,6 +556,17 @@ class SanityChecker:
         # Parse template
         if not self.parse_template():
             return False
+
+        # Load CSV code list if validation requested
+        csv_validation_enabled = False
+        if validate_csv:
+            print(f"\n📊 Loading Editorial VFX Code List...")
+            if self.load_csv_code_list():
+                print(f"   ✅ Loaded {len(self.valid_codes)} codes for {len(self.scene_code_map)} scenes")
+                csv_validation_enabled = True
+            else:
+                print(f"   ⚠️  CSV file not found or could not be loaded")
+                print(f"   Skipping CSV validation")
 
         # Get all day directories
         print(f"\n📂 Scanning day directories...")
@@ -434,6 +590,16 @@ class SanityChecker:
                 self.errors.extend(prefix_issues)
                 for issue in prefix_issues:
                     print(issue)
+
+            # Check CSV code validation (separate feature)
+            csv_issues = []
+            if csv_validation_enabled:
+                csv_issues = self.validate_codes_against_csv(dir_info)
+                if csv_issues:
+                    self.warnings.extend(csv_issues)
+                    self.csv_inconsistent_dirs.append(dir_info.path.name)
+                    for issue in csv_issues:
+                        print(issue)
 
             # Interactive fix mode
             if interactive and fixable_issues:
@@ -463,7 +629,7 @@ class SanityChecker:
                     print("Some directories may have been renamed. Run again to check status.\n")
                     raise
 
-            if not compliance_issues and not prefix_issues:
+            if not compliance_issues and not prefix_issues and not csv_issues:
                 print("  ✅ All checks passed")
 
         # Print summary
@@ -485,6 +651,11 @@ class SanityChecker:
             for warning in self.warnings:
                 if not warning.startswith((' ', '\t')):
                     print(warning)
+
+        if self.csv_inconsistent_dirs:
+            print("\n📋 DIRECTORIES WITH CSV INCONSISTENCIES:")
+            for dir_name in self.csv_inconsistent_dirs:
+                print(f"   - {dir_name}")
 
         if not self.errors and not self.warnings:
             print("\n✅ All checks passed!")
@@ -514,12 +685,17 @@ def main():
         action='store_true',
         help='Interactive mode: ask to fix prefix inconsistencies for each day'
     )
+    parser.add_argument(
+        '--no-csv',
+        action='store_true',
+        help='Disable CSV code validation (skip Editorial_VFX_Code_List.csv checks)'
+    )
 
     args = parser.parse_args()
 
     try:
         checker = SanityChecker(args.data_path)
-        success = checker.run(interactive=args.fix)
+        success = checker.run(interactive=args.fix, validate_csv=not args.no_csv)
         sys.exit(0 if success else 1)
 
     except KeyboardInterrupt:
