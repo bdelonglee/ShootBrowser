@@ -12,6 +12,7 @@ Install dependency once:
     pip install flask
 """
 
+import os
 import sys
 import json
 import shutil
@@ -96,6 +97,21 @@ def api_run_sanity_check():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+def _ignore_empty_dirs(src_dir, names):
+    """shutil.copytree ignore callback — skip directories that contain no visible files."""
+    skip = set()
+    for name in names:
+        full = Path(src_dir) / name
+        if full.is_dir():
+            has_files = any(
+                f for _, _, files in os.walk(full)
+                for f in files if not f.startswith(".")
+            )
+            if not has_files:
+                skip.add(name)
+    return skip
+
+
 @app.route("/api/build-package", methods=["POST"])
 def api_build_package():
     """Copy selected block directories into a versioned package folder."""
@@ -149,7 +165,7 @@ def api_build_package():
             dest_name = src.name if dn in collision_names else dn
             dest = pkg_dir / dest_name
 
-            shutil.copytree(str(src), str(dest))
+            shutil.copytree(str(src), str(dest), ignore=_ignore_empty_dirs)
             if note:
                 (dest / "block_notes.txt").write_text(note, encoding="utf-8")
 
