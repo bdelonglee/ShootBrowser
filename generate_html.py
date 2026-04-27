@@ -38,6 +38,7 @@ class ShootEntry:
     description: str
     has_data: bool
     subdirs: List[SubdirSection]
+    package_note: str = ''
 
 
 class HTMLGenerator:
@@ -81,6 +82,19 @@ class HTMLGenerator:
 
     def default_output_path(self) -> Path:
         return self.data_path / '__SHOOT_BROWSER' / 'vfx_shoot_browser.html'
+
+    # ── Block package note ───────────────────────────────────────────────────
+
+    def _read_block_package_note(self, block_path: Path) -> str:
+        """Read block_package_infos.txt from 10_Infos (or __10_Infos fallback)."""
+        for prefix in ('', '__'):
+            candidate = block_path / f'{prefix}10_Infos' / 'block_package_infos.txt'
+            if candidate.is_file():
+                try:
+                    return candidate.read_text(encoding='utf-8').strip()
+                except Exception:
+                    pass
+        return ''
 
     # ── File counting ────────────────────────────────────────────────────────
 
@@ -236,6 +250,7 @@ class HTMLGenerator:
                 description=description,
                 has_data=self.check_has_data(item),
                 subdirs=self.get_subdir_sections(item),
+                package_note=self._read_block_package_note(item),
             ))
 
         print(f"   Found {len(self.entries)} shoot entries")
@@ -689,31 +704,49 @@ class HTMLGenerator:
         #cart-panel {{
             position: fixed; bottom: 0; left: 0; right: 0;
             background: var(--surface); border-top: 2px solid var(--accent);
-            padding: 14px 24px 18px; z-index: 100; display: none;
-            max-height: 46vh; overflow-y: auto;
+            z-index: 100; display: none;
             box-shadow: 0 -6px 32px rgba(0,0,0,0.5);
         }}
         #cart-panel.visible {{ display: block; }}
         .cart-inner {{ max-width: 1400px; margin: 0 auto; }}
-        .cart-header {{ display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }}
-        .cart-title {{ font-weight: 700; color: var(--text); font-size: 0.95em; }}
+        #cart-header-bar {{
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 24px;
+            border-bottom: 1px solid var(--border);
+            cursor: default;
+        }}
+        .cart-title {{ font-weight: 700; color: var(--text); font-size: 0.9em; }}
         .cart-badge {{
             background: var(--accent); color: #fff;
-            border-radius: 20px; padding: 2px 10px;
-            font-size: 0.78em; font-weight: 700;
+            border-radius: 20px; padding: 1px 9px;
+            font-size: 0.76em; font-weight: 700;
         }}
+        .cart-toggle-btn {{
+            background: none; border: none; cursor: pointer;
+            color: var(--text-muted); font-size: 0.8em; padding: 2px 6px;
+            transition: color 0.15s;
+        }}
+        .cart-toggle-btn:hover {{ color: var(--text); }}
         .cart-clear {{
             margin-left: auto; background: none;
             border: 1px solid var(--border); color: var(--text-muted);
-            border-radius: 6px; padding: 4px 12px; cursor: pointer;
-            font-size: 0.82em; transition: all 0.15s;
+            border-radius: 6px; padding: 3px 10px; cursor: pointer;
+            font-size: 0.8em; transition: all 0.15s;
         }}
         .cart-clear:hover {{ color: #f85149; border-color: rgba(248,81,73,0.4); }}
-        .cart-items {{ display: flex; flex-direction: column; gap: 6px; }}
+        #cart-body {{
+            max-height: 260px; overflow-y: auto;
+            padding: 12px 24px 14px;
+        }}
+        #cart-panel.collapsed #cart-body {{ display: none; }}
+        .cart-items {{ display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }}
         .cart-item {{
-            display: flex; align-items: center; gap: 10px;
             background: var(--surface-2); border: 1px solid var(--border);
-            border-radius: 6px; padding: 7px 12px;
+            border-radius: 6px; padding: 8px 12px;
+            display: flex; flex-direction: column; gap: 6px;
+        }}
+        .cart-item-top {{
+            display: flex; align-items: center; gap: 8px;
         }}
         .cart-item-name {{
             font-family: 'Monaco', 'Courier New', monospace;
@@ -721,26 +754,43 @@ class HTMLGenerator:
             flex: 1; min-width: 0;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }}
+        .cart-item-remove {{
+            background: none; border: none; cursor: pointer;
+            color: var(--text-muted); font-size: 0.9em;
+            flex-shrink: 0; padding: 1px 4px; transition: color 0.15s;
+        }}
+        .cart-item-remove:hover {{ color: #f85149; }}
         .cart-item-note {{
-            background: var(--surface-3); border: 1px solid var(--border);
-            color: var(--text); border-radius: 4px; padding: 4px 8px;
-            font-size: 0.82em; width: 220px; flex-shrink: 0;
-            outline: none; transition: border-color 0.15s;
+            width: 100%; background: var(--surface-3);
+            border: 1px solid var(--border); color: var(--text);
+            border-radius: 4px; padding: 5px 8px;
+            font-size: 0.82em; outline: none; transition: border-color 0.15s;
         }}
         .cart-item-note:focus {{ border-color: var(--accent); }}
         .cart-item-note::placeholder {{ color: var(--text-muted); }}
-        .cart-item-remove {{
-            background: none; border: none; cursor: pointer;
-            color: var(--text-muted); font-size: 1em;
-            flex-shrink: 0; padding: 2px; line-height: 1; transition: color 0.15s;
-        }}
-        .cart-item-remove:hover {{ color: #f85149; }}
         .cart-collision {{
             background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3);
             border-radius: 6px; padding: 8px 12px;
-            font-size: 0.82em; color: #f85149; margin-top: 8px;
+            font-size: 0.82em; color: #f85149; margin-bottom: 8px;
         }}
-        body.cart-open {{ padding-bottom: 240px; }}
+        .cart-package-note-row {{ margin-top: 8px; }}
+        .cart-package-note-label {{
+            display: block; font-size: 0.75em; font-weight: 600;
+            color: var(--text-muted); text-transform: uppercase;
+            letter-spacing: 0.06em; margin-bottom: 5px;
+        }}
+        .cart-package-note {{
+            width: 100%; background: var(--surface-3);
+            border: 1px solid var(--border); color: var(--text);
+            border-radius: 6px; padding: 7px 10px;
+            font-size: 0.85em; outline: none; transition: border-color 0.15s;
+            resize: vertical; min-height: 52px; max-height: 120px;
+            font-family: inherit;
+        }}
+        .cart-package-note:focus {{ border-color: var(--accent); }}
+        .cart-package-note::placeholder {{ color: var(--text-muted); }}
+        body.cart-open {{ padding-bottom: 370px; }}
+        body.cart-open.cart-collapsed {{ padding-bottom: 48px; }}
     </style>
 </head>
 <body>
@@ -792,13 +842,22 @@ class HTMLGenerator:
 
 <div id="cart-panel">
   <div class="cart-inner">
-    <div class="cart-header">
+    <div id="cart-header-bar">
       <span class="cart-title">📦 Delivery Cart</span>
       <span class="cart-badge" id="cart-count">0</span>
+      <button class="cart-toggle-btn" id="cart-toggle-btn" onclick="toggleCartCollapse()" title="Collapse / Expand">▲</button>
       <button class="cart-clear" onclick="clearCart()">Clear all</button>
     </div>
-    <div id="cart-items" class="cart-items"></div>
-    <div id="cart-collisions"></div>
+    <div id="cart-body">
+      <div id="cart-items" class="cart-items"></div>
+      <div id="cart-collisions"></div>
+      <div class="cart-package-note-row">
+        <label class="cart-package-note-label" for="package-note-input">Package note</label>
+        <textarea id="package-note-input" class="cart-package-note"
+          placeholder="Optional — written to Package_Infos.txt at the delivery root"
+          oninput="savePackageNote(this.value)"></textarea>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1070,7 +1129,8 @@ function copyPath(btn, path) {{
 
 // ── Cart ─────────────────────────────────────────────────────────────────────
 
-const CART_KEY = 'vfx_shoot_cart';
+const CART_KEY    = 'vfx_shoot_cart';
+const PKG_NOTE_KEY = 'vfx_shoot_pkg_note';
 const cart = new Map(); // path → {{entry, note}}
 
 function deliveryName(entry) {{
@@ -1091,6 +1151,23 @@ function cartLoad() {{
     }} catch(e) {{}}
 }}
 
+function savePackageNote(value) {{
+    localStorage.setItem(PKG_NOTE_KEY, value);
+}}
+
+function loadPackageNote() {{
+    const el = document.getElementById('package-note-input');
+    if (el) el.value = localStorage.getItem(PKG_NOTE_KEY) || '';
+}}
+
+function toggleCartCollapse() {{
+    const panel = document.getElementById('cart-panel');
+    const btn   = document.getElementById('cart-toggle-btn');
+    const collapsed = panel.classList.toggle('collapsed');
+    document.body.classList.toggle('cart-collapsed', collapsed);
+    btn.textContent = collapsed ? '▼' : '▲';
+}}
+
 function cartCollisions() {{
     const nameMap = new Map();
     for (const [path, {{ entry }}] of cart) {{
@@ -1108,7 +1185,7 @@ function toggleCart(path) {{
         cart.delete(path);
     }} else {{
         const entry = allEntries[path];
-        if (entry) cart.set(path, {{ entry, note: '' }});
+        if (entry) cart.set(path, {{ entry, note: entry.package_note || '' }});
     }}
     cartSave();
     syncEntryEl(path);
@@ -1155,7 +1232,7 @@ function renderCart() {{
 
     if (cart.size === 0) {{
         panel.classList.remove('visible');
-        document.body.classList.remove('cart-open');
+        document.body.classList.remove('cart-open', 'cart-collapsed');
         return;
     }}
 
@@ -1167,12 +1244,16 @@ function renderCart() {{
         const dn   = escHtml(deliveryName(entry));
         const orig = escHtml(entry.directory_name);
         const n    = escHtml(note);
-        const p    = JSON.stringify(path);
-        return `<div class="cart-item">
-            <span class="cart-item-name" title="${{orig}}">${{dn}}</span>
+        return `<div class="cart-item" data-path="${{escHtml(path)}}">
+            <div class="cart-item-top">
+                <span class="cart-item-name" title="${{orig}}">${{dn}}</span>
+                <button class="cart-item-remove"
+                    onclick="removeFromCart(this.closest('.cart-item').dataset.path)"
+                    title="Remove">✕</button>
+            </div>
             <input class="cart-item-note" type="text" placeholder="Block note (optional)"
-                   value="${{n}}" oninput="updateCartNote(${{p}}, this.value)">
-            <button class="cart-item-remove" onclick="removeFromCart(${{p}})" title="Remove">✕</button>
+                   value="${{n}}"
+                   oninput="updateCartNote(this.closest('.cart-item').dataset.path, this.value)">
         </div>`;
     }}).join('');
 
@@ -1183,6 +1264,7 @@ function renderCart() {{
 }}
 
 cartLoad();
+loadPackageNote();
 renderCart();
 
 render();
