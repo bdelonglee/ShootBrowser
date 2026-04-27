@@ -264,19 +264,21 @@ class HTMLGenerator:
 
     # ── HTML generation ──────────────────────────────────────────────────────
 
-    def generate_html(self, output_path: Optional[str] = None):
-        print("🎨 Generating HTML page...")
-        out = Path(output_path) if output_path else self.default_output_path()
-        out.parent.mkdir(parents=True, exist_ok=True)
-
-        data = {
+    def build_data(self) -> dict:
+        """Return the organised shoot data as a plain dict (JSON-serialisable)."""
+        return {
             'by_days':   {k: [asdict(e) for e in v] for k, v in self.organize_by_days().items()},
             'by_scenes': {k: [asdict(e) for e in v] for k, v in self.organize_by_scenes().items()},
             'by_codes':  {k: [asdict(e) for e in v] for k, v in self.organize_by_codes().items()},
         }
 
+    def generate_html(self, output_path: Optional[str] = None):
+        print("🎨 Generating HTML page...")
+        out = Path(output_path) if output_path else self.default_output_path()
+        out.parent.mkdir(parents=True, exist_ok=True)
+
         with open(out, 'w', encoding='utf-8') as f:
-            f.write(self._build_html(data))
+            f.write(self._build_html(self.build_data()))
 
         print(f"   Saved to: {out}")
 
