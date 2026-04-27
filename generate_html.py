@@ -681,10 +681,10 @@ class HTMLGenerator:
             cursor: pointer; flex-shrink: 0;
             opacity: 0; transition: opacity 0.15s; margin-right: 2px;
         }}
-        .entry:hover .entry-cb, .entry.in-cart .entry-cb {{ opacity: 1; }}
+        .entry:hover .entry-cb, .entry.in-cart .entry-cb, .entry-cb:checked {{ opacity: 1; }}
         .entry.in-cart {{
             border-left-color: var(--accent) !important;
-            background: rgba(68,147,248,0.08) !important;
+            background: rgba(68,147,248,0.1) !important;
         }}
         #cart-panel {{
             position: fixed; bottom: 0; left: 0; right: 0;
@@ -939,7 +939,7 @@ function renderEntry(entry, q) {{
     ).join('');
     const descHtml   = `<span class="title-desc">${{highlight(entry.description.replace(/_/g,' '), q)}}</span>`;
     const noData     = entry.has_data ? '' : '<span class="badge-no-data">No Data</span>';
-    const copyBtn    = `<button class="open-folder" onclick="copyPath(this, ${{JSON.stringify(entry.path)}})" title="Copy path (then ⌘⇧G in Finder)">
+    const copyBtn    = `<button class="open-folder" onclick="copyPath(this, this.closest('.entry').dataset.path)" title="Copy path (then ⌘⇧G in Finder)">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
         </svg></button>`;
@@ -949,7 +949,7 @@ function renderEntry(entry, q) {{
         </svg></button>`;
 
     const inCart     = cart.has(entry.path);
-    const cb         = `<input type="checkbox" class="entry-cb" ${{inCart ? 'checked' : ''}} onclick="toggleCart(${{JSON.stringify(entry.path)}})">`;
+    const cb         = `<input type="checkbox" class="entry-cb" ${{inCart ? 'checked' : ''}} onclick="toggleCart(this.closest('.entry').dataset.path)">`;
     const isExpanded = expandedPaths.has(entry.path);
     return `<div class="entry${{inCart ? ' in-cart' : ''}}${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(entry.path)}}">
         <div class="entry-title-line">
