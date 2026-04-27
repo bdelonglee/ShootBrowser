@@ -119,12 +119,17 @@ def api_build_package():
     if not output_root.exists():
         return jsonify({"success": False, "errors": [f"Output directory does not exist: {output_dir}"]}), 400
 
-    # Auto-increment version
-    vendor_dir = output_root / vendor
-    version = 1
-    while (vendor_dir / f"{package_name}_v{version:02d}").exists():
-        version += 1
-    pkg_dir = vendor_dir / f"{package_name}_v{version:02d}"
+    # Directory name: YYYYMMDD_package_name  (no _v01 on first delivery)
+    date_compact = date.replace("-", "")
+    vendor_dir   = output_root / vendor
+    base_name    = f"{date_compact}_{package_name}"
+    pkg_dir      = vendor_dir / base_name
+    version      = 1
+    if pkg_dir.exists():
+        version = 2
+        while (vendor_dir / f"{base_name}_v{version:02d}").exists():
+            version += 1
+        pkg_dir = vendor_dir / f"{base_name}_v{version:02d}"
 
     # Detect delivery-name collisions → fall back to original dir name
     delivery_counts: dict = {}
@@ -153,38 +158,41 @@ def api_build_package():
         if package_note:
             (pkg_dir / "Package_Infos.txt").write_text(package_note, encoding="utf-8")
 
+        # Enrich copied list with scenes/code/description from request payload
+        enriched_blocks = []
+        for block, c in zip(blocks, copied):
+            enriched_blocks.append({
+                **c,
+                "scenes":      block.get("scenes", []),
+                "code":        block.get("code", ""),
+                "description": block.get("description", ""),
+            })
+
         manifest = {
-            "vendor": vendor,
-            "package_name": package_name,
-            "date": date,
-            "version": version,
-            "created_by": "vfx_shoot_browser",
-            "source_data_path": DATA_PATH,
-            "output_path": str(pkg_dir),
-            "blocks": copied,
-            "delivery_history": [{"version": version, "date": date, "note": package_note}],
+            "vendor":            vendor,
+            "package_name":      package_name,
+            "date":              date_compact,
+            "version":           version,
+            "timestamp":         datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "created_by":        "vfx_shoot_browser",
+            "source_data_path":  DATA_PATH,
+            "output_path":       str(pkg_dir),
+            "package_note":      package_note,
+            "blocks":            enriched_blocks,
         }
+
+        # package_manifest.json inside the package dir
         (pkg_dir / "package_manifest.json").write_text(
             json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
-        # Append to global log
-        log_path = Path(DATA_PATH) / "__SHOOT_BROWSER" / "packages_log.json"
-        log = []
-        if log_path.exists():
-            try:
-                log = json.loads(log_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        log.append({
-            "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            "vendor": vendor,
-            "package_name": package_name,
-            "version": version,
-            "output_path": str(pkg_dir),
-            "block_count": len(blocks),
-        })
-        log_path.write_text(json.dumps(log, indent=2, ensure_ascii=False), encoding="utf-8")
+        # __packages_infos/ at the output root — one file per delivery (for summary page)
+        pkg_infos_dir = output_root / "__packages_infos"
+        pkg_infos_dir.mkdir(exist_ok=True)
+        info_stem = pkg_dir.name  # e.g. 20260427_poseidon_HDR_batch01
+        (pkg_infos_dir / f"{info_stem}.json").write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
 
         return jsonify({"success": True, "output_path": str(pkg_dir), "version": version})
 

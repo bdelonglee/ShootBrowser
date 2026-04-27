@@ -50,7 +50,8 @@ class HTMLGenerator:
     DEFAULT_SKIP_DIRS   = {'TODO__', '__RAPPORTS_SCRIPT', '__Souvenirs_Vrac', '__CALLSHEETS'}
     DEFAULT_TEMPLATE_DIR = 'J00_TEMPLATE'
     DEFAULT_HDR_SUBDIRS  = {'Fisheye': 'F', 'Theta': 'T', 'Theta_Underwater': 'U'}
-    CONFIG_PATH = '__SHOOT_BROWSER/Config/sanity_check.json'
+    CONFIG_PATH          = '__SHOOT_BROWSER/Config/sanity_check.json'
+    DELIVERY_CONFIG_PATH = '__SHOOT_BROWSER/Config/delivery_config.json'
 
     # Subdirectory display modes (matched against non-__ subdir names)
     HDR_DIRS         = {'20_HDR'}
@@ -74,11 +75,23 @@ class HTMLGenerator:
                 print(f"⚙️  Config loaded: {config_path}")
             except Exception as e:
                 print(f"⚠️  Could not load config ({e}), using defaults")
-        self.skip_dirs       = set(config.get('skip_dirs', self.DEFAULT_SKIP_DIRS))
-        self.template_dir    = config.get('template_dir', self.DEFAULT_TEMPLATE_DIR)
+        self.skip_dirs        = set(config.get('skip_dirs', self.DEFAULT_SKIP_DIRS))
+        self.template_dir     = config.get('template_dir', self.DEFAULT_TEMPLATE_DIR)
         self.hdr_subdir_names = list(
             config.get('hdr_subdirs', self.DEFAULT_HDR_SUBDIRS).keys()
         )
+
+        # Delivery config (separate file)
+        delivery_cfg = {}
+        dcfg_path = self.data_path / self.DELIVERY_CONFIG_PATH
+        if dcfg_path.exists():
+            try:
+                with open(dcfg_path, 'r', encoding='utf-8') as f:
+                    delivery_cfg = json.load(f)
+            except Exception as e:
+                print(f"⚠️  Could not load delivery config ({e}), using defaults")
+        self.vendors             = delivery_cfg.get('vendors', [])
+        self.default_output_dir  = delivery_cfg.get('default_output_dir', '')
 
     def default_output_path(self) -> Path:
         return self.data_path / '__SHOOT_BROWSER' / 'vfx_shoot_browser.html'
@@ -299,6 +312,10 @@ class HTMLGenerator:
 
     def _build_html(self, data: dict) -> str:
         data_json      = json.dumps(data, indent=2)
+        delivery_cfg_json = json.dumps({
+            'vendors':            self.vendors,
+            'default_output_dir': self.default_output_dir,
+        })
         generated_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         return f"""<!DOCTYPE html>
@@ -908,8 +925,10 @@ class HTMLGenerator:
         <div class="cart-build-title">Build Package</div>
         <div class="cart-form-row">
           <div class="cart-form-field">
-            <label class="cart-form-label" for="pkg-vendor">Vendor</label>
-            <input id="pkg-vendor" class="cart-form-input" type="text" placeholder="MPC, ILM…">
+            <label class="cart-form-label">Vendor</label>
+            <select id="pkg-vendor-select" class="cart-form-input" onchange="onVendorChange(this)"></select>
+            <input id="pkg-vendor-custom" class="cart-form-input" type="text"
+              placeholder="Enter vendor name…" style="display:none;margin-top:4px">
           </div>
           <div class="cart-form-field">
             <label class="cart-form-label" for="pkg-name">Package name</label>
@@ -934,7 +953,8 @@ class HTMLGenerator:
 </div>
 
 <script>
-const data = {data_json};
+const data           = {data_json};
+const deliveryCfg    = {delivery_cfg_json};
 
 // Flat index: path → entry object (for cart lookups)
 const allEntries = {{}};
@@ -1339,23 +1359,74 @@ function renderCart() {{
 
 const BUILD_FORM_KEY = 'vfx_build_form';
 
+function initVendorSelect() {{
+    const sel     = document.getElementById('pkg-vendor-select');
+    const vendors = deliveryCfg.vendors || [];
+    sel.innerHTML = '';
+    if (vendors.length === 0) {{
+        sel.style.display = 'none';
+        document.getElementById('pkg-vendor-custom').style.display = 'block';
+        return;
+    }}
+    vendors.forEach(v => {{
+        const o = document.createElement('option'); o.value = v; o.textContent = v;
+        sel.appendChild(o);
+    }});
+    const customOpt = document.createElement('option');
+    customOpt.value = '__custom__'; customOpt.textContent = 'Custom…';
+    sel.appendChild(customOpt);
+}}
+
+function onVendorChange(sel) {{
+    document.getElementById('pkg-vendor-custom').style.display =
+        sel.value === '__custom__' ? 'block' : 'none';
+}}
+
+function getVendor() {{
+    const sel = document.getElementById('pkg-vendor-select');
+    if (sel.style.display === 'none' || sel.value === '__custom__')
+        return document.getElementById('pkg-vendor-custom').value.trim();
+    return sel.value;
+}}
+
 function loadBuildForm() {{
+    initVendorSelect();
     document.getElementById('pkg-date').value = new Date().toISOString().split('T')[0];
     try {{
         const saved = JSON.parse(localStorage.getItem(BUILD_FORM_KEY) || '{{}}');
-        ['pkg-vendor', 'pkg-name', 'pkg-output-dir'].forEach(id => {{
-            const el = document.getElementById(id);
-            if (el && saved[id]) el.value = saved[id];
-        }});
-    }} catch(e) {{}}
+        // Restore vendor
+        const savedVendor = saved['pkg-vendor'] || '';
+        const vendors = deliveryCfg.vendors || [];
+        const sel = document.getElementById('pkg-vendor-select');
+        if (savedVendor && vendors.includes(savedVendor) && sel.style.display !== 'none') {{
+            sel.value = savedVendor;
+        }} else if (savedVendor && sel.style.display !== 'none') {{
+            sel.value = '__custom__';
+            const customEl = document.getElementById('pkg-vendor-custom');
+            customEl.style.display = 'block';
+            customEl.value = savedVendor;
+        }} else if (savedVendor) {{
+            document.getElementById('pkg-vendor-custom').value = savedVendor;
+        }}
+        // Restore package name
+        const nameEl = document.getElementById('pkg-name');
+        if (nameEl && saved['pkg-name']) nameEl.value = saved['pkg-name'];
+        // Restore output dir (saved value takes priority over config default)
+        const dirEl = document.getElementById('pkg-output-dir');
+        if (dirEl) dirEl.value = saved['pkg-output-dir'] || deliveryCfg.default_output_dir || '';
+    }} catch(e) {{
+        // Fall back to config default for output dir
+        const dirEl = document.getElementById('pkg-output-dir');
+        if (dirEl) dirEl.value = deliveryCfg.default_output_dir || '';
+    }}
 }}
 
 function saveBuildForm() {{
-    const saved = {{}};
-    ['pkg-vendor', 'pkg-name', 'pkg-output-dir'].forEach(id => {{
-        const el = document.getElementById(id);
-        if (el) saved[id] = el.value;
-    }});
+    const saved = {{
+        'pkg-vendor':     getVendor(),
+        'pkg-name':       (document.getElementById('pkg-name') || {{}}).value || '',
+        'pkg-output-dir': (document.getElementById('pkg-output-dir') || {{}}).value || '',
+    }};
     localStorage.setItem(BUILD_FORM_KEY, JSON.stringify(saved));
 }}
 
@@ -1368,7 +1439,7 @@ function showBuildStatus(type, msg) {{
 }}
 
 async function buildPackage() {{
-    const vendor    = document.getElementById('pkg-vendor').value.trim();
+    const vendor    = getVendor();
     const pkgName   = document.getElementById('pkg-name').value.trim();
     const date      = document.getElementById('pkg-date').value;
     const outputDir = document.getElementById('pkg-output-dir').value.trim();
@@ -1386,6 +1457,9 @@ async function buildPackage() {{
     const blocks = [...cart.entries()].map(([path, {{ entry, note }}]) => ({{
         path,
         delivery_name: deliveryName(entry),
+        scenes:        entry.scenes,
+        code:          entry.code,
+        description:   entry.description,
         note,
     }}));
 
@@ -1400,12 +1474,12 @@ async function buildPackage() {{
             headers: {{ 'Content-Type': 'application/json' }},
             body: JSON.stringify({{ vendor, package_name: pkgName, date, output_dir: outputDir, package_note: pkgNote, blocks }}),
         }});
-        const data = await res.json();
-        if (data.success) {{
-            showBuildStatus('success', `✓ Package built: ${{data.output_path}}  (v${{data.version}})`);
+        const resp = await res.json();
+        if (resp.success) {{
+            showBuildStatus('success', `✓ Package built:\\n${{resp.output_path}}`);
             saveBuildForm();
         }} else {{
-            const msg = (data.errors || [data.error || 'Unknown error']).join('\\n');
+            const msg = (resp.errors || [resp.error || 'Unknown error']).join('\\n');
             showBuildStatus('error', `✗ ${{msg}}`);
         }}
     }} catch(e) {{
