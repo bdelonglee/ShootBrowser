@@ -319,6 +319,34 @@ class SanityChecker:
         return day_dirs
 
     # ========================================================================
+    # DELIVERY NAME COLLISION CHECK
+    # ========================================================================
+
+    def check_delivery_name_collisions(self, day_dirs: List[DirectoryInfo]) -> List[str]:
+        """
+        Check that stripping the day prefix (JXX__ / PJXX__) from each directory
+        name produces no duplicates — which would cause collisions in a delivery package.
+        E.g. J01__S19__PORT__Foo and PJ03__S19__PORT__Foo → both become S19__PORT__Foo.
+        """
+        from collections import defaultdict
+
+        # Build delivery_name → [original names] map
+        delivery_map: Dict[str, List[str]] = defaultdict(list)
+        for d in day_dirs:
+            scenes_str   = '_'.join(d.scenes)
+            delivery_name = f"{scenes_str}__{d.code}__{d.description}"
+            delivery_map[delivery_name].append(d.path.name)
+
+        issues = []
+        for delivery_name, originals in sorted(delivery_map.items()):
+            if len(originals) > 1:
+                issues.append(
+                    f"  ⚠️  Delivery collision → '{delivery_name}'\n"
+                    + ''.join(f"      - {o}\n" for o in originals)
+                )
+        return issues
+
+    # ========================================================================
     # CSV CODE VALIDATION FEATURE
     # ========================================================================
 
@@ -987,6 +1015,15 @@ class SanityChecker:
             if not compliance_issues and not prefix_issues and not csv_issues and not hdr_issues:
                 print("  ✅ All checks passed")
 
+        # Delivery name collision check (runs once across all directories)
+        print(f"\n📦 Checking delivery name collisions...")
+        collision_issues = self.check_delivery_name_collisions(day_dirs)
+        if collision_issues:
+            self.warnings.extend(collision_issues)
+            print(f"   ⚠️  {len(collision_issues)} collision(s) found")
+        else:
+            print(f"   ✅ No collisions — all delivery names are unique")
+
         # Print summary
         print("\n" + "="*70)
         print("📊 SUMMARY")
@@ -1006,6 +1043,11 @@ class SanityChecker:
             for warning in self.warnings:
                 if not warning.startswith((' ', '\t')):
                     print(warning)
+
+        if collision_issues:
+            print("\n📦 DELIVERY NAME COLLISIONS:")
+            for issue in collision_issues:
+                print(issue)
 
         if self.csv_inconsistent_dirs:
             print("\n📋 DIRECTORIES WITH CSV INCONSISTENCIES:")
