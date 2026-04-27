@@ -17,6 +17,7 @@ from collections import defaultdict
 @dataclass
 class DirectoryInfo:
     """Information about a shoot day directory"""
+
     path: Path
     day: str  # JXX or PJXX
     scenes: List[str]  # List of SXX
@@ -27,6 +28,7 @@ class DirectoryInfo:
 @dataclass
 class PrefixIssue:
     """Information about a prefix consistency issue"""
+
     dir_path: Path
     parent_day_path: Path
     issue_type: str  # 'missing_prefix' or 'extra_prefix'
@@ -37,6 +39,7 @@ class PrefixIssue:
 @dataclass
 class SceneCodeMapping:
     """Scene to Code mapping from Editorial CSV"""
+
     scene: str  # Scene number (not padded, e.g., "1", "15", "100")
     codes: List[str]  # List of codes for this scene
 
@@ -44,11 +47,14 @@ class SceneCodeMapping:
 @dataclass
 class HDRSubdirIssue:
     """Information about an HDR subdirectory naming issue"""
+
     dir_path: Path
     parent_day_path: Path
     hdr_type: str  # 'F', 'T', or 'U'
     hdr_parent_name: str  # '__Fisheye', '__Theta', or '__Theta_Underwater'
-    available_scenes: List[str]  # Scenes from parent day directory (e.g., ['S37', 'S38'])
+    available_scenes: List[
+        str
+    ]  # Scenes from parent day directory (e.g., ['S37', 'S38'])
     relative_path: Path
 
 
@@ -56,18 +62,23 @@ class SanityChecker:
     """Main class for validating VFX shoot directory structure"""
 
     # Regex patterns
-    DAY_PATTERN = re.compile(r'^(J\d{2}|PJ\d{2})$')
-    SCENE_PATTERN = re.compile(r'^S\d{2}$')
-    CODE_PATTERN = re.compile(r'^[A-Z]{4}(_[A-Z]{4})*$')
+    DAY_PATTERN = re.compile(r"^(J\d{2}|PJ\d{2})$")
+    SCENE_PATTERN = re.compile(r"^S\d{2}$")
+    CODE_PATTERN = re.compile(r"^[A-Z]{4}(_[A-Z]{4})*$")
     DIR_PATTERN = re.compile(
-        r'^(J\d{2}|PJ\d{2})__(S\d{2}(?:_S\d{2})*)__([A-Z]{4}(?:_[A-Z]{4})*)__(.+)$'
+        r"^(J\d{2}|PJ\d{2})__(S\d{2}(?:_S\d{2})*)__([A-Z]{4}(?:_[A-Z]{4})*)__(.+)$"
     )
 
     # Default config values (overridden by config file if present)
-    DEFAULT_SKIP_DIRS = {'TODO__', '__RAPPORTS_SCRIPT', '__Souvenirs_Vrac', '__CALLSHEETS'}
-    DEFAULT_TEMPLATE_DIR = 'J00_TEMPLATE'
-    DEFAULT_HDR_SUBDIRS = {'Fisheye': 'F', 'Theta': 'T', 'Theta_Underwater': 'U'}
-    CONFIG_PATH = '__SHOOT_BROWSER/Config/sanity_check.json'
+    DEFAULT_SKIP_DIRS = {
+        "TODO__",
+        "__RAPPORTS_SCRIPT",
+        "__Souvenirs_Vrac",
+        "__CALLSHEETS",
+    }
+    DEFAULT_TEMPLATE_DIR = "J00_TEMPLATE"
+    DEFAULT_HDR_SUBDIRS = {"Fisheye": "F", "Theta": "T", "Theta_Underwater": "U"}
+    CONFIG_PATH = "__SHOOT_BROWSER/Config/sanity_check.json"
 
     def __init__(self, data_path: str):
         self.data_path = Path(data_path).resolve()  # Resolve to absolute path
@@ -94,7 +105,9 @@ class SanityChecker:
 
         # HDR subdirectory fix tracking
         self.hdr_fixed_count: int = 0
-        self.hdr_unfixed_issues: List[str] = []  # Relative paths of unfixed HDR subdirectories
+        self.hdr_unfixed_issues: List[
+            str
+        ] = []  # Relative paths of unfixed HDR subdirectories
 
     def _load_config(self) -> None:
         """Load configuration from JSON file, falling back to defaults if not found"""
@@ -103,16 +116,18 @@ class SanityChecker:
 
         if config_path.exists():
             try:
-                with open(config_path, 'r', encoding='utf-8') as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     config = json.load(f)
                 print(f"⚙️  Config loaded: {config_path}")
             except Exception as e:
                 print(f"⚠️  Could not load config file ({e}), using defaults")
 
-        self.csv_path = Path(config['vfx_codes_csv']) if 'vfx_codes_csv' in config else None
-        self.template_dir = config.get('template_dir', self.DEFAULT_TEMPLATE_DIR)
-        self.skip_dirs = set(config.get('skip_dirs', self.DEFAULT_SKIP_DIRS))
-        self.hdr_subdirs = config.get('hdr_subdirs', self.DEFAULT_HDR_SUBDIRS)
+        self.csv_path = (
+            Path(config["vfx_codes_csv"]) if "vfx_codes_csv" in config else None
+        )
+        self.template_dir = config.get("template_dir", self.DEFAULT_TEMPLATE_DIR)
+        self.skip_dirs = set(config.get("skip_dirs", self.DEFAULT_SKIP_DIRS))
+        self.hdr_subdirs = config.get("hdr_subdirs", self.DEFAULT_HDR_SUBDIRS)
 
     def parse_template(self) -> bool:
         """Parse the J00_TEMPLATE directory structure"""
@@ -126,7 +141,7 @@ class SanityChecker:
             root_path = Path(root)
             rel_path = root_path.relative_to(self.template_path)
 
-            if rel_path != Path('.'):
+            if rel_path != Path("."):
                 self.template_structure.add(rel_path)
 
         print(f"   Found {len(self.template_structure)} template directories")
@@ -143,7 +158,7 @@ class SanityChecker:
         code = match.group(3)
         description = match.group(4)
 
-        scenes = scenes_str.split('_')
+        scenes = scenes_str.split("_")
 
         # Validate each component
         if not self.DAY_PATTERN.match(day):
@@ -157,7 +172,7 @@ class SanityChecker:
             return None
 
         # Check description doesn't contain invalid characters
-        if '__' in description or any(c in description for c in '@#$%^&*'):
+        if "__" in description or any(c in description for c in "@#$%^&*"):
             return None
 
         dir_path = self.data_path / dir_name
@@ -177,16 +192,14 @@ class SanityChecker:
 
         # Check for visible files (ignore ._ macOS metadata files)
         has_files = any(
-            item.is_file() and not item.name.startswith('._')
-            for item in items
+            item.is_file() and not item.name.startswith("._") for item in items
         )
         if has_files:
             return False
 
         # Get subdirectories (ignore hidden dirs starting with .)
         subdirs = [
-            item for item in items
-            if item.is_dir() and not item.name.startswith('.')
+            item for item in items if item.is_dir() and not item.name.startswith(".")
         ]
 
         # If no subdirectories and no files, it's empty
@@ -197,7 +210,7 @@ class SanityChecker:
         # A directory is empty if all its subdirs are __ prefixed and empty
         for subdir in subdirs:
             # If any subdir doesn't have __ prefix, parent is not empty
-            if not subdir.name.startswith('__'):
+            if not subdir.name.startswith("__"):
                 return False
             # If any __ prefixed subdir is not empty, parent is not empty
             if not self.is_directory_empty(subdir):
@@ -206,7 +219,9 @@ class SanityChecker:
         # All subdirs are __ prefixed and empty, so this dir is empty
         return True
 
-    def check_prefix_consistency(self, dir_info: DirectoryInfo, collect_fixes: bool = False) -> Tuple[List[str], List[PrefixIssue]]:
+    def check_prefix_consistency(
+        self, dir_info: DirectoryInfo, collect_fixes: bool = False
+    ) -> Tuple[List[str], List[PrefixIssue]]:
         """Check if subdirectories follow the __ prefix rule"""
         issues = []
         fixable_issues = []
@@ -216,11 +231,11 @@ class SanityChecker:
                 root_path = Path(root)
 
                 # Filter out system/hidden directories to avoid
-                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
 
                 for dir_name in dirs:
                     dir_path = root_path / dir_name
-                    has_prefix = dir_name.startswith('__')
+                    has_prefix = dir_name.startswith("__")
                     is_empty = self.is_directory_empty(dir_path)
                     rel_path = dir_path.relative_to(dir_info.path)
 
@@ -229,25 +244,29 @@ class SanityChecker:
                             f"  ❌ Empty directory without __ prefix: {rel_path}"
                         )
                         if collect_fixes:
-                            fixable_issues.append(PrefixIssue(
-                                dir_path=dir_path,
-                                parent_day_path=dir_info.path,
-                                issue_type='missing_prefix',
-                                is_empty=True,
-                                relative_path=rel_path
-                            ))
+                            fixable_issues.append(
+                                PrefixIssue(
+                                    dir_path=dir_path,
+                                    parent_day_path=dir_info.path,
+                                    issue_type="missing_prefix",
+                                    is_empty=True,
+                                    relative_path=rel_path,
+                                )
+                            )
                     elif not is_empty and has_prefix:
                         issues.append(
                             f"  ⚠️  Non-empty directory with __ prefix: {rel_path}"
                         )
                         if collect_fixes:
-                            fixable_issues.append(PrefixIssue(
-                                dir_path=dir_path,
-                                parent_day_path=dir_info.path,
-                                issue_type='extra_prefix',
-                                is_empty=False,
-                                relative_path=rel_path
-                            ))
+                            fixable_issues.append(
+                                PrefixIssue(
+                                    dir_path=dir_path,
+                                    parent_day_path=dir_info.path,
+                                    issue_type="extra_prefix",
+                                    is_empty=False,
+                                    relative_path=rel_path,
+                                )
+                            )
 
         except PermissionError as e:
             issues.append(f"  ⚠️  Permission denied scanning directory: {e}")
@@ -264,7 +283,7 @@ class SanityChecker:
             root_path = Path(root)
             rel_path = root_path.relative_to(dir_info.path)
 
-            if rel_path != Path('.'):
+            if rel_path != Path("."):
                 day_structure.add(rel_path)
 
         # Find missing template directories
@@ -275,10 +294,10 @@ class SanityChecker:
             template_name = template_dir.name
 
             # Check both with and without __ prefix
-            if template_name.startswith('__'):
+            if template_name.startswith("__"):
                 alt_name = template_name[2:]
             else:
-                alt_name = '__' + template_name
+                alt_name = "__" + template_name
 
             for day_dir in day_structure:
                 if day_dir.name in (template_name, alt_name):
@@ -289,7 +308,7 @@ class SanityChecker:
 
             if not found:
                 # Only report top-level missing directories
-                if template_dir.parent == Path('.'):
+                if template_dir.parent == Path("."):
                     missing.append(str(template_dir))
 
         if missing:
@@ -313,7 +332,7 @@ class SanityChecker:
             dir_info = self.parse_directory_name(item.name)
             if dir_info:
                 day_dirs.append(dir_info)
-            elif item.name.startswith(('J', 'PJ')) and item.name != 'J00_TEMPLATE':
+            elif item.name.startswith(("J", "PJ")) and item.name != "J00_TEMPLATE":
                 self.errors.append(f"❌ Invalid directory naming: {item.name}")
 
         return day_dirs
@@ -322,7 +341,9 @@ class SanityChecker:
     # DELIVERY NAME COLLISION CHECK
     # ========================================================================
 
-    def check_delivery_name_collisions(self, day_dirs: List[DirectoryInfo]) -> List[str]:
+    def check_delivery_name_collisions(
+        self, day_dirs: List[DirectoryInfo]
+    ) -> List[str]:
         """
         Check that stripping the day prefix (JXX__ / PJXX__) from each directory
         name produces no duplicates — which would cause collisions in a delivery package.
@@ -333,7 +354,7 @@ class SanityChecker:
         # Build delivery_name → [original names] map
         delivery_map: Dict[str, List[str]] = defaultdict(list)
         for d in day_dirs:
-            scenes_str   = '_'.join(d.scenes)
+            scenes_str = "_".join(d.scenes)
             delivery_name = f"{scenes_str}__{d.code}__{d.description}"
             delivery_map[delivery_name].append(d.path.name)
 
@@ -342,7 +363,7 @@ class SanityChecker:
             if len(originals) > 1:
                 issues.append(
                     f"  ⚠️  Delivery collision → '{delivery_name}'\n"
-                    + ''.join(f"      - {o}\n" for o in originals)
+                    + "".join(f"      - {o}\n" for o in originals)
                 )
         return issues
 
@@ -360,14 +381,14 @@ class SanityChecker:
             return False
 
         try:
-            with open(self.csv_path, 'r', encoding='utf-8') as f:
+            with open(self.csv_path, "r", encoding="utf-8") as f:
                 reader = csv.reader(f)
                 rows = list(reader)
 
             # Find the header row (contains "Scene" and "Sequence Code")
             header_row = None
             for i, row in enumerate(rows):
-                if len(row) > 2 and 'Scene' in row and 'Sequence Code' in row:
+                if len(row) > 2 and "Scene" in row and "Sequence Code" in row:
                     header_row = i
                     break
 
@@ -379,9 +400,9 @@ class SanityChecker:
             scene_col = None
             code_col = None
             for i, cell in enumerate(rows[header_row]):
-                if cell.strip() == 'Scene':
+                if cell.strip() == "Scene":
                     scene_col = i
-                elif cell.strip() == 'Sequence Code':
+                elif cell.strip() == "Sequence Code":
                     code_col = i
 
             if scene_col is None or code_col is None:
@@ -389,7 +410,7 @@ class SanityChecker:
                 return False
 
             # Parse data rows
-            for row in rows[header_row + 1:]:
+            for row in rows[header_row + 1 :]:
                 if len(row) <= max(scene_col, code_col):
                     continue
 
@@ -401,13 +422,15 @@ class SanityChecker:
                     continue
 
                 # Parse scene (remove any non-numeric characters, handle special cases like "065A")
-                scene_num = scene.replace('A', '').replace('B', '').replace('?', '')
+                scene_num = scene.replace("A", "").replace("B", "").replace("?", "")
                 if not scene_num:
                     continue
 
                 # Parse codes (can be multiple separated by /)
-                codes = [c.strip() for c in code.split('/')]
-                codes = [c for c in codes if c and not c.endswith('?')]  # Remove empty and uncertain codes
+                codes = [c.strip() for c in code.split("/")]
+                codes = [
+                    c for c in codes if c and not c.endswith("?")
+                ]  # Remove empty and uncertain codes
 
                 # Add to valid codes set
                 self.valid_codes.update(codes)
@@ -440,7 +463,7 @@ class SanityChecker:
 
         # Extract individual codes from directory
         # E.g., "PONT_PISC_PLAN" becomes ["PONT", "PISC", "PLAN"]
-        dir_codes = dir_info.code.split('_')
+        dir_codes = dir_info.code.split("_")
 
         # Check 1: Are the codes valid (present in CSV)?
         for code in dir_codes:
@@ -452,7 +475,7 @@ class SanityChecker:
         # Check 2: Are scene-code combinations valid?
         for scene in dir_info.scenes:
             # Convert SXX to unpadded number (S19 -> "19", S01 -> "1")
-            scene_num = scene[1:].lstrip('0') or '0'
+            scene_num = scene[1:].lstrip("0") or "0"
 
             if scene_num not in self.scene_code_map:
                 issues.append(
@@ -466,7 +489,9 @@ class SanityChecker:
 
             if not matching_codes:
                 # Show individual codes for clarity
-                codes_display = ' / '.join(dir_codes) if len(dir_codes) > 1 else dir_codes[0]
+                codes_display = (
+                    " / ".join(dir_codes) if len(dir_codes) > 1 else dir_codes[0]
+                )
                 issues.append(
                     f"  ⚠️  Scene {scene} / Codes [{codes_display}] - none match expected codes in CSV"
                     f"\n      Expected codes for scene {scene}: {', '.join(valid_codes_for_scene)}"
@@ -479,7 +504,9 @@ class SanityChecker:
     # HDR SUBDIRECTORY VALIDATION FEATURE
     # ========================================================================
 
-    def check_hdr_subdirectories(self, dir_info: DirectoryInfo, collect_fixes: bool = False) -> Tuple[List[str], List[HDRSubdirIssue]]:
+    def check_hdr_subdirectories(
+        self, dir_info: DirectoryInfo, collect_fixes: bool = False
+    ) -> Tuple[List[str], List[HDRSubdirIssue]]:
         """
         Check HDR subdirectory naming in __20_HDR/__Fisheye, __Theta, __Theta_Underwater
         Subdirectories should follow pattern: SXX__TYPE__ where SXX is a scene from parent
@@ -491,7 +518,7 @@ class SanityChecker:
 
         # Find __20_HDR or 20_HDR directory
         hdr_dir = None
-        for potential_name in ['__20_HDR', '20_HDR']:
+        for potential_name in ["__20_HDR", "20_HDR"]:
             potential_path = dir_info.path / potential_name
             if potential_path.exists() and potential_path.is_dir():
                 hdr_dir = potential_path
@@ -506,7 +533,7 @@ class SanityChecker:
             hdr_subdir_path = None
             actual_name = None
 
-            for prefix in ['__', '']:
+            for prefix in ["__", ""]:
                 candidate_name = prefix + base_name
                 candidate_path = hdr_dir / candidate_name
                 if candidate_path.exists() and candidate_path.is_dir():
@@ -520,35 +547,41 @@ class SanityChecker:
             # Check subdirectories inside
             try:
                 for item in hdr_subdir_path.iterdir():
-                    if not item.is_dir() or item.name.startswith('.'):
+                    if not item.is_dir() or item.name.startswith("."):
                         continue
 
                     # Check if name follows pattern: SXX__TYPE__*
-                    if not self._validate_hdr_subdir_name(item.name, type_code, dir_info.scenes):
+                    if not self._validate_hdr_subdir_name(
+                        item.name, type_code, dir_info.scenes
+                    ):
                         rel_path = item.relative_to(dir_info.path)
                         issues.append(
                             f"  ❌ HDR subdirectory doesn't follow pattern SXX__{type_code}__: {rel_path}"
                         )
 
                         if collect_fixes:
-                            fixable_issues.append(HDRSubdirIssue(
-                                dir_path=item,
-                                parent_day_path=dir_info.path,
-                                hdr_type=type_code,
-                                hdr_parent_name=actual_name,
-                                available_scenes=dir_info.scenes,
-                                relative_path=rel_path
-                            ))
+                            fixable_issues.append(
+                                HDRSubdirIssue(
+                                    dir_path=item,
+                                    parent_day_path=dir_info.path,
+                                    hdr_type=type_code,
+                                    hdr_parent_name=actual_name,
+                                    available_scenes=dir_info.scenes,
+                                    relative_path=rel_path,
+                                )
+                            )
 
             except PermissionError:
                 issues.append(f"  ⚠️  Permission denied scanning {hdr_subdir_path}")
 
         return issues, fixable_issues
 
-    def _validate_hdr_subdir_name(self, name: str, expected_type: str, valid_scenes: List[str]) -> bool:
+    def _validate_hdr_subdir_name(
+        self, name: str, expected_type: str, valid_scenes: List[str]
+    ) -> bool:
         """Check if HDR subdirectory name follows pattern SXX__TYPE__ or GLOBAL__TYPE__"""
         # Pattern 1: SXX__TYPE__ (e.g., S37__F__, S38__T__)
-        scene_pattern = re.compile(r'^(S\d{2})__([FTU])__')
+        scene_pattern = re.compile(r"^(S\d{2})__([FTU])__")
         match = scene_pattern.match(name)
 
         if match:
@@ -566,7 +599,7 @@ class SanityChecker:
             return True
 
         # Pattern 2: GLOBAL__TYPE__ (e.g., GLOBAL__F__)
-        global_pattern = re.compile(r'^GLOBAL__([FTU])__')
+        global_pattern = re.compile(r"^GLOBAL__([FTU])__")
         match = global_pattern.match(name)
 
         if match:
@@ -583,12 +616,12 @@ class SanityChecker:
               'slate_P1-2' → 'slate_P1-2'
         """
         # Check if name starts with SXX__ pattern (partial prefix)
-        partial_pattern = re.compile(r'^S\d{2}__')
+        partial_pattern = re.compile(r"^S\d{2}__")
         match = partial_pattern.match(name)
 
         if match:
             # Remove the SXX__ prefix
-            return name[match.end():]
+            return name[match.end() :]
 
         return name
 
@@ -627,7 +660,7 @@ class SanityChecker:
         global_option = len(options) + 1
         global_name = f"GLOBAL__{issue.hdr_type}__{base_name}"
         print(f"         {global_option}. Add GLOBAL__ → {global_name}")
-        options.append(('GLOBAL', global_name))
+        options.append(("GLOBAL", global_name))
 
         # Custom option
         custom_option = len(options) + 1
@@ -639,14 +672,16 @@ class SanityChecker:
             try:
                 choice = input(f"\n      Choose option (0-{custom_option}): ").strip()
 
-                if choice == '0':
+                if choice == "0":
                     return False
 
                 choice_num = int(choice)
 
                 if choice_num == custom_option:
                     # Custom prefix (use base_name to avoid duplication)
-                    new_name = self._get_custom_hdr_prefix(base_name, issue.hdr_type, issue.available_scenes)
+                    new_name = self._get_custom_hdr_prefix(
+                        base_name, issue.hdr_type, issue.available_scenes
+                    )
                     if not new_name:
                         return False
                     break
@@ -676,9 +711,13 @@ class SanityChecker:
             print(f"      ❌ Error renaming: {e}")
             return False
 
-    def _get_custom_hdr_prefix(self, old_name: str, hdr_type: str, valid_scenes: List[str]) -> Optional[str]:
+    def _get_custom_hdr_prefix(
+        self, old_name: str, hdr_type: str, valid_scenes: List[str]
+    ) -> Optional[str]:
         """Get and validate custom prefix from user"""
-        print(f"\n      Enter custom prefix (must be SXX__{hdr_type}__ or GLOBAL__{hdr_type}__ format)")
+        print(
+            f"\n      Enter custom prefix (must be SXX__{hdr_type}__ or GLOBAL__{hdr_type}__ format)"
+        )
         print(f"      Valid scenes: {', '.join(valid_scenes)}")
         print(f"      Example: S37__{hdr_type}__ or GLOBAL__{hdr_type}__")
 
@@ -689,13 +728,13 @@ class SanityChecker:
                 return None
 
             # Ensure it ends with __
-            if not prefix.endswith('__'):
-                prefix += '__'
+            if not prefix.endswith("__"):
+                prefix += "__"
                 print(f"      Added trailing '__': {prefix}")
 
             # Validate pattern - accept both SXX__TYPE__ and GLOBAL__TYPE__
-            scene_pattern = re.compile(r'^(S\d{2})__([FTU])__$')
-            global_pattern = re.compile(r'^GLOBAL__([FTU])__$')
+            scene_pattern = re.compile(r"^(S\d{2})__([FTU])__$")
+            global_pattern = re.compile(r"^GLOBAL__([FTU])__$")
 
             scene_match = scene_pattern.match(prefix)
             global_match = global_pattern.match(prefix)
@@ -707,16 +746,20 @@ class SanityChecker:
 
                 # Warn if type doesn't match
                 if type_code != hdr_type:
-                    print(f"      ⚠️  Type code '{type_code}' doesn't match expected '{hdr_type}'")
+                    print(
+                        f"      ⚠️  Type code '{type_code}' doesn't match expected '{hdr_type}'"
+                    )
                     confirm = input(f"      Use anyway? (y/n): ").strip().lower()
-                    if confirm not in ('y', 'yes'):
+                    if confirm not in ("y", "yes"):
                         return None
 
                 # Warn if scene not in parent's scenes
                 if scene not in valid_scenes:
-                    print(f"      ⚠️  Scene '{scene}' not in parent directory scenes: {', '.join(valid_scenes)}")
+                    print(
+                        f"      ⚠️  Scene '{scene}' not in parent directory scenes: {', '.join(valid_scenes)}"
+                    )
                     confirm = input(f"      Use anyway? (y/n): ").strip().lower()
-                    if confirm not in ('y', 'yes'):
+                    if confirm not in ("y", "yes"):
                         return None
 
             elif global_match:
@@ -725,16 +768,20 @@ class SanityChecker:
 
                 # Warn if type doesn't match
                 if type_code != hdr_type:
-                    print(f"      ⚠️  Type code '{type_code}' doesn't match expected '{hdr_type}'")
+                    print(
+                        f"      ⚠️  Type code '{type_code}' doesn't match expected '{hdr_type}'"
+                    )
                     confirm = input(f"      Use anyway? (y/n): ").strip().lower()
-                    if confirm not in ('y', 'yes'):
+                    if confirm not in ("y", "yes"):
                         return None
 
             else:
                 # Invalid pattern
-                print(f"      ⚠️  Invalid pattern. Expected: SXX__{hdr_type}__ or GLOBAL__{hdr_type}__")
+                print(
+                    f"      ⚠️  Invalid pattern. Expected: SXX__{hdr_type}__ or GLOBAL__{hdr_type}__"
+                )
                 confirm = input(f"      Use anyway? (y/n): ").strip().lower()
-                if confirm not in ('y', 'yes'):
+                if confirm not in ("y", "yes"):
                     return None
 
             new_name = prefix + old_name
@@ -757,12 +804,16 @@ class SanityChecker:
             try:
                 old_path.relative_to(issue.parent_day_path)
             except ValueError:
-                print(f"      ⚠️  Security: Path outside day directory: {issue.relative_path}")
+                print(
+                    f"      ⚠️  Security: Path outside day directory: {issue.relative_path}"
+                )
                 return False
 
             # Validate old path still exists (could have been moved by parent rename)
             if not old_path.exists():
-                print(f"      ⚠️  Path no longer exists (may have been moved): {issue.relative_path}")
+                print(
+                    f"      ⚠️  Path no longer exists (may have been moved): {issue.relative_path}"
+                )
                 return False
 
             # Ensure it's actually a directory (not a file or symlink)
@@ -784,16 +835,16 @@ class SanityChecker:
                 return False
 
             # Calculate new name
-            if issue.issue_type == 'missing_prefix':
-                new_name = '__' + old_name
+            if issue.issue_type == "missing_prefix":
+                new_name = "__" + old_name
             else:  # extra_prefix
-                if not old_name.startswith('__'):
+                if not old_name.startswith("__"):
                     print(f"      ⚠️  Directory doesn't have __ prefix: {old_name}")
                     return False
                 new_name = old_name[2:]  # Remove __ prefix
 
             # Validate new name is not empty
-            if not new_name or new_name.startswith('.'):
+            if not new_name or new_name.startswith("."):
                 print(f"      ⚠️  Invalid new name: {new_name}")
                 return False
 
@@ -830,8 +881,8 @@ class SanityChecker:
             parent = old_path.parent
             old_name = old_path.name
 
-            if issue.issue_type == 'missing_prefix':
-                new_name = '__' + old_name
+            if issue.issue_type == "missing_prefix":
+                new_name = "__" + old_name
             else:
                 new_name = old_name[2:]
 
@@ -869,22 +920,22 @@ class SanityChecker:
                 print(f"      - {error}")
             return False
 
-        print(f"  Do you want to fix them? (y/n): ", end='', flush=True)
+        print(f"  Do you want to fix them? (y/n): ", end="", flush=True)
 
         try:
             response = input().strip().lower()
-            return response in ('y', 'yes')
+            return response in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             print()
             return False
 
     def run(self, interactive: bool = False, validate_csv: bool = True) -> bool:
         """Run all sanity checks"""
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("🎬 VFX SHOOT DATA SANITY CHECK")
         if interactive:
             print("(Interactive Fix Mode)")
-        print("="*70 + "\n")
+        print("=" * 70 + "\n")
 
         # Check write permissions if in interactive mode
         if interactive:
@@ -902,7 +953,9 @@ class SanityChecker:
         if validate_csv:
             print(f"\n📊 Loading Editorial VFX Code List...")
             if self.load_csv_code_list():
-                print(f"   ✅ Loaded {len(self.valid_codes)} codes for {len(self.scene_code_map)} scenes")
+                print(
+                    f"   ✅ Loaded {len(self.valid_codes)} codes for {len(self.scene_code_map)} scenes"
+                )
                 csv_validation_enabled = True
             else:
                 print(f"   ⚠️  CSV file not found or could not be loaded")
@@ -925,7 +978,9 @@ class SanityChecker:
                     print(issue)
 
             # Check prefix consistency
-            prefix_issues, fixable_issues = self.check_prefix_consistency(dir_info, collect_fixes=interactive)
+            prefix_issues, fixable_issues = self.check_prefix_consistency(
+                dir_info, collect_fixes=interactive
+            )
             if prefix_issues:
                 self.errors.extend(prefix_issues)
                 for issue in prefix_issues:
@@ -944,7 +999,9 @@ class SanityChecker:
             # Check HDR subdirectory naming (separate feature)
             hdr_issues = []
             hdr_fixable_issues = []
-            hdr_issues, hdr_fixable_issues = self.check_hdr_subdirectories(dir_info, collect_fixes=interactive)
+            hdr_issues, hdr_fixable_issues = self.check_hdr_subdirectories(
+                dir_info, collect_fixes=interactive
+            )
             if hdr_issues:
                 self.errors.extend(hdr_issues)
                 for issue in hdr_issues:
@@ -953,10 +1010,10 @@ class SanityChecker:
             # Interactive fix mode for HDR subdirectories (must be BEFORE prefix fixes)
             if interactive and hdr_fixable_issues:
                 print(f"\n  Found {len(hdr_fixable_issues)} HDR subdirectory issue(s)")
-                print(f"  Fix HDR subdirectories? (y/n): ", end='', flush=True)
+                print(f"  Fix HDR subdirectories? (y/n): ", end="", flush=True)
                 try:
                     response = input().strip().lower()
-                    if response in ('y', 'yes'):
+                    if response in ("y", "yes"):
                         fixed_count = 0
                         for hdr_issue in hdr_fixable_issues:
                             if self.fix_hdr_subdirectory(hdr_issue):
@@ -964,11 +1021,17 @@ class SanityChecker:
                                 self.hdr_fixed_count += 1
                             else:
                                 # Track unfixed issues
-                                self.hdr_unfixed_issues.append(str(hdr_issue.relative_path))
+                                self.hdr_unfixed_issues.append(
+                                    str(hdr_issue.relative_path)
+                                )
                         if fixed_count > 0:
-                            print(f"\n  ✅ Fixed {fixed_count}/{len(hdr_fixable_issues)} HDR subdirectory issue(s)")
+                            print(
+                                f"\n  ✅ Fixed {fixed_count}/{len(hdr_fixable_issues)} HDR subdirectory issue(s)"
+                            )
                         if fixed_count < len(hdr_fixable_issues):
-                            print(f"  ⚠️  {len(hdr_fixable_issues) - fixed_count} HDR subdirectory issue(s) remain")
+                            print(
+                                f"  ⚠️  {len(hdr_fixable_issues) - fixed_count} HDR subdirectory issue(s) remain"
+                            )
                     else:
                         print("  ⏭️  Skipped HDR fixes")
                         # All issues remain unfixed
@@ -993,7 +1056,7 @@ class SanityChecker:
                         sorted_issues = sorted(
                             fixable_issues,
                             key=lambda x: len(x.relative_path.parts),
-                            reverse=True
+                            reverse=True,
                         )
 
                         fixed_count = 0
@@ -1002,17 +1065,26 @@ class SanityChecker:
                                 fixed_count += 1
 
                         if fixed_count > 0:
-                            print(f"\n  ✅ Fixed {fixed_count}/{len(fixable_issues)} issue(s)")
+                            print(
+                                f"\n  ✅ Fixed {fixed_count}/{len(fixable_issues)} issue(s)"
+                            )
                         else:
                             print(f"\n  ⚠️  No issues could be fixed (see errors above)")
                     else:
                         print("  ⏭️  Skipped fixes")
                 except KeyboardInterrupt:
                     print("\n\n⚠️  Fix process interrupted by user")
-                    print("Some directories may have been renamed. Run again to check status.\n")
+                    print(
+                        "Some directories may have been renamed. Run again to check status.\n"
+                    )
                     raise
 
-            if not compliance_issues and not prefix_issues and not csv_issues and not hdr_issues:
+            if (
+                not compliance_issues
+                and not prefix_issues
+                and not csv_issues
+                and not hdr_issues
+            ):
                 print("  ✅ All checks passed")
 
         # Delivery name collision check (runs once across all directories)
@@ -1025,9 +1097,9 @@ class SanityChecker:
             print(f"   ✅ No collisions — all delivery names are unique")
 
         # Print summary
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("📊 SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print(f"Total directories checked: {len(day_dirs)}")
         print(f"Errors: {len(self.errors)}")
         print(f"Warnings: {len(self.warnings)}")
@@ -1035,13 +1107,13 @@ class SanityChecker:
         if self.errors:
             print("\n🔴 ERRORS FOUND:")
             for error in self.errors:
-                if not error.startswith((' ', '\t')):
+                if not error.startswith((" ", "\t")):
                     print(error)
 
         if self.warnings:
             print("\n🟡 WARNINGS:")
             for warning in self.warnings:
-                if not warning.startswith((' ', '\t')):
+                if not warning.startswith((" ", "\t")):
                     print(warning)
 
         if collision_issues:
@@ -1060,7 +1132,9 @@ class SanityChecker:
             if self.hdr_fixed_count > 0:
                 print(f"   ✅ Fixed: {self.hdr_fixed_count} subdirectories")
             if self.hdr_unfixed_issues:
-                print(f"   ⚠️  Remaining issues: {len(self.hdr_unfixed_issues)} subdirectories")
+                print(
+                    f"   ⚠️  Remaining issues: {len(self.hdr_unfixed_issues)} subdirectories"
+                )
                 print(f"\n   Unfixed HDR subdirectories:")
                 for path in self.hdr_unfixed_issues:
                     print(f"      - {path}")
@@ -1068,7 +1142,7 @@ class SanityChecker:
         if not self.errors and not self.warnings:
             print("\n✅ All checks passed!")
 
-        print("="*70 + "\n")
+        print("=" * 70 + "\n")
 
         return len(self.errors) == 0
 
@@ -1080,23 +1154,23 @@ def main():
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description='VFX Shoot Data Sanity Check - Validate directory structure and naming conventions'
+        description="VFX Shoot Data Sanity Check - Validate directory structure and naming conventions"
     )
     parser.add_argument(
-        'data_path',
-        nargs='?',
-        default="/Volumes/MACGUFF001/POSEIDON/DATA_rename",
-        help='Path to the DATA_rename directory'
+        "data_path",
+        nargs="?",
+        default="/Volumes/MACGUFF001/POSEIDON/DATA",
+        help="Path to the DATA directory",
     )
     parser.add_argument(
-        '--fix',
-        action='store_true',
-        help='Interactive mode: ask to fix prefix inconsistencies for each day'
+        "--fix",
+        action="store_true",
+        help="Interactive mode: ask to fix prefix inconsistencies for each day",
     )
     parser.add_argument(
-        '--no-csv',
-        action='store_true',
-        help='Disable CSV code validation (skip Editorial_VFX_Code_List.csv checks)'
+        "--no-csv",
+        action="store_true",
+        help="Disable CSV code validation (skip Editorial_VFX_Code_List.csv checks)",
     )
 
     args = parser.parse_args()
@@ -1117,9 +1191,10 @@ def main():
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}\n")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
