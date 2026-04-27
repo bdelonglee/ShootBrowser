@@ -13,9 +13,12 @@ Install dependency once:
 """
 
 import sys
+import json
+import shutil
 import subprocess
 import threading
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -91,6 +94,107 @@ def api_run_sanity_check():
         return jsonify({"success": False, "error": "Sanity check timed out (>120s)"}), 500
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/build-package", methods=["POST"])
+def api_build_package():
+    """Copy selected block directories into a versioned package folder."""
+    body         = request.get_json() or {}
+    vendor       = (body.get("vendor") or "").strip()
+    package_name = (body.get("package_name") or "").strip()
+    date         = (body.get("date") or datetime.now().strftime("%Y-%m-%d")).strip()
+    output_dir   = (body.get("output_dir") or "").strip()
+    package_note = (body.get("package_note") or "").strip()
+    blocks       = body.get("blocks") or []
+
+    errors = []
+    if not vendor:        errors.append("vendor is required")
+    if not package_name:  errors.append("package_name is required")
+    if not output_dir:    errors.append("output_dir is required")
+    if not blocks:        errors.append("no blocks selected")
+    if errors:
+        return jsonify({"success": False, "errors": errors}), 400
+
+    output_root = Path(output_dir)
+    if not output_root.exists():
+        return jsonify({"success": False, "errors": [f"Output directory does not exist: {output_dir}"]}), 400
+
+    # Auto-increment version
+    vendor_dir = output_root / vendor
+    version = 1
+    while (vendor_dir / f"{package_name}_v{version:02d}").exists():
+        version += 1
+    pkg_dir = vendor_dir / f"{package_name}_v{version:02d}"
+
+    # Detect delivery-name collisions → fall back to original dir name
+    delivery_counts: dict = {}
+    for b in blocks:
+        dn = b.get("delivery_name", "")
+        delivery_counts[dn] = delivery_counts.get(dn, 0) + 1
+    collision_names = {dn for dn, cnt in delivery_counts.items() if cnt > 1}
+
+    try:
+        pkg_dir.mkdir(parents=True, exist_ok=True)
+
+        copied = []
+        for block in blocks:
+            src  = Path(block["path"])
+            dn   = block.get("delivery_name", src.name)
+            note = (block.get("note") or "").strip()
+            dest_name = src.name if dn in collision_names else dn
+            dest = pkg_dir / dest_name
+
+            shutil.copytree(str(src), str(dest))
+            if note:
+                (dest / "block_notes.txt").write_text(note, encoding="utf-8")
+
+            copied.append({"original_name": src.name, "delivery_name": dest_name, "note": note})
+
+        if package_note:
+            (pkg_dir / "Package_Infos.txt").write_text(package_note, encoding="utf-8")
+
+        manifest = {
+            "vendor": vendor,
+            "package_name": package_name,
+            "date": date,
+            "version": version,
+            "created_by": "vfx_shoot_browser",
+            "source_data_path": DATA_PATH,
+            "output_path": str(pkg_dir),
+            "blocks": copied,
+            "delivery_history": [{"version": version, "date": date, "note": package_note}],
+        }
+        (pkg_dir / "package_manifest.json").write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+        # Append to global log
+        log_path = Path(DATA_PATH) / "__SHOOT_BROWSER" / "packages_log.json"
+        log = []
+        if log_path.exists():
+            try:
+                log = json.loads(log_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        log.append({
+            "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "vendor": vendor,
+            "package_name": package_name,
+            "version": version,
+            "output_path": str(pkg_dir),
+            "block_count": len(blocks),
+        })
+        log_path.write_text(json.dumps(log, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        return jsonify({"success": True, "output_path": str(pkg_dir), "version": version})
+
+    except Exception as e:
+        if pkg_dir.exists():
+            try:
+                shutil.rmtree(pkg_dir)
+            except Exception:
+                pass
+        return jsonify({"success": False, "errors": [str(e)]}), 500
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

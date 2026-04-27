@@ -789,6 +789,53 @@ class HTMLGenerator:
         }}
         .cart-package-note:focus {{ border-color: var(--accent); }}
         .cart-package-note::placeholder {{ color: var(--text-muted); }}
+        /* ── Build form ── */
+        .cart-build-form {{
+            margin-top: 12px; padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }}
+        .cart-build-title {{
+            font-size: 0.75em; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px;
+        }}
+        .cart-form-row {{
+            display: flex; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;
+        }}
+        .cart-form-field {{
+            display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 140px;
+        }}
+        .cart-form-label {{
+            font-size: 0.72em; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }}
+        .cart-form-input {{
+            background: var(--surface-3); border: 1px solid var(--border);
+            color: var(--text); border-radius: 4px; padding: 5px 8px;
+            font-size: 0.85em; outline: none; transition: border-color 0.15s;
+        }}
+        .cart-form-input:focus {{ border-color: var(--accent); }}
+        .cart-form-input::placeholder {{ color: var(--text-muted); }}
+        .cart-build-btn {{
+            background: var(--accent); color: #fff;
+            border: none; border-radius: 6px; padding: 8px 20px;
+            cursor: pointer; font-size: 0.88em; font-weight: 600;
+            transition: opacity 0.15s; margin-top: 4px;
+        }}
+        .cart-build-btn:hover {{ opacity: 0.85; }}
+        .cart-build-btn:disabled {{ opacity: 0.4; cursor: default; }}
+        #build-status {{
+            margin-top: 8px; padding: 8px 12px;
+            border-radius: 6px; font-size: 0.82em; display: none;
+            white-space: pre-wrap;
+        }}
+        #build-status.success {{
+            background: rgba(86,211,100,0.12); border: 1px solid rgba(86,211,100,0.3);
+            color: #56d364;
+        }}
+        #build-status.error {{
+            background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3);
+            color: #f85149;
+        }}
         body.cart-open {{ padding-bottom: 370px; }}
         body.cart-open.cart-collapsed {{ padding-bottom: 48px; }}
     </style>
@@ -856,6 +903,31 @@ class HTMLGenerator:
         <textarea id="package-note-input" class="cart-package-note"
           placeholder="Optional — written to Package_Infos.txt at the delivery root"
           oninput="savePackageNote(this.value)"></textarea>
+      </div>
+      <div class="cart-build-form">
+        <div class="cart-build-title">Build Package</div>
+        <div class="cart-form-row">
+          <div class="cart-form-field">
+            <label class="cart-form-label" for="pkg-vendor">Vendor</label>
+            <input id="pkg-vendor" class="cart-form-input" type="text" placeholder="MPC, ILM…">
+          </div>
+          <div class="cart-form-field">
+            <label class="cart-form-label" for="pkg-name">Package name</label>
+            <input id="pkg-name" class="cart-form-input" type="text" placeholder="poseidon_HDR_batch01">
+          </div>
+          <div class="cart-form-field" style="max-width:160px">
+            <label class="cart-form-label" for="pkg-date">Date</label>
+            <input id="pkg-date" class="cart-form-input" type="date">
+          </div>
+        </div>
+        <div class="cart-form-row">
+          <div class="cart-form-field">
+            <label class="cart-form-label" for="pkg-output-dir">Output directory</label>
+            <input id="pkg-output-dir" class="cart-form-input" type="text" placeholder="/path/to/delivery">
+          </div>
+        </div>
+        <button class="cart-build-btn" id="build-btn" onclick="buildPackage()">📦 Build Package</button>
+        <div id="build-status"></div>
       </div>
     </div>
   </div>
@@ -1263,8 +1335,90 @@ function renderCart() {{
     ).join('');
 }}
 
+// ── Package builder form ──────────────────────────────────────────────────────
+
+const BUILD_FORM_KEY = 'vfx_build_form';
+
+function loadBuildForm() {{
+    document.getElementById('pkg-date').value = new Date().toISOString().split('T')[0];
+    try {{
+        const saved = JSON.parse(localStorage.getItem(BUILD_FORM_KEY) || '{{}}');
+        ['pkg-vendor', 'pkg-name', 'pkg-output-dir'].forEach(id => {{
+            const el = document.getElementById(id);
+            if (el && saved[id]) el.value = saved[id];
+        }});
+    }} catch(e) {{}}
+}}
+
+function saveBuildForm() {{
+    const saved = {{}};
+    ['pkg-vendor', 'pkg-name', 'pkg-output-dir'].forEach(id => {{
+        const el = document.getElementById(id);
+        if (el) saved[id] = el.value;
+    }});
+    localStorage.setItem(BUILD_FORM_KEY, JSON.stringify(saved));
+}}
+
+function showBuildStatus(type, msg) {{
+    const el = document.getElementById('build-status');
+    if (!type) {{ el.style.display = 'none'; return; }}
+    el.className = type;
+    el.style.display = 'block';
+    el.textContent = msg;
+}}
+
+async function buildPackage() {{
+    const vendor    = document.getElementById('pkg-vendor').value.trim();
+    const pkgName   = document.getElementById('pkg-name').value.trim();
+    const date      = document.getElementById('pkg-date').value;
+    const outputDir = document.getElementById('pkg-output-dir').value.trim();
+    const pkgNote   = document.getElementById('package-note-input').value.trim();
+
+    if (!vendor || !pkgName || !outputDir) {{
+        showBuildStatus('error', 'Vendor, Package name and Output directory are required.');
+        return;
+    }}
+    if (cart.size === 0) {{
+        showBuildStatus('error', 'No blocks in cart.');
+        return;
+    }}
+
+    const blocks = [...cart.entries()].map(([path, {{ entry, note }}]) => ({{
+        path,
+        delivery_name: deliveryName(entry),
+        note,
+    }}));
+
+    const btn = document.getElementById('build-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Building…';
+    showBuildStatus(null);
+
+    try {{
+        const res  = await fetch('/api/build-package', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ vendor, package_name: pkgName, date, output_dir: outputDir, package_note: pkgNote, blocks }}),
+        }});
+        const data = await res.json();
+        if (data.success) {{
+            showBuildStatus('success', `✓ Package built: ${{data.output_path}}  (v${{data.version}})`);
+            saveBuildForm();
+        }} else {{
+            const msg = (data.errors || [data.error || 'Unknown error']).join('\\n');
+            showBuildStatus('error', `✗ ${{msg}}`);
+        }}
+    }} catch(e) {{
+        showBuildStatus('error', `✗ Network error: ${{e.message}}\\n(Is the server running?)`);
+    }} finally {{
+        btn.disabled = false;
+        btn.textContent = '📦 Build Package';
+    }}
+}}
+
 cartLoad();
 loadPackageNote();
+loadBuildForm();
 renderCart();
 
 render();
