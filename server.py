@@ -99,7 +99,7 @@ def _open_browser(port: int) -> None:
     """Open the browser 1 second after the server starts."""
     import time
     time.sleep(1.0)
-    webbrowser.open(f"http://localhost:{port}")
+    webbrowser.open(f"http://127.0.0.1:{port}")
 
 
 def main() -> None:
@@ -108,7 +108,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="VFX Shoot Browser — Local web server")
     parser.add_argument(
         "--data-path",
-        default="/Volumes/MACGUFF001/POSEIDON/DATA_rename",
+        default="/Volumes/MACGUFF001/POSEIDON/DATA",
         help="Path to the shoot data directory",
     )
     parser.add_argument("--port", type=int, default=5000, help="Port to listen on (default: 5000)")
@@ -122,14 +122,14 @@ def main() -> None:
     print("🎬  VFX SHOOT BROWSER — Local Server")
     print("=" * 60)
     print(f"  Data path : {DATA_PATH}")
-    print(f"  URL       : http://localhost:{args.port}")
+    print(f"  URL       : http://127.0.0.1:{args.port}")
     print(f"\n  Press Ctrl+C to stop the server.")
     print("=" * 60 + "\n")
 
     if not args.no_browser:
         threading.Thread(target=_open_browser, args=(args.port,), daemon=True).start()
 
-    app.run(host="127.0.0.1", port=args.port, debug=False)
+    app.run(host="127.0.0.1", port=args.port, debug=True)
 
 
 if __name__ == "__main__":

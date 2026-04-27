@@ -674,6 +674,73 @@ class HTMLGenerator:
             .stats {{ margin-left: 0; width: 100%; }}
             .search-wrapper {{ max-width: 100%; }}
         }}
+
+        /* ── Cart ── */
+        .entry-cb {{
+            width: 16px; height: 16px; accent-color: var(--accent);
+            cursor: pointer; flex-shrink: 0;
+            opacity: 0; transition: opacity 0.15s; margin-right: 2px;
+        }}
+        .entry:hover .entry-cb, .entry.in-cart .entry-cb {{ opacity: 1; }}
+        .entry.in-cart {{
+            border-left-color: var(--accent) !important;
+            background: rgba(68,147,248,0.08) !important;
+        }}
+        #cart-panel {{
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: var(--surface); border-top: 2px solid var(--accent);
+            padding: 14px 24px 18px; z-index: 100; display: none;
+            max-height: 46vh; overflow-y: auto;
+            box-shadow: 0 -6px 32px rgba(0,0,0,0.5);
+        }}
+        #cart-panel.visible {{ display: block; }}
+        .cart-inner {{ max-width: 1400px; margin: 0 auto; }}
+        .cart-header {{ display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }}
+        .cart-title {{ font-weight: 700; color: var(--text); font-size: 0.95em; }}
+        .cart-badge {{
+            background: var(--accent); color: #fff;
+            border-radius: 20px; padding: 2px 10px;
+            font-size: 0.78em; font-weight: 700;
+        }}
+        .cart-clear {{
+            margin-left: auto; background: none;
+            border: 1px solid var(--border); color: var(--text-muted);
+            border-radius: 6px; padding: 4px 12px; cursor: pointer;
+            font-size: 0.82em; transition: all 0.15s;
+        }}
+        .cart-clear:hover {{ color: #f85149; border-color: rgba(248,81,73,0.4); }}
+        .cart-items {{ display: flex; flex-direction: column; gap: 6px; }}
+        .cart-item {{
+            display: flex; align-items: center; gap: 10px;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; padding: 7px 12px;
+        }}
+        .cart-item-name {{
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.8em; color: var(--text);
+            flex: 1; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }}
+        .cart-item-note {{
+            background: var(--surface-3); border: 1px solid var(--border);
+            color: var(--text); border-radius: 4px; padding: 4px 8px;
+            font-size: 0.82em; width: 220px; flex-shrink: 0;
+            outline: none; transition: border-color 0.15s;
+        }}
+        .cart-item-note:focus {{ border-color: var(--accent); }}
+        .cart-item-note::placeholder {{ color: var(--text-muted); }}
+        .cart-item-remove {{
+            background: none; border: none; cursor: pointer;
+            color: var(--text-muted); font-size: 1em;
+            flex-shrink: 0; padding: 2px; line-height: 1; transition: color 0.15s;
+        }}
+        .cart-item-remove:hover {{ color: #f85149; }}
+        .cart-collision {{
+            background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3);
+            border-radius: 6px; padding: 8px 12px;
+            font-size: 0.82em; color: #f85149; margin-top: 8px;
+        }}
+        body.cart-open {{ padding-bottom: 240px; }}
     </style>
 </head>
 <body>
@@ -722,8 +789,29 @@ class HTMLGenerator:
     <footer>Generated on {generated_time}</footer>
 
 </div>
+
+<div id="cart-panel">
+  <div class="cart-inner">
+    <div class="cart-header">
+      <span class="cart-title">📦 Delivery Cart</span>
+      <span class="cart-badge" id="cart-count">0</span>
+      <button class="cart-clear" onclick="clearCart()">Clear all</button>
+    </div>
+    <div id="cart-items" class="cart-items"></div>
+    <div id="cart-collisions"></div>
+  </div>
+</div>
+
 <script>
 const data = {data_json};
+
+// Flat index: path → entry object (for cart lookups)
+const allEntries = {{}};
+for (const view of Object.values(data)) {{
+    for (const arr of Object.values(view)) {{
+        for (const e of arr) {{ allEntries[e.path] = e; }}
+    }}
+}}
 
 let currentMode  = 'days';
 let currentQuery = '';
@@ -860,10 +948,12 @@ function renderEntry(entry, q) {{
             <polyline points="6 9 12 15 18 9"/>
         </svg></button>`;
 
+    const inCart     = cart.has(entry.path);
+    const cb         = `<input type="checkbox" class="entry-cb" ${{inCart ? 'checked' : ''}} onclick="toggleCart(${{JSON.stringify(entry.path)}})">`;
     const isExpanded = expandedPaths.has(entry.path);
-    return `<div class="entry${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(entry.path)}}">
+    return `<div class="entry${{inCart ? ' in-cart' : ''}}${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(entry.path)}}">
         <div class="entry-title-line">
-            ${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{copyBtn}}${{chevron}}
+            ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{copyBtn}}${{chevron}}
         </div>
         ${{renderSummary(entry.subdirs)}}
         <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
@@ -977,6 +1067,123 @@ function copyPath(btn, path) {{
         window.prompt('Copy path:', path);
     }}
 }}
+
+// ── Cart ─────────────────────────────────────────────────────────────────────
+
+const CART_KEY = 'vfx_shoot_cart';
+const cart = new Map(); // path → {{entry, note}}
+
+function deliveryName(entry) {{
+    return entry.scenes.join('_') + '__' + entry.code + '__' + entry.description;
+}}
+
+function cartSave() {{
+    const arr = [...cart.entries()].map(([p, {{note}}]) => ({{ path: p, note }}));
+    localStorage.setItem(CART_KEY, JSON.stringify(arr));
+}}
+
+function cartLoad() {{
+    try {{
+        const saved = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
+        saved.forEach(({{ path, note }}) => {{
+            if (allEntries[path]) cart.set(path, {{ entry: allEntries[path], note }});
+        }});
+    }} catch(e) {{}}
+}}
+
+function cartCollisions() {{
+    const nameMap = new Map();
+    for (const [path, {{ entry }}] of cart) {{
+        const dn = deliveryName(entry);
+        if (!nameMap.has(dn)) nameMap.set(dn, []);
+        nameMap.get(dn).push(entry.directory_name);
+    }}
+    return [...nameMap.entries()]
+        .filter(([, names]) => names.length > 1)
+        .map(([dn, names]) => ({{ dn, names }}));
+}}
+
+function toggleCart(path) {{
+    if (cart.has(path)) {{
+        cart.delete(path);
+    }} else {{
+        const entry = allEntries[path];
+        if (entry) cart.set(path, {{ entry, note: '' }});
+    }}
+    cartSave();
+    syncEntryEl(path);
+    renderCart();
+}}
+
+function removeFromCart(path) {{
+    cart.delete(path);
+    cartSave();
+    syncEntryEl(path);
+    renderCart();
+}}
+
+function clearCart() {{
+    cart.clear();
+    cartSave();
+    document.querySelectorAll('.entry').forEach(el => {{
+        el.classList.remove('in-cart');
+        const cb = el.querySelector('.entry-cb');
+        if (cb) cb.checked = false;
+    }});
+    renderCart();
+}}
+
+function updateCartNote(path, note) {{
+    if (cart.has(path)) {{ cart.get(path).note = note; cartSave(); }}
+}}
+
+function syncEntryEl(path) {{
+    document.querySelectorAll('.entry').forEach(el => {{
+        if (el.dataset.path !== path) return;
+        const inCart = cart.has(path);
+        el.classList.toggle('in-cart', inCart);
+        const cb = el.querySelector('.entry-cb');
+        if (cb) cb.checked = inCart;
+    }});
+}}
+
+function renderCart() {{
+    const panel   = document.getElementById('cart-panel');
+    const countEl = document.getElementById('cart-count');
+    const itemsEl = document.getElementById('cart-items');
+    const colEl   = document.getElementById('cart-collisions');
+
+    if (cart.size === 0) {{
+        panel.classList.remove('visible');
+        document.body.classList.remove('cart-open');
+        return;
+    }}
+
+    panel.classList.add('visible');
+    document.body.classList.add('cart-open');
+    countEl.textContent = cart.size;
+
+    itemsEl.innerHTML = [...cart.entries()].map(([path, {{ entry, note }}]) => {{
+        const dn   = escHtml(deliveryName(entry));
+        const orig = escHtml(entry.directory_name);
+        const n    = escHtml(note);
+        const p    = JSON.stringify(path);
+        return `<div class="cart-item">
+            <span class="cart-item-name" title="${{orig}}">${{dn}}</span>
+            <input class="cart-item-note" type="text" placeholder="Block note (optional)"
+                   value="${{n}}" oninput="updateCartNote(${{p}}, this.value)">
+            <button class="cart-item-remove" onclick="removeFromCart(${{p}})" title="Remove">✕</button>
+        </div>`;
+    }}).join('');
+
+    const cols = cartCollisions();
+    colEl.innerHTML = cols.map(({{ dn, names }}) =>
+        `<div class="cart-collision">⚠️ Delivery name collision: <strong>${{escHtml(dn)}}</strong><br>${{names.map(n => '· ' + escHtml(n)).join('<br>')}}</div>`
+    ).join('');
+}}
+
+cartLoad();
+renderCart();
 
 render();
 </script>
