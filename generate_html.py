@@ -853,6 +853,104 @@ class HTMLGenerator:
             background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3);
             color: #f85149;
         }}
+        /* ── Tab bar ── */
+        .tab-bar {{
+            display: flex; gap: 2px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 16px;
+        }}
+        .tab-btn {{
+            background: none; border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-muted); padding: 9px 18px;
+            cursor: pointer; font-size: 0.88em; font-weight: 600;
+            margin-bottom: -1px; transition: all 0.15s;
+        }}
+        .tab-btn:hover {{ color: var(--text); }}
+        .tab-btn.active {{ color: var(--accent); border-bottom-color: var(--accent); }}
+        .tab-badge {{
+            background: var(--accent); color: #fff;
+            border-radius: 20px; padding: 1px 7px;
+            font-size: 0.74em; font-weight: 700;
+            margin-left: 5px; vertical-align: middle;
+        }}
+
+        /* ── Queue view ── */
+        .queue-toolbar {{
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 12px; flex-wrap: wrap;
+        }}
+        .queue-build-btn {{
+            background: var(--accent); color: #fff;
+            border: none; border-radius: 6px; padding: 8px 18px;
+            cursor: pointer; font-size: 0.88em; font-weight: 600;
+            transition: opacity 0.15s;
+        }}
+        .queue-build-btn:hover {{ opacity: 0.85; }}
+        .queue-build-btn:disabled {{ opacity: 0.4; cursor: default; }}
+        .queue-select-all {{
+            background: none; border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: 6px;
+            padding: 6px 14px; cursor: pointer; font-size: 0.82em;
+            transition: all 0.15s;
+        }}
+        .queue-select-all:hover {{ color: var(--text); border-color: var(--border-hover); }}
+        .queue-count-label {{ color: var(--text-muted); font-size: 0.85em; margin-left: auto; }}
+        .queue-item {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-left: 3px solid transparent;
+            border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;
+            display: flex; align-items: center; gap: 12px; transition: all 0.15s;
+        }}
+        .queue-item:hover {{
+            border-color: var(--border-hover); border-left-color: var(--accent);
+            background: var(--surface-2);
+        }}
+        .queue-item.selected {{ border-left-color: var(--accent); }}
+        .queue-cb {{ width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }}
+        .queue-item-info {{ flex: 1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }}
+        .queue-vendor {{
+            background: rgba(86,211,100,0.12); color: #56d364;
+            border: 1px solid rgba(86,211,100,0.2);
+            padding: 2px 9px; border-radius: 6px;
+            font-size: 0.8em; font-weight: 600; font-family: 'Monaco','Courier New',monospace;
+        }}
+        .queue-name {{
+            background: rgba(68,147,248,0.12); color: #7eb8f7;
+            border: 1px solid rgba(68,147,248,0.2);
+            padding: 2px 9px; border-radius: 6px;
+            font-size: 0.8em; font-weight: 600; font-family: 'Monaco','Courier New',monospace;
+        }}
+        .queue-date {{
+            background: rgba(227,179,65,0.12); color: #e3b341;
+            border: 1px solid rgba(227,179,65,0.2);
+            padding: 2px 9px; border-radius: 6px;
+            font-size: 0.8em; font-weight: 600; font-family: 'Monaco','Courier New',monospace;
+        }}
+        .queue-meta {{ color: var(--text-muted); font-size: 0.8em; }}
+        .queue-item-actions {{ display: flex; gap: 6px; flex-shrink: 0; }}
+        .queue-edit-btn, .queue-delete-btn {{
+            background: none; border: 1px solid var(--border);
+            border-radius: 5px; padding: 3px 10px;
+            cursor: pointer; font-size: 0.8em; transition: all 0.15s;
+        }}
+        .queue-edit-btn {{ color: var(--accent); }}
+        .queue-edit-btn:hover {{ background: var(--accent-glow); border-color: var(--accent); }}
+        .queue-delete-btn {{ color: var(--text-muted); }}
+        .queue-delete-btn:hover {{ color: #f85149; border-color: rgba(248,81,73,0.4); }}
+        #build-progress {{
+            margin-top: 12px; padding: 10px 14px; border-radius: 6px;
+            font-size: 0.85em; display: none; white-space: pre-wrap;
+        }}
+        #build-progress.running {{
+            background: var(--accent-glow); border: 1px solid rgba(68,147,248,0.3); color: var(--accent);
+        }}
+        #build-progress.done-ok {{
+            background: rgba(86,211,100,0.1); border: 1px solid rgba(86,211,100,0.3); color: #56d364;
+        }}
+        #build-progress.done-err {{
+            background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3); color: #f85149;
+        }}
         body.cart-open {{ padding-bottom: 370px; }}
         body.cart-open.cart-collapsed {{ padding-bottom: 48px; }}
     </style>
@@ -865,6 +963,13 @@ class HTMLGenerator:
         <p class="subtitle">POSEIDON — Browse shoot data by days, scenes, or codes</p>
     </header>
 
+    <nav class="tab-bar">
+      <button class="tab-btn active" onclick="setView('browse')" id="tab-browse">📂 Browse</button>
+      <button class="tab-btn" onclick="setView('queue')" id="tab-queue">📋 Queue</button>
+      <button class="tab-btn" onclick="setView('delivered')" id="tab-delivered">✅ Delivered</button>
+    </nav>
+
+    <div id="view-browse">
     <div class="controls">
         <button class="mode-button active" onclick="setMode('days')"   id="btn-days">📅 By Days</button>
         <button class="mode-button"        onclick="setMode('scenes')" id="btn-scenes">🎞️ By Scenes</button>
@@ -898,6 +1003,25 @@ class HTMLGenerator:
             <div class="empty-state-icon">📂</div>
             <p>Loading…</p>
         </div>
+    </div>
+
+    </div><!-- end view-browse -->
+
+    <div id="view-queue" style="display:none">
+      <div class="queue-toolbar">
+        <button class="queue-build-btn" id="queue-build-btn" onclick="buildSelected()">🏗️ Build selected</button>
+        <button class="queue-select-all" onclick="toggleSelectAll()">Select all</button>
+        <span class="queue-count-label" id="queue-count-label"></span>
+      </div>
+      <div id="queue-list"></div>
+      <div id="build-progress"></div>
+    </div>
+
+    <div id="view-delivered" style="display:none">
+      <div class="empty-state">
+        <div class="empty-state-icon">📦</div>
+        <p>Delivered packages — coming soon</p>
+      </div>
     </div>
 
     <footer>Generated on {generated_time}</footer>
@@ -945,7 +1069,7 @@ class HTMLGenerator:
             <input id="pkg-output-dir" class="cart-form-input" type="text" placeholder="/path/to/delivery">
           </div>
         </div>
-        <button class="cart-build-btn" id="build-btn" onclick="buildPackage()">📦 Build Package</button>
+        <button class="cart-build-btn" id="build-btn" onclick="saveToQueue()">+ Save to Queue</button>
         <div id="build-status"></div>
       </div>
     </div>
@@ -1438,7 +1562,7 @@ function showBuildStatus(type, msg) {{
     el.textContent = msg;
 }}
 
-async function buildPackage() {{
+function saveToQueue() {{
     const vendor    = getVendor();
     const pkgName   = document.getElementById('pkg-name').value.trim();
     const date      = document.getElementById('pkg-date').value;
@@ -1454,39 +1578,225 @@ async function buildPackage() {{
         return;
     }}
 
-    const blocks = [...cart.entries()].map(([path, {{ entry, note }}]) => ({{
-        path,
-        delivery_name: deliveryName(entry),
-        scenes:        entry.scenes,
-        code:          entry.code,
-        description:   entry.description,
-        note,
-    }}));
+    const pkg = {{
+        id:           Date.now(),
+        vendor,
+        package_name: pkgName,
+        date,
+        output_dir:   outputDir,
+        package_note: pkgNote,
+        blocks: [...cart.entries()].map(([path, {{ entry, note }}]) => ({{
+            path,
+            delivery_name: deliveryName(entry),
+            scenes:        entry.scenes,
+            code:          entry.code,
+            description:   entry.description,
+            note,
+        }})),
+    }};
 
-    const btn = document.getElementById('build-btn');
-    btn.disabled = true;
-    btn.textContent = '⏳ Building…';
-    showBuildStatus(null);
+    const queue = loadQueue();
+    queue.push(pkg);
+    saveQueue(queue);
+    saveBuildForm();
 
-    try {{
-        const res  = await fetch('/api/build-package', {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{ vendor, package_name: pkgName, date, output_dir: outputDir, package_note: pkgNote, blocks }}),
-        }});
-        const resp = await res.json();
-        if (resp.success) {{
-            showBuildStatus('success', `✓ Package built:\\n${{resp.output_path}}`);
-            saveBuildForm();
+    clearCart();
+    document.getElementById('pkg-name').value           = '';
+    document.getElementById('package-note-input').value = '';
+    savePackageNote('');
+
+    showBuildStatus('success',
+        `✓ "${{pkgName}}" added to queue. ${{queue.length}} package${{queue.length === 1 ? '' : 's'}} pending.`);
+}}
+
+// ── Queue ─────────────────────────────────────────────────────────────────────
+
+const QUEUE_KEY = 'vfx_pending_packages';
+
+function loadQueue() {{
+    try {{ return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); }}
+    catch(e) {{ return []; }}
+}}
+
+function saveQueue(queue) {{
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    updateQueueBadge();
+}}
+
+function updateQueueBadge() {{
+    const n   = loadQueue().length;
+    const tab = document.getElementById('tab-queue');
+    if (!tab) return;
+    tab.innerHTML = n
+        ? `📋 Queue <span class="tab-badge">${{n}}</span>`
+        : '📋 Queue';
+}}
+
+function setView(view) {{
+    ['browse', 'queue', 'delivered'].forEach(v => {{
+        document.getElementById(`view-${{v}}`).style.display = v === view ? 'block' : 'none';
+        document.getElementById(`tab-${{v}}`).classList.toggle('active', v === view);
+    }});
+    if (view === 'queue') renderQueue();
+}}
+
+function renderQueue() {{
+    const queue   = loadQueue();
+    const listEl  = document.getElementById('queue-list');
+    const labelEl = document.getElementById('queue-count-label');
+    if (!listEl) return;
+
+    if (labelEl)
+        labelEl.textContent = `${{queue.length}} package${{queue.length === 1 ? '' : 's'}} pending`;
+
+    if (queue.length === 0) {{
+        listEl.innerHTML = `<div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <p>No pending packages — add blocks to the cart and click <strong>Save to Queue</strong>.</p>
+        </div>`;
+        return;
+    }}
+
+    listEl.innerHTML = queue.map(pkg => {{
+        const bc = pkg.blocks.length;
+        return `<div class="queue-item" data-id="${{pkg.id}}">
+            <input type="checkbox" class="queue-cb"
+                onchange="this.closest('.queue-item').classList.toggle('selected',this.checked)">
+            <div class="queue-item-info">
+                <span class="queue-vendor">${{escHtml(pkg.vendor)}}</span>
+                <span class="queue-name">${{escHtml(pkg.package_name)}}</span>
+                <span class="queue-date">${{escHtml(pkg.date)}}</span>
+                <span class="queue-meta">${{bc}} block${{bc === 1 ? '' : 's'}}</span>
+                ${{pkg.package_note ? `<span class="queue-meta" title="${{escHtml(pkg.package_note)}}">📝 note</span>` : ''}}
+            </div>
+            <div class="queue-item-actions">
+                <button class="queue-edit-btn"
+                    onclick="editPending(${{pkg.id}})">Edit</button>
+                <button class="queue-delete-btn"
+                    onclick="deletePending(${{pkg.id}})">Delete</button>
+            </div>
+        </div>`;
+    }}).join('');
+}}
+
+function deletePending(id) {{
+    saveQueue(loadQueue().filter(p => p.id !== id));
+    renderQueue();
+}}
+
+function restoreVendorToForm(vendor) {{
+    const sel      = document.getElementById('pkg-vendor-select');
+    const customEl = document.getElementById('pkg-vendor-custom');
+    const vendors  = deliveryCfg.vendors || [];
+    if (sel.style.display !== 'none' && vendors.includes(vendor)) {{
+        sel.value = vendor; customEl.style.display = 'none';
+    }} else if (sel.style.display !== 'none') {{
+        sel.value = '__custom__'; customEl.style.display = 'block'; customEl.value = vendor;
+    }} else {{
+        customEl.value = vendor;
+    }}
+}}
+
+function editPending(id) {{
+    const queue = loadQueue();
+    const pkg   = queue.find(p => p.id === id);
+    if (!pkg) return;
+
+    saveQueue(queue.filter(p => p.id !== id));
+    clearCart();
+
+    const missing = [];
+    for (const block of pkg.blocks) {{
+        if (allEntries[block.path]) {{
+            cart.set(block.path, {{ entry: allEntries[block.path], note: block.note || '' }});
         }} else {{
-            const msg = (resp.errors || [resp.error || 'Unknown error']).join('\\n');
-            showBuildStatus('error', `✗ ${{msg}}`);
+            missing.push(block.delivery_name || block.path);
         }}
-    }} catch(e) {{
-        showBuildStatus('error', `✗ Network error: ${{e.message}}\\n(Is the server running?)`);
-    }} finally {{
-        btn.disabled = false;
-        btn.textContent = '📦 Build Package';
+    }}
+    cartSave();
+
+    restoreVendorToForm(pkg.vendor);
+    document.getElementById('pkg-name').value           = pkg.package_name;
+    document.getElementById('pkg-date').value           = pkg.date;
+    document.getElementById('pkg-output-dir').value     = pkg.output_dir;
+    document.getElementById('package-note-input').value = pkg.package_note || '';
+    savePackageNote(pkg.package_note || '');
+
+    renderCart();
+    setView('browse');
+
+    if (missing.length)
+        showBuildStatus('error',
+            `⚠️ ${{missing.length}} block(s) not found in current data:\\n${{missing.join('\\n')}}`);
+}}
+
+function toggleSelectAll() {{
+    const cbs = document.querySelectorAll('.queue-cb');
+    const anyUnchecked = [...cbs].some(cb => !cb.checked);
+    cbs.forEach(cb => {{
+        cb.checked = anyUnchecked;
+        cb.closest('.queue-item').classList.toggle('selected', anyUnchecked);
+    }});
+}}
+
+async function buildSelected() {{
+    const selected = [...document.querySelectorAll('.queue-cb:checked')]
+        .map(cb => parseInt(cb.closest('.queue-item').dataset.id));
+
+    if (selected.length === 0) {{
+        alert('Select at least one package to build.');
+        return;
+    }}
+
+    const toProcess = loadQueue().filter(p => selected.includes(p.id));
+    const btn    = document.getElementById('queue-build-btn');
+    const progEl = document.getElementById('build-progress');
+
+    btn.disabled = true;
+    progEl.className = 'running';
+    progEl.style.display = 'block';
+    progEl.textContent = `Building 0 / ${{toProcess.length}}…`;
+
+    const errors = [];
+    let done = 0;
+
+    for (const pkg of toProcess) {{
+        progEl.textContent =
+            `Building ${{done + 1}} / ${{toProcess.length}}: ${{pkg.vendor}} / ${{pkg.package_name}}…`;
+        try {{
+            const res  = await fetch('/api/build-package', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{
+                    vendor:       pkg.vendor,
+                    package_name: pkg.package_name,
+                    date:         pkg.date,
+                    output_dir:   pkg.output_dir,
+                    package_note: pkg.package_note,
+                    blocks:       pkg.blocks,
+                }}),
+            }});
+            const data = await res.json();
+            if (data.success) {{
+                saveQueue(loadQueue().filter(p => p.id !== pkg.id));
+                done++;
+            }} else {{
+                errors.push(`${{pkg.vendor}}/${{pkg.package_name}}: ${{(data.errors || [data.error || 'error']).join(', ')}}`);
+            }}
+        }} catch(e) {{
+            errors.push(`${{pkg.vendor}}/${{pkg.package_name}}: Network error — ${{e.message}}`);
+        }}
+        renderQueue();
+    }}
+
+    btn.disabled = false;
+    if (errors.length === 0) {{
+        progEl.className = 'done-ok';
+        progEl.textContent = `✓ Built ${{done}} package${{done === 1 ? '' : 's'}} successfully.`;
+    }} else {{
+        progEl.className = 'done-err';
+        progEl.textContent =
+            `✓ ${{done}} built   ✗ ${{errors.length}} failed:\\n${{errors.join('\\n')}}`;
     }}
 }}
 
@@ -1494,6 +1804,7 @@ cartLoad();
 loadPackageNote();
 loadBuildForm();
 renderCart();
+updateQueueBadge();
 
 render();
 </script>
