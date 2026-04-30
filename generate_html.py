@@ -951,6 +951,89 @@ class HTMLGenerator:
         #build-progress.done-err {{
             background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3); color: #f85149;
         }}
+        /* ── Delivered theme ── */
+        .delivered-active {{
+            --accent:      #4ac26b;
+            --accent-glow: rgba(74,194,107,0.15);
+        }}
+        .delivered-active .tab-btn.active {{
+            color: #4ac26b; border-bottom-color: #4ac26b;
+        }}
+
+        /* ── Delivered view controls ── */
+        #del-search-input {{
+            width: 100%; padding: 8px 34px;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.9em;
+            outline: none; transition: border-color 0.15s;
+        }}
+        #del-search-input::placeholder {{ color: var(--text-muted); }}
+        #del-search-input:focus {{ border-color: var(--accent); }}
+        #del-search-clear {{
+            position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; cursor: pointer;
+            color: var(--text-muted); font-size: 1em; display: none; line-height: 1;
+        }}
+        #del-search-clear:hover {{ color: var(--text); }}
+
+        /* ── Delivered package cards ── */
+        .del-entry {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-left: 3px solid transparent;
+            padding: 12px 16px; margin-bottom: 8px;
+            border-radius: 8px; transition: all 0.15s;
+        }}
+        .del-entry:hover {{
+            background: var(--surface-2); border-color: var(--border-hover);
+            border-left-color: var(--accent); transform: translateX(3px);
+        }}
+        .del-vendor-badge {{
+            background: rgba(74,194,107,0.12); color: #4ac26b;
+            border: 1px solid rgba(74,194,107,0.25);
+            padding: 3px 9px; border-radius: 6px;
+            font-size: 0.8em; font-weight: 700;
+            font-family: 'Monaco','Courier New',monospace;
+        }}
+        .del-name-badge {{
+            background: rgba(68,147,248,0.12); color: #7eb8f7;
+            border: 1px solid rgba(68,147,248,0.2);
+            padding: 3px 9px; border-radius: 6px;
+            font-size: 0.88em; font-weight: 600;
+        }}
+        .del-date-badge {{
+            background: rgba(227,179,65,0.12); color: #e3b341;
+            border: 1px solid rgba(227,179,65,0.2);
+            padding: 3px 9px; border-radius: 6px;
+            font-size: 0.8em; font-weight: 600;
+            font-family: 'Monaco','Courier New',monospace;
+        }}
+        .del-version {{
+            background: rgba(163,113,247,0.12); color: #a371f7;
+            border: 1px solid rgba(163,113,247,0.2);
+            padding: 2px 8px; border-radius: 6px;
+            font-size: 0.76em; font-weight: 700;
+        }}
+        .del-blocks {{
+            margin-top: 8px; padding-top: 8px;
+            border-top: 1px solid var(--border);
+            display: flex; flex-direction: column; gap: 4px;
+        }}
+        .del-block-row {{
+            display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+        }}
+        .del-block-name {{
+            font-family: 'Monaco','Courier New',monospace;
+            font-size: 0.78em; color: var(--text-muted);
+            margin-right: 4px;
+        }}
+        .del-block-note {{
+            font-size: 0.76em; color: var(--text-muted);
+            font-style: italic; margin-left: 4px;
+        }}
+        .del-pkg-note {{
+            margin-top: 6px; font-size: 0.82em;
+            color: var(--text-muted); font-style: italic;
+        }}
         body.cart-open {{ padding-bottom: 370px; }}
         body.cart-open.cart-collapsed {{ padding-bottom: 48px; }}
     </style>
@@ -1018,10 +1101,20 @@ class HTMLGenerator:
     </div>
 
     <div id="view-delivered" style="display:none">
-      <div class="empty-state">
-        <div class="empty-state-icon">📦</div>
-        <p>Delivered packages — coming soon</p>
+      <div class="controls">
+        <button class="mode-button active" onclick="setDeliveredMode('vendor')"  id="del-btn-vendor">🏢 By Vendor</button>
+        <button class="mode-button"        onclick="setDeliveredMode('date')"    id="del-btn-date">📅 By Date</button>
+        <button class="mode-button"        onclick="setDeliveredMode('scene')"   id="del-btn-scene">🎞️ By Scene</button>
+        <button class="mode-button"        onclick="setDeliveredMode('code')"    id="del-btn-code">🏷️ By Code</button>
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input id="del-search-input" type="text"
+                 placeholder="Search vendor, package, block…"
+                 oninput="onDeliveredSearch(this.value)">
+          <button id="del-search-clear" onclick="clearDeliveredSearch()" title="Clear">✕</button>
+        </div>
       </div>
+      <div id="delivered-content"></div>
     </div>
 
     <footer>Generated on {generated_time}</footer>
@@ -1637,7 +1730,180 @@ function setView(view) {{
         document.getElementById(`view-${{v}}`).style.display = v === view ? 'block' : 'none';
         document.getElementById(`tab-${{v}}`).classList.toggle('active', v === view);
     }});
+    const container = document.querySelector('.container');
+    if (view === 'delivered') {{
+        container.classList.add('delivered-active');
+        loadDelivered();
+    }} else {{
+        container.classList.remove('delivered-active');
+    }}
     if (view === 'queue') renderQueue();
+}}
+
+// ── Delivered packages view ───────────────────────────────────────────────────
+let deliveredMode      = 'vendor';
+let deliveredQuery     = '';
+let deliveredPackages  = [];
+const expandedDelBlocks = new Set();
+
+function setDeliveredMode(mode) {{
+    deliveredMode = mode;
+    ['vendor','date','scene','code'].forEach(m => {{
+        document.getElementById(`del-btn-${{m}}`).classList.toggle('active', m === mode);
+    }});
+    renderDelivered();
+}}
+
+function onDeliveredSearch(val) {{
+    deliveredQuery = val.trim().toLowerCase();
+    document.getElementById('del-search-clear').style.display = val ? 'flex' : 'none';
+    renderDelivered();
+}}
+
+function clearDeliveredSearch() {{
+    const el = document.getElementById('del-search-input');
+    if (el) el.value = '';
+    onDeliveredSearch('');
+}}
+
+function pkgMatches(pkg, q) {{
+    if (!q) return true;
+    const haystack = [
+        pkg.vendor || '',
+        pkg.package_name || '',
+        pkg.date || '',
+        pkg.package_note || '',
+        ...(pkg.blocks || []).map(b => b.delivery_name || b.original_name || ''),
+        ...(pkg.blocks || []).map(b => b.note || ''),
+        ...(pkg.blocks || []).flatMap(b => b.scenes || []),
+        ...(pkg.blocks || []).map(b => b.code || ''),
+        ...(pkg.blocks || []).map(b => b.description || ''),
+    ].join(' ').toLowerCase();
+    return haystack.includes(q);
+}}
+
+async function loadDelivered() {{
+    const el = document.getElementById('delivered-content');
+    if (!el) return;
+    el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><p>Loading…</p></div>';
+    try {{
+        const res  = await fetch('/api/delivered-packages');
+        const data = await res.json();
+        deliveredPackages = data.packages || [];
+        renderDelivered();
+    }} catch(e) {{
+        el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>Could not load packages: ${{escHtml(e.message)}}</p></div>`;
+    }}
+}}
+
+function renderDelivered() {{
+    const el = document.getElementById('delivered-content');
+    if (!el) return;
+    const filtered = deliveredPackages.filter(p => pkgMatches(p, deliveredQuery));
+
+    if (filtered.length === 0) {{
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📦</div><p>No delivered packages found.</p></div>';
+        return;
+    }}
+
+    // Group packages
+    const groups = {{}};
+    filtered.forEach(pkg => {{
+        let key;
+        if (deliveredMode === 'vendor')     key = pkg.vendor || 'Unknown';
+        else if (deliveredMode === 'date')  key = (pkg.date || '').slice(0,6) || 'Unknown';  // YYYYMM
+        else if (deliveredMode === 'scene') {{
+            const scenes = (pkg.blocks || []).flatMap(b => b.scenes || []);
+            const uniq   = [...new Set(scenes)];
+            key = uniq.length ? uniq.sort().join(', ') : '—';
+        }} else {{
+            const codes = (pkg.blocks || []).map(b => b.code).filter(Boolean);
+            const uniq  = [...new Set(codes)];
+            key = uniq.length ? uniq.sort().join(', ') : '—';
+        }}
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(pkg);
+    }});
+
+    const sortedKeys = Object.keys(groups).sort().reverse();
+    el.innerHTML = sortedKeys.map(key => {{
+        const pkgs = groups[key];
+        const cards = pkgs.map(renderDeliveredCard).join('');
+        let label = key;
+        if (deliveredMode === 'date' && key.length === 6) {{
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            label = `${{months[parseInt(key.slice(4),10)-1]}} ${{key.slice(0,4)}}`;
+        }}
+        const countLabel = `${{pkgs.length}} package${{pkgs.length === 1 ? '' : 's'}}`;
+        return `<div class="group">
+            <div class="group-header">
+                <span>📦 ${{escHtml(label)}}</span>
+                <span class="group-count">${{countLabel}}</span>
+            </div>
+            ${{cards}}
+        </div>`;
+    }}).join('');
+}}
+
+function renderDeliveredCard(pkg) {{
+    const version = pkg.version > 1 ? `<span class="del-version">v${{String(pkg.version).padStart(2,'0')}}</span>` : '';
+    const blocks  = pkg.blocks || [];
+    const bc      = blocks.length;
+    const ts      = pkg.timestamp ? pkg.timestamp.replace('T',' ') : '';
+    const pkgUid  = `${{pkg.vendor}}_${{pkg.package_name}}_${{pkg.date}}_${{pkg.version}}`;
+
+    const blockEntries = blocks.map((b, i) => {{
+        const blockId   = `${{pkgUid}}_${{i}}`;
+        const isExpanded = expandedDelBlocks.has(blockId);
+        const name      = escHtml(b.delivery_name || b.original_name || '');
+        const scenes    = (b.scenes || []).map(s =>
+            `<span class="title-scene">${{escHtml(s)}}</span>`
+        ).join('');
+        const code = b.code
+            ? b.code.split('_').map(c => `<span class="title-code">${{escHtml(c)}}</span>`).join('')
+            : '';
+        const note = b.note ? `<span class="del-block-note">— ${{escHtml(b.note)}}</span>` : '';
+        const chevron = `<button class="toggle-btn" style="margin-left:auto"
+            onclick="toggleDelBlock(this)" title="Expand / Collapse">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg></button>`;
+        const subdirs = b.subdirs || [];
+        return `<div class="entry${{isExpanded ? ' expanded' : ''}}" data-del-block-id="${{escHtml(blockId)}}">
+            <div class="entry-title-line">
+                <span class="del-block-name">${{name}}</span>${{scenes}}${{code}}${{note}}${{chevron}}
+            </div>
+            ${{renderSummary(subdirs)}}
+            <div class="entry-details">${{renderSubdirs(subdirs)}}</div>
+        </div>`;
+    }}).join('');
+
+    const pkgNote = pkg.package_note
+        ? `<div class="del-pkg-note">📝 ${{escHtml(pkg.package_note)}}</div>` : '';
+    const outPath = pkg.output_path
+        ? `<div style="font-size:0.72em;color:var(--text-muted);margin-top:6px;word-break:break-all">${{escHtml(pkg.output_path)}}</div>` : '';
+
+    return `<div class="del-entry">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <span class="del-vendor-badge">${{escHtml(pkg.vendor || '')}}</span>
+            <span class="del-name-badge">${{escHtml(pkg.package_name || '')}}</span>
+            <span class="del-date-badge">${{pkg.date || ''}}</span>
+            ${{version}}
+            <span style="font-size:0.8em;color:var(--text-muted)">${{bc}} block${{bc===1?'':'s'}}</span>
+            <span style="margin-left:auto;font-size:0.74em;color:var(--text-muted)">${{ts}}</span>
+        </div>
+        ${{blockEntries}}
+        ${{pkgNote}}${{outPath}}
+    </div>`;
+}}
+
+function toggleDelBlock(btn) {{
+    const entry = btn.closest('.entry');
+    const id    = entry.dataset.delBlockId;
+    const expanded = entry.classList.toggle('expanded');
+    if (expanded) expandedDelBlocks.add(id);
+    else          expandedDelBlocks.delete(id);
 }}
 
 function renderQueue() {{

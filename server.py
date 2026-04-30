@@ -17,6 +17,7 @@ import sys
 import json
 import shutil
 import subprocess
+from dataclasses import asdict
 import threading
 import webbrowser
 from datetime import datetime
@@ -157,6 +158,7 @@ def api_build_package():
     try:
         pkg_dir.mkdir(parents=True, exist_ok=True)
 
+        g_meta = HTMLGenerator(DATA_PATH)  # for subdir computation only
         copied = []
         for block in blocks:
             src  = Path(block["path"])
@@ -169,7 +171,8 @@ def api_build_package():
             if note:
                 (dest / "block_notes.txt").write_text(note, encoding="utf-8")
 
-            copied.append({"original_name": src.name, "delivery_name": dest_name, "note": note})
+            subdirs = [asdict(s) for s in g_meta.get_subdir_sections(dest)]
+            copied.append({"original_name": src.name, "delivery_name": dest_name, "note": note, "subdirs": subdirs})
 
         if package_note:
             (pkg_dir / "Package_Infos.txt").write_text(package_note, encoding="utf-8")
@@ -219,6 +222,34 @@ def api_build_package():
             except Exception:
                 pass
         return jsonify({"success": False, "errors": [str(e)]}), 500
+
+
+@app.route("/api/delivered-packages")
+def api_delivered_packages():
+    """Return all delivered package manifests from __packages_infos/."""
+    cfg_path = Path(DATA_PATH) / "__SHOOT_BROWSER" / "Config" / "delivery_config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception:
+        cfg = {}
+
+    output_dir = (cfg.get("default_output_dir") or "").strip()
+    if not output_dir:
+        return jsonify({"success": True, "packages": [],
+                        "warning": "No default_output_dir in delivery_config.json"})
+
+    pkg_infos_dir = Path(output_dir) / "__packages_infos"
+    if not pkg_infos_dir.exists():
+        return jsonify({"success": True, "packages": []})
+
+    packages = []
+    for f in sorted(pkg_infos_dir.glob("*.json"), reverse=True):
+        try:
+            packages.append(json.loads(f.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+
+    return jsonify({"success": True, "packages": packages})
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
