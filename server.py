@@ -14,6 +14,7 @@ Install dependency once:
 
 import csv as _csv_mod
 import os
+import platform
 import re
 import sys
 import json
@@ -511,6 +512,27 @@ def api_extract_slates():
         "skipped": len(skipped_blocks),
         "errors":  errors,
     })
+
+
+@app.route("/api/open-folder", methods=["POST"])
+def api_open_folder():
+    """Open a block directory in the native file manager."""
+    path = (request.json or {}).get("path", "")
+    if not path:
+        return jsonify({"success": False, "error": "No path provided"}), 400
+    resolved = Path(path).resolve()
+    if not str(resolved).startswith(str(Path(DATA_PATH).resolve())):
+        return jsonify({"success": False, "error": "Path outside data directory"}), 403
+    if not resolved.is_dir():
+        return jsonify({"success": False, "error": "Directory not found"}), 404
+    system = platform.system()
+    if system == "Darwin":
+        subprocess.run(["open", str(resolved)])
+    elif system == "Windows":
+        subprocess.run(["explorer", str(resolved)])
+    else:
+        subprocess.run(["xdg-open", str(resolved)])
+    return jsonify({"success": True})
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

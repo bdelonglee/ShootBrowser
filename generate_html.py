@@ -591,7 +591,7 @@ class HTMLGenerator:
             font-size: 0.78em;
             font-weight: 600;
         }}
-        .open-folder, .toggle-btn {{
+        .open-folder, .finder-btn, .toggle-btn {{
             background: none;
             border: none;
             cursor: pointer;
@@ -604,8 +604,9 @@ class HTMLGenerator:
         }}
         .open-folder {{ margin-left: auto; }}
         .entry:hover .open-folder,
+        .entry:hover .finder-btn,
         .entry:hover .toggle-btn {{ opacity: 0.7; }}
-        .open-folder:hover, .toggle-btn:hover {{ opacity: 1 !important; color: var(--accent); }}
+        .open-folder:hover, .finder-btn:hover, .toggle-btn:hover {{ opacity: 1 !important; color: var(--accent); }}
         .open-folder.copied {{ opacity: 1 !important; color: #56d364; }}
         .toggle-btn svg {{ transition: transform 0.2s; }}
         .entry.expanded .toggle-btn {{ opacity: 0.7; }}
@@ -1553,9 +1554,13 @@ function renderEntry(entry, q) {{
     ).join('');
     const descHtml   = `<span class="title-desc">${{highlight(entry.description.replace(/_/g,' '), q)}}</span>`;
     const noData     = entry.has_data ? '' : '<span class="badge-no-data">No Data</span>';
-    const copyBtn    = `<button class="open-folder" onclick="copyPath(this, this.closest('.entry').dataset.path)" title="Copy path (then ⌘⇧G in Finder)">
+    const copyBtn    = `<button class="open-folder" onclick="copyPath(this, this.closest('.entry').dataset.path)" title="Copy path">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg></button>`;
+    const finderBtn  = `<button class="finder-btn" onclick="openInFinder(this.closest('.entry').dataset.path)" title="Open in Finder / Explorer">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
         </svg></button>`;
     const chevron    = `<button class="toggle-btn" onclick="toggleEntry(this)" title="Expand / Collapse">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1567,7 +1572,7 @@ function renderEntry(entry, q) {{
     const isExpanded = expandedPaths.has(entry.path);
     return `<div class="entry${{inCart ? ' in-cart' : ''}}${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(entry.path)}}">
         <div class="entry-title-line">
-            ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{copyBtn}}${{chevron}}
+            ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{copyBtn}}${{finderBtn}}${{chevron}}
         </div>
         ${{renderSummary(entry.subdirs, entry.slate_count || 0, entry.day, entry.scenes)}}
         <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
@@ -1679,6 +1684,18 @@ function copyPath(btn, path) {{
         }}, 1500);
     }} else {{
         window.prompt('Copy path:', path);
+    }}
+}}
+
+async function openInFinder(path) {{
+    try {{
+        await fetch('/api/open-folder', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json'}},
+            body: JSON.stringify({{ path }})
+        }});
+    }} catch(e) {{
+        console.error('openInFinder failed:', e);
     }}
 }}
 
