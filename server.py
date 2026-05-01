@@ -252,6 +252,33 @@ def api_delivered_packages():
     return jsonify({"success": True, "packages": packages})
 
 
+@app.route("/api/database")
+def api_database():
+    """Return CSV rows from __DATABASE/*.csv (most recent file by mtime)."""
+    import csv as csv_mod
+    db_dir = Path(DATA_PATH) / "__DATABASE"
+    if not db_dir.exists():
+        return jsonify({"success": True, "rows": [], "filename": None})
+    csvfiles = sorted(
+        (f for f in db_dir.glob("*.csv") if not f.name.startswith(".")),
+        key=lambda f: f.stat().st_mtime, reverse=True,
+    )
+    if not csvfiles:
+        return jsonify({"success": True, "rows": [], "filename": None})
+    csvfile = csvfiles[0]
+    rows = []
+    for encoding in ("mac_roman", "utf-8-sig", "latin-1"):
+        try:
+            with open(csvfile, encoding=encoding, newline="") as f:
+                reader = csv_mod.DictReader(f)
+                rows = [{k: (v or "").strip() for k, v in row.items() if k is not None}
+                        for row in reader]
+            break
+        except UnicodeDecodeError:
+            rows = []
+    return jsonify({"success": True, "rows": rows, "filename": csvfile.name})
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 def _open_browser(port: int) -> None:

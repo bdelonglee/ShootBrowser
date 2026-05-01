@@ -1034,6 +1034,96 @@ class HTMLGenerator:
             margin-top: 6px; font-size: 0.82em;
             color: var(--text-muted); font-style: italic;
         }}
+        .database-active {{
+            --accent: #a371f7;
+            --accent-glow: rgba(163,113,247,0.15);
+        }}
+        .database-active .tab-btn.active {{
+            color: #a371f7; border-bottom-color: #a371f7;
+        }}
+        .database-active .entry:not(.expanded) {{
+            padding: 7px 14px;
+        }}
+        .database-active .entry:not(.expanded) .entry-title-line {{
+            margin-bottom: 0;
+        }}
+        .db-filter-row {{
+            display: flex; flex-wrap: wrap; gap: 8px 12px;
+            margin-top: 12px; align-items: flex-end;
+        }}
+        .db-filter-field {{
+            display: flex; flex-direction: column; gap: 3px;
+        }}
+        .db-filter-field label {{
+            font-size: 0.7em; color: var(--text-muted); font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }}
+        .db-filter-input {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.82em;
+            padding: 5px 8px; width: 90px; transition: border-color 0.15s;
+        }}
+        .db-filter-input:focus {{ outline: none; border-color: var(--accent); }}
+        .db-filter-input::placeholder {{ color: var(--text-muted); }}
+        .db-sort-select {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.82em;
+            padding: 5px 8px; cursor: pointer;
+        }}
+        .db-sort-dir {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.9em;
+            padding: 5px 10px; cursor: pointer; transition: all 0.15s; line-height: 1;
+        }}
+        .db-sort-dir:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .db-slate {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.85em; font-weight: 700;
+            background: rgba(163,113,247,0.12); color: #a371f7;
+            border: 1px solid rgba(163,113,247,0.2); padding: 2px 9px; border-radius: 6px;
+        }}
+        .db-vfxid {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.78em;
+            background: rgba(57,197,207,0.10); color: #39c5cf;
+            border: 1px solid rgba(57,197,207,0.2); padding: 2px 8px; border-radius: 6px;
+        }}
+        .db-date {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.78em;
+            background: rgba(227,179,65,0.10); color: #e3b341;
+            border: 1px solid rgba(227,179,65,0.2); padding: 2px 8px; border-radius: 6px;
+        }}
+        .db-day {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.78em;
+            background: rgba(86,211,100,0.10); color: #56d364;
+            border: 1px solid rgba(86,211,100,0.2); padding: 2px 8px; border-radius: 6px;
+        }}
+        .db-roll {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.75em;
+            color: var(--text-muted); background: var(--surface-2);
+            border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px;
+        }}
+        .db-lens, .db-focal, .db-tilt {{
+            font-size: 0.78em; color: #f78166;
+            background: rgba(247,129,102,0.10);
+            border: 1px solid rgba(247,129,102,0.2); padding: 2px 8px; border-radius: 6px;
+        }}
+        .db-details {{ display: flex; flex-direction: column; gap: 16px; }}
+        .db-section {{ display: flex; flex-direction: column; gap: 2px; }}
+        .db-section-label {{
+            font-size: 0.7em; letter-spacing: 0.06em;
+            color: var(--accent); font-weight: 700;
+            border-bottom: 1px solid var(--border); padding-bottom: 2px;
+        }}
+        .db-row {{ display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline; }}
+        .db-field {{ display: flex; gap: 5px; align-items: baseline; font-size: 0.8em; }}
+        .db-field-label {{ color: var(--text-muted); font-size: 0.88em; white-space: nowrap; }}
+        .db-field-value {{ color: var(--text); font-weight: 500; }}
+        .db-field-value.empty {{ color: var(--text-muted); font-style: italic; }}
+        .db-tag {{
+            display: inline-block; font-size: 0.78em;
+            background: rgba(205,217,229,0.12); color: #cdd9e5;
+            border: 1px solid rgba(205,217,229,0.22);
+            padding: 2px 9px; border-radius: 4px; margin: 1px 2px;
+        }}
         body.cart-open {{ padding-bottom: 370px; }}
         body.cart-open.cart-collapsed {{ padding-bottom: 48px; }}
     </style>
@@ -1048,6 +1138,7 @@ class HTMLGenerator:
 
     <nav class="tab-bar">
       <button class="tab-btn active" onclick="setView('browse')" id="tab-browse">📂 Browse</button>
+      <button class="tab-btn" onclick="setView('database')" id="tab-database">🗄️ Database</button>
       <button class="tab-btn" onclick="setView('queue')" id="tab-queue">📋 Queue</button>
       <button class="tab-btn" onclick="setView('delivered')" id="tab-delivered">✅ Delivered</button>
     </nav>
@@ -1089,6 +1180,72 @@ class HTMLGenerator:
     </div>
 
     </div><!-- end view-browse -->
+
+    <div id="view-database" style="display:none">
+      <div class="controls">
+        <button class="mode-button active" onclick="setDbGroup('scene')"     id="db-grp-scene">🎬 Scene</button>
+        <button class="mode-button"        onclick="setDbGroup('vfx_id')"    id="db-grp-vfx_id">🎭 VFX ID</button>
+        <button class="mode-button"        onclick="setDbGroup('date')"      id="db-grp-date">📅 Date</button>
+        <button class="mode-button"        onclick="setDbGroup('shoot_day')" id="db-grp-shoot_day">🎬 Shoot Day</button>
+        <button class="mode-button"        onclick="setDbGroup('lens')"      id="db-grp-lens">🔭 Lens</button>
+        <button class="mode-button"        onclick="setDbGroup('focal')"     id="db-grp-focal">📐 Focal</button>
+        <select id="db-sort-select" class="db-sort-select" onchange="setDbSort(this.value)">
+          <option value="scene">Sort: Scene</option>
+          <option value="slate">Sort: Slate</option>
+          <option value="vfx_id">Sort: VFX ID</option>
+          <option value="date">Sort: Date</option>
+          <option value="shoot_day">Sort: Shoot Day</option>
+          <option value="lens">Sort: Lens</option>
+          <option value="focal">Sort: Focal</option>
+        </select>
+        <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
+      </div>
+      <div class="db-filter-row">
+        <div class="db-filter-field">
+          <label>Slate</label>
+          <input class="db-filter-input" type="text" id="dbf-slate"
+                 oninput="setDbFilter('slate', this.value)" placeholder="49A">
+        </div>
+        <div class="db-filter-field">
+          <label>VFX ID</label>
+          <input class="db-filter-input" type="text" id="dbf-vfx_id"
+                 oninput="setDbFilter('vfx_id', this.value)" placeholder="">
+        </div>
+        <div class="db-filter-field">
+          <label>Date</label>
+          <input class="db-filter-input" type="text" id="dbf-date"
+                 oninput="setDbFilter('date', this.value)" placeholder="2026-04">
+        </div>
+        <div class="db-filter-field">
+          <label>Shoot Day</label>
+          <input class="db-filter-input" type="text" id="dbf-shoot_day"
+                 oninput="setDbFilter('shoot_day', this.value)" placeholder="2">
+        </div>
+        <div class="db-filter-field">
+          <label>Roll</label>
+          <input class="db-filter-input" type="text" id="dbf-roll"
+                 oninput="setDbFilter('roll', this.value)" placeholder="">
+        </div>
+        <div class="db-filter-field">
+          <label>Lens</label>
+          <input class="db-filter-input" type="text" id="dbf-lens"
+                 oninput="setDbFilter('lens', this.value)" placeholder="35mm">
+        </div>
+        <div class="db-filter-field">
+          <label>Focal</label>
+          <input class="db-filter-input" type="text" id="dbf-focal"
+                 oninput="setDbFilter('focal', this.value)" placeholder="35mm">
+        </div>
+        <div class="search-wrapper" style="flex:1;min-width:180px">
+          <span class="search-icon">🔍</span>
+          <input id="db-global-search" type="text"
+                 placeholder="Search all other fields…"
+                 oninput="setDbQuery(this.value)">
+          <button id="db-search-clear" onclick="clearDbSearch()" title="Clear">✕</button>
+        </div>
+      </div>
+      <div id="database-content" style="margin-top:16px"></div>
+    </div>
 
     <div id="view-queue" style="display:none">
       <div class="queue-toolbar">
@@ -1726,18 +1883,16 @@ function updateQueueBadge() {{
 }}
 
 function setView(view) {{
-    ['browse', 'queue', 'delivered'].forEach(v => {{
+    ['browse', 'database', 'queue', 'delivered'].forEach(v => {{
         document.getElementById(`view-${{v}}`).style.display = v === view ? 'block' : 'none';
         document.getElementById(`tab-${{v}}`).classList.toggle('active', v === view);
     }});
     const container = document.querySelector('.container');
-    if (view === 'delivered') {{
-        container.classList.add('delivered-active');
-        loadDelivered();
-    }} else {{
-        container.classList.remove('delivered-active');
-    }}
-    if (view === 'queue') renderQueue();
+    container.classList.toggle('delivered-active', view === 'delivered');
+    container.classList.toggle('database-active',  view === 'database');
+    if (view === 'delivered') loadDelivered();
+    if (view === 'database')  loadDatabase();
+    if (view === 'queue')     renderQueue();
 }}
 
 // ── Delivered packages view ───────────────────────────────────────────────────
@@ -1904,6 +2059,277 @@ function toggleDelBlock(btn) {{
     const expanded = entry.classList.toggle('expanded');
     if (expanded) expandedDelBlocks.add(id);
     else          expandedDelBlocks.delete(id);
+}}
+
+// ── Database view ─────────────────────────────────────────────────────────────
+let dbRows         = [];
+let dbGroupMode    = 'scene';
+let dbSortKey      = 'scene';
+let dbSortAsc      = true;
+let dbFilters      = {{ slate: '', vfx_id: '', date: '', shoot_day: '', roll: '', lens: '', focal: '' }};
+let dbQuery        = '';
+const expandedDbRows = new Set();
+
+const DB_KEY_FIELDS = ['Slate', 'VFX ID', 'Date', 'Shoot Day', 'Roll', 'Lens', 'Focal'];
+
+const DB_SECTIONS = [
+    {{ label: 'DESCRIPTION', rows: [
+        ['Scene Description', 'Notes', 'VFX Work'],
+    ]}},
+    {{ label: 'SET REFS', rows: [['Set Refs']], tagsField: 'Set Refs' }},
+    {{ label: 'SLATE', rows: [
+        ['Slate', 'VFX ID', 'Take', 'Roll'],
+        ['Take Notes'],
+    ]}},
+    {{ label: 'CAMERA', rows: [
+        ['Camera', 'Body', 'Camera Move', 'Resolution'],
+    ]}},
+    {{ label: 'LENS', rows: [
+        ['Lens', 'Focal', 'F-Stop', 'Focus'],
+        ['Tilt', 'Height'],
+        ['Shutter', 'FPS', 'WB', 'ISO', 'Filter'],
+    ]}},
+    {{ label: 'LOCATION', rows: [
+        ['Shoot Day', 'Date'],
+        ['Set Location', 'Script Location'],
+        ['Int/Ext', 'Day/Night'],
+    ]}},
+    {{ label: 'INFOS', rows: [
+        ['Unit', 'Wrangler', 'Timestamp'],
+    ], includeOthers: true }},
+];
+
+function setDbGroup(mode) {{
+    dbGroupMode = mode;
+    ['scene','vfx_id','date','shoot_day','lens','focal'].forEach(m => {{
+        document.getElementById(`db-grp-${{m}}`).classList.toggle('active', m === mode);
+    }});
+    renderDatabase();
+}}
+
+function setDbSort(key) {{
+    dbSortKey = key;
+    renderDatabase();
+}}
+
+function toggleDbSortDir() {{
+    dbSortAsc = !dbSortAsc;
+    document.getElementById('db-sort-dir').textContent = dbSortAsc ? '↑' : '↓';
+    renderDatabase();
+}}
+
+function setDbFilter(key, val) {{
+    dbFilters[key] = val.trim().toLowerCase();
+    renderDatabase();
+}}
+
+function setDbQuery(val) {{
+    dbQuery = val.trim().toLowerCase();
+    document.getElementById('db-search-clear').style.display = val ? 'flex' : 'none';
+    renderDatabase();
+}}
+
+function clearDbSearch() {{
+    const el = document.getElementById('db-global-search');
+    if (el) el.value = '';
+    setDbQuery('');
+}}
+
+function dbRowMatches(row) {{
+    const f = dbFilters;
+    if (f.slate     && !(row['Slate']      || '').toLowerCase().includes(f.slate))     return false;
+    if (f.vfx_id    && !(row['VFX ID']     || '').toLowerCase().includes(f.vfx_id))    return false;
+    if (f.date      && !(row['Date']       || '').toLowerCase().includes(f.date))       return false;
+    if (f.shoot_day && !(row['Shoot Day']  || '').toLowerCase().includes(f.shoot_day)) return false;
+    if (f.roll      && !(row['Roll']       || '').toLowerCase().includes(f.roll))       return false;
+    if (f.lens      && !(row['Lens']       || '').toLowerCase().includes(f.lens))       return false;
+    if (f.focal     && !(row['Focal']      || '').toLowerCase().includes(f.focal))      return false;
+    if (dbQuery) {{
+        const others = Object.entries(row)
+            .filter(([ k ]) => !DB_KEY_FIELDS.includes(k))
+            .map(([ , v ]) => v).join(' ').toLowerCase();
+        if (!others.includes(dbQuery)) return false;
+    }}
+    return true;
+}}
+
+function dbGroupKey(row) {{
+    switch (dbGroupMode) {{
+        case 'scene': {{
+            const m = (row['Slate'] || '').match(/^(\\d+)/);
+            return m ? `Scene ${{m[1]}}` : (row['Slate'] || '—');
+        }}
+        case 'vfx_id':    return row['VFX ID']    || '—';
+        case 'date':      return row['Date']       || '—';
+        case 'shoot_day': return `Day ${{row['Shoot Day'] || '—'}}`;
+        case 'lens':      return row['Lens']       || '—';
+        case 'focal':     return row['Focal']      || '—';
+        default:          return '—';
+    }}
+}}
+
+function dbSortValue(row) {{
+    switch (dbSortKey) {{
+        case 'scene': {{
+            const m = (row['Slate'] || '').match(/^(\\d+)/);
+            return m ? parseInt(m[1]) : 9999;
+        }}
+        case 'slate':  return row['Slate'] || '';
+        case 'vfx_id': return row['VFX ID'] || '';
+        case 'date':   return row['Date'] || '';
+        case 'shoot_day': {{
+            const sd = row['Shoot Day'] || '';
+            const m  = sd.match(/(\\d+)/);
+            const n  = m ? parseInt(m[1]) : 9999;
+            return sd.toUpperCase().startsWith('P') ? n + 10000 : n;
+        }}
+        case 'lens':  return row['Lens'] || '';
+        case 'focal': {{
+            const m = (row['Focal'] || '').match(/(\\d+)/);
+            return m ? parseInt(m[1]) : 9999;
+        }}
+        default: return '';
+    }}
+}}
+
+async function loadDatabase() {{
+    const el = document.getElementById('database-content');
+    if (!el) return;
+    if (dbRows.length > 0) {{ renderDatabase(); return; }}
+    el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><p>Loading…</p></div>';
+    try {{
+        const res  = await fetch('/api/database');
+        const data = await res.json();
+        dbRows = data.rows || [];
+        renderDatabase();
+    }} catch(e) {{
+        el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>Could not load database: ${{escHtml(e.message)}}</p></div>`;
+    }}
+}}
+
+function renderDatabase() {{
+    const el = document.getElementById('database-content');
+    if (!el) return;
+
+    const filtered = dbRows.filter(dbRowMatches);
+    if (filtered.length === 0) {{
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>No rows match the current filters.</p></div>';
+        return;
+    }}
+
+    const sorted = [...filtered].sort((a, b) => {{
+        const av = dbSortValue(a), bv = dbSortValue(b);
+        let cmp;
+        if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+        else cmp = String(av).localeCompare(String(bv));
+        return dbSortAsc ? cmp : -cmp;
+    }});
+
+    const groupKeys = [];
+    const groups    = {{}};
+    sorted.forEach(row => {{
+        const key = dbGroupKey(row);
+        if (!groups[key]) {{ groups[key] = []; groupKeys.push(key); }}
+        groups[key].push(row);
+    }});
+
+    el.innerHTML = groupKeys.map(key => {{
+        const rows   = groups[key];
+        const cards  = rows.map(row => renderDbCard(row, dbRows.indexOf(row))).join('');
+        const countLabel = `${{rows.length}} take${{rows.length === 1 ? '' : 's'}}`;
+        return `<div class="group">
+            <div class="group-header">
+                <span>🎬 ${{escHtml(key)}}</span>
+                <span class="group-count">${{countLabel}}</span>
+            </div>
+            ${{cards}}
+        </div>`;
+    }}).join('');
+}}
+
+function renderDbCard(row, idx) {{
+    const id         = `db_${{idx}}`;
+    const isExpanded = expandedDbRows.has(id);
+    const slate  = row['Slate']     || '—';
+    const vfxId  = row['VFX ID']   || '';
+    const date   = row['Date']      || '—';
+    const day    = row['Shoot Day'] || '—';
+    const roll   = row['Roll']      || '';
+    const lens   = row['Lens']      || '—';
+    const focal  = row['Focal']     || '—';
+    const tilt   = row['Tilt']      || '';
+    const chevron = `<button class="toggle-btn" style="margin-left:auto"
+        onclick="toggleDbCard(this)" title="Expand / Collapse">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+        </svg></button>`;
+    return `<div class="entry${{isExpanded ? ' expanded' : ''}}" data-db-id="${{escHtml(id)}}">
+        <div class="entry-title-line">
+            <span class="db-slate">${{escHtml(slate)}}</span>
+            ${{vfxId  ? `<span class="db-vfxid">${{escHtml(vfxId)}}</span>` : ''}}
+            <span class="db-date">${{escHtml(date)}}</span>
+            <span class="db-day">${{escHtml(day)}}</span>
+            ${{roll   ? `<span class="db-roll">${{escHtml(roll)}}</span>` : ''}}
+            <span class="db-lens">${{escHtml(lens)}}</span>
+            <span class="db-focal">${{escHtml(focal)}}</span>
+            ${{tilt   ? `<span class="db-tilt">${{escHtml(tilt)}}</span>` : ''}}
+            ${{chevron}}
+        </div>
+        <div class="entry-details">${{renderDbDetails(row)}}</div>
+    </div>`;
+}}
+
+function renderDbField(f, v) {{
+    return `<span class="db-field">
+        <span class="db-field-label">${{escHtml(f)}}</span>
+        <span class="db-field-value${{v ? '' : ' empty'}}">${{escHtml(v || '—')}}</span>
+    </span>`;
+}}
+
+function renderDbDetails(row) {{
+    const coveredFields = new Set(DB_SECTIONS.flatMap(s =>
+        s.tagsField ? [s.tagsField] : s.rows.flat()
+    ));
+    const otherFields = Object.keys(row).filter(k => !coveredFields.has(k));
+
+    const sections = DB_SECTIONS.map(sec => {{
+        let rowsHtml;
+
+        if (sec.tagsField) {{
+            const raw  = (row[sec.tagsField] || '').trim();
+            const tags = raw ? raw.split(/[,;]/).map(t => t.trim()).filter(Boolean) : [];
+            rowsHtml = `<div class="db-row">${{
+                tags.length
+                    ? tags.map(t => `<span class="db-tag">${{escHtml(t)}}</span>`).join('')
+                    : '<span class="db-field-value empty">—</span>'
+            }}</div>`;
+        }} else {{
+            rowsHtml = sec.rows.map(fields => {{
+                const cells = fields.map(f => renderDbField(f, (row[f] || '').trim())).join('');
+                return `<div class="db-row">${{cells}}</div>`;
+            }}).join('');
+
+            if (sec.includeOthers && otherFields.length) {{
+                const cells = otherFields.map(f => renderDbField(f, (row[f] || '').trim())).join('');
+                rowsHtml += `<div class="db-row">${{cells}}</div>`;
+            }}
+        }}
+
+        return `<div class="db-section">
+            <div class="db-section-label">${{escHtml(sec.label)}}</div>
+            ${{rowsHtml}}
+        </div>`;
+    }}).join('');
+    return `<div class="db-details">${{sections}}</div>`;
+}}
+
+function toggleDbCard(btn) {{
+    const entry    = btn.closest('.entry');
+    const id       = entry.dataset.dbId;
+    const expanded = entry.classList.toggle('expanded');
+    if (expanded) expandedDbRows.add(id);
+    else          expandedDbRows.delete(id);
 }}
 
 function renderQueue() {{
