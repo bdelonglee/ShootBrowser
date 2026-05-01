@@ -82,6 +82,14 @@ def api_generate_html():
     })
 
 
+@app.route("/api/generate-offline-html", methods=["POST"])
+def api_generate_offline_html():
+    """Generate a fully self-contained offline HTML snapshot."""
+    g = make_generator()
+    out = g.generate_offline_html()
+    return jsonify({"success": True, "path": out})
+
+
 @app.route("/api/run-sanity-check", methods=["POST"])
 def api_run_sanity_check():
     """Run sanity_check.py and return the captured output."""

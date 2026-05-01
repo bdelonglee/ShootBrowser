@@ -333,19 +333,68 @@ class HTMLGenerator:
         print("🎨 Generating HTML page...")
         out = Path(output_path) if output_path else self.default_output_path()
         out.parent.mkdir(parents=True, exist_ok=True)
-
         with open(out, 'w', encoding='utf-8') as f:
             f.write(self._build_html(self.build_data()))
-
         print(f"   Saved to: {out}")
 
-    def _build_html(self, data: dict) -> str:
-        data_json      = json.dumps(data, indent=2)
+    def generate_offline_html(self, output_path: Optional[str] = None):
+        print("🎨 Generating offline HTML page...")
+        out = Path(output_path) if output_path else (
+            self.default_output_path().parent / 'vfx_shoot_browser_offline.html'
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        offline_data = {
+            'db_rows':   self._load_offline_db_rows(),
+            'delivered': self._load_offline_delivered(),
+        }
+        with open(out, 'w', encoding='utf-8') as f:
+            f.write(self._build_html(self.build_data(), offline_data=offline_data))
+        print(f"   Saved to: {out}")
+        return str(out)
+
+    def _load_offline_db_rows(self) -> list:
+        """Load database CSV rows for embedding in offline HTML."""
+        db_dir = self.data_path / '__DATABASE'
+        if not db_dir.exists():
+            return []
+        csvfiles = sorted(
+            [f for f in db_dir.glob('*.csv') if not f.name.startswith('.')],
+            key=lambda f: f.stat().st_mtime, reverse=True,
+        )
+        if not csvfiles:
+            return []
+        import csv as _csv
+        for encoding in ('mac_roman', 'utf-8-sig', 'latin-1'):
+            try:
+                with open(csvfiles[0], encoding=encoding, newline='') as f:
+                    return [dict(r) for r in _csv.DictReader(f)]
+            except UnicodeDecodeError:
+                pass
+        return []
+
+    def _load_offline_delivered(self) -> list:
+        """Load delivered package manifests for embedding in offline HTML."""
+        packages_dir = Path(self.default_output_dir) / '__packages_infos'
+        if not packages_dir.exists():
+            return []
+        packages = []
+        for f in sorted(packages_dir.glob('*.json'), key=lambda f: f.name, reverse=True):
+            try:
+                packages.append(json.loads(f.read_text(encoding='utf-8')))
+            except Exception:
+                pass
+        return packages
+
+    def _build_html(self, data: dict, offline_data: Optional[dict] = None) -> str:
+        data_json         = json.dumps(data, indent=2)
         delivery_cfg_json = json.dumps({
             'vendors':            self.vendors,
             'default_output_dir': self.default_output_dir,
         })
         generated_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        offline_mode        = offline_data is not None
+        offline_db_json     = json.dumps(offline_data['db_rows']   if offline_data else [])
+        offline_del_json    = json.dumps(offline_data['delivered']  if offline_data else [])
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -664,6 +713,27 @@ class HTMLGenerator:
             padding: 0 4px;
         }}
         .db-pin-clear:hover {{ color: var(--text); }}
+
+        /* ── Offline / read-only mode ── */
+        .offline-mode #tab-queue,
+        .offline-mode #tab-delivered,
+        .offline-mode #cart-panel,
+        .offline-mode .entry-cb,
+        .offline-mode .finder-btn,
+        .offline-mode #extract-slates-btn,
+        .offline-mode #extract-status,
+        .offline-mode #offline-html-btn,
+        .offline-mode #offline-html-status {{ display: none !important; }}
+        .offline-mode-banner {{
+            background: rgba(163, 113, 247, 0.1);
+            border: 1px solid rgba(163, 113, 247, 0.3);
+            color: #a371f7;
+            font-size: 0.78em;
+            padding: 5px 14px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            text-align: center;
+        }}
         .db-stats-bar {{
             margin-left: auto;
             font-size: 0.75em;
@@ -1197,17 +1267,15 @@ class HTMLGenerator:
             border: 1px solid rgba(205,217,229,0.22);
             padding: 2px 9px; border-radius: 4px; margin: 1px 2px;
         }}
-        .extract-slates-btn {{
-            background: var(--surface-2); border: 1px solid var(--border);
-            border-radius: 6px; color: var(--text-muted); cursor: pointer;
-            font-size: 0.82em; padding: 6px 12px; transition: all 0.15s; white-space: nowrap;
+        .tool-btn {{
+            background: none; border: none; border-radius: 4px;
+            color: var(--text-muted); cursor: pointer; opacity: 0.55;
+            font-size: 0.78em; padding: 4px 6px;
+            transition: opacity 0.15s, color 0.15s; white-space: nowrap;
         }}
-        .extract-slates-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
-        .extract-slates-btn:disabled {{ opacity: 0.5; cursor: default; }}
-        .extract-slates-btn.needs-refresh {{
-            border-color: rgba(227,179,65,0.5); color: #e3b341;
-            background: rgba(227,179,65,0.08);
-        }}
+        .tool-btn:hover {{ opacity: 1; color: var(--text); }}
+        .tool-btn:disabled {{ opacity: 0.25; cursor: default; }}
+        .tool-btn.needs-refresh {{ opacity: 1; color: #e3b341; }}
         .extract-status {{ font-size: 0.78em; color: var(--text-muted); }}
         .extract-status.ok  {{ color: #56d364; }}
         .extract-status.err {{ color: #f85149; }}
@@ -1236,8 +1304,6 @@ class HTMLGenerator:
         <button class="mode-button"        onclick="setMode('scenes')" id="btn-scenes">🎞️ By Scenes</button>
         <button class="mode-button"        onclick="setMode('codes')"  id="btn-codes">🏷️ By Codes</button>
         <button class="mode-button"        onclick="toggleAll()"       id="btn-toggle-all">⊕ Expand All</button>
-        <button class="extract-slates-btn" id="extract-slates-btn"   onclick="runExtractSlates()">📊 Extract Slates</button>
-        <span id="extract-status" class="extract-status"></span>
 
         <div class="search-wrapper">
             <span class="search-icon">🔍</span>
@@ -1246,6 +1312,11 @@ class HTMLGenerator:
                    oninput="onSearch(this.value)">
             <button id="search-clear" onclick="clearSearch()" title="Clear">✕</button>
         </div>
+
+        <button class="tool-btn" id="extract-slates-btn" onclick="runExtractSlates()">📊 Extract Slates</button>
+        <span id="extract-status" class="extract-status"></span>
+        <button class="tool-btn" id="offline-html-btn" onclick="generateOfflineHtml()">💾 Offline HTML</button>
+        <span id="offline-html-status" class="extract-status"></span>
 
         <div class="stats">
             <div class="stat">
@@ -1423,6 +1494,9 @@ class HTMLGenerator:
 <script>
 const data           = {data_json};
 const deliveryCfg    = {delivery_cfg_json};
+const OFFLINE_MODE   = {'true' if offline_mode else 'false'};
+const offlineDbRows  = {offline_db_json};
+const offlineDelivered = {offline_del_json};
 
 // Flat index: path → entry object (for cart lookups)
 const allEntries = {{}};
@@ -2055,6 +2129,11 @@ function pkgMatches(pkg, q) {{
 async function loadDelivered() {{
     const el = document.getElementById('delivered-content');
     if (!el) return;
+    if (OFFLINE_MODE) {{
+        deliveredPackages = offlineDelivered;
+        renderDelivered();
+        return;
+    }}
     el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><p>Loading…</p></div>';
     try {{
         const res  = await fetch('/api/delivered-packages');
@@ -2348,6 +2427,11 @@ async function loadDatabase() {{
     const el = document.getElementById('database-content');
     if (!el) return;
     if (dbRows.length > 0) {{ renderDatabase(); return; }}
+    if (OFFLINE_MODE) {{
+        dbRows = offlineDbRows;
+        renderDatabase();
+        return;
+    }}
     el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><p>Loading…</p></div>';
     try {{
         const res  = await fetch('/api/database');
@@ -2727,7 +2811,36 @@ async function runExtractSlates() {{
     }}
 }}
 
-checkExtractStatus();
+async function generateOfflineHtml() {{
+    const btn    = document.getElementById('offline-html-btn');
+    const status = document.getElementById('offline-html-status');
+    if (btn) {{ btn.disabled = true; btn.textContent = '⏳ Generating…'; }}
+    if (status) {{ status.textContent = ''; status.className = 'extract-status'; }}
+    try {{
+        const res  = await fetch('/api/generate-offline-html', {{ method: 'POST' }});
+        const data = await res.json();
+        if (data.success) {{
+            if (status) {{ status.textContent = '✓ Saved'; status.className = 'extract-status ok'; }}
+            setTimeout(() => {{ if (status) {{ status.textContent = ''; status.className = 'extract-status'; }} }}, 4000);
+        }} else {{
+            if (status) {{ status.textContent = `✗ ${{data.error || 'Failed'}}`; status.className = 'extract-status err'; }}
+        }}
+    }} catch(e) {{
+        if (status) {{ status.textContent = '✗ Network error'; status.className = 'extract-status err'; }}
+    }} finally {{
+        if (btn) {{ btn.disabled = false; btn.textContent = '💾 Export Offline HTML'; }}
+    }}
+}}
+
+if (OFFLINE_MODE) {{
+    document.body.classList.add('offline-mode');
+    const banner = document.createElement('div');
+    banner.className = 'offline-mode-banner';
+    banner.textContent = '📄 Offline snapshot — read-only, no server required';
+    document.querySelector('.container').prepend(banner);
+}} else {{
+    checkExtractStatus();
+}}
 </script>
 </body>
 </html>"""
@@ -2739,10 +2852,12 @@ def main():
     data_path   = "/Volumes/MACGUFF001/POSEIDON/DATA_rename"
     output_path = None
 
-    if len(sys.argv) > 1:
-        data_path = sys.argv[1]
-    if len(sys.argv) > 2:
-        output_path = sys.argv[2]
+    offline = '--offline' in sys.argv
+    args    = [a for a in sys.argv[1:] if not a.startswith('--')]
+    if len(args) > 0:
+        data_path = args[0]
+    if len(args) > 1:
+        output_path = args[1]
 
     print("\n" + "="*70)
     print("🎬 VFX SHOOT DATA HTML GENERATOR")
@@ -2750,7 +2865,10 @@ def main():
 
     generator = HTMLGenerator(data_path)
     generator.parse_directories()
-    generator.generate_html(output_path)
+    if offline:
+        generator.generate_offline_html(output_path)
+    else:
+        generator.generate_html(output_path)
 
     print("\n✅ HTML page generated successfully!")
     print("="*70 + "\n")
