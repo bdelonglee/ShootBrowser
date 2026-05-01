@@ -636,7 +636,33 @@ class HTMLGenerator:
             padding: 2px 8px;
             border-radius: 4px;
             font-family: 'Monaco', 'Courier New', monospace;
+            cursor: pointer;
         }}
+        .summary-slates:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .db-pin-banner {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding: 6px 12px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 6px;
+            font-size: 0.82em;
+            color: var(--text-muted);
+        }}
+        .db-pin-banner strong {{ color: var(--text); }}
+        .db-pin-clear {{
+            margin-left: auto;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.9em;
+            padding: 0 4px;
+        }}
+        .db-pin-clear:hover {{ color: var(--text); }}
 
         /* ── Details (expanded) ── */
         .entry-details {{ display: none; }}
@@ -1298,6 +1324,10 @@ class HTMLGenerator:
           <button id="db-search-clear" onclick="clearDbSearch()" title="Clear">✕</button>
         </div>
       </div>
+      <div id="db-pin-banner" class="db-pin-banner" style="display:none;margin-top:12px">
+        <span id="db-pin-label"></span>
+        <button class="db-pin-clear" onclick="clearDbPin()" title="Clear filter">✕ Clear</button>
+      </div>
       <div id="database-content" style="margin-top:16px"></div>
     </div>
 
@@ -1498,7 +1528,7 @@ function renderSubdirs(subdirs) {{
 
 // ── Entry rendering ───────────────────────────────────────────────────────────
 
-function renderSummary(subdirs, slateCount) {{
+function renderSummary(subdirs, slateCount, day, scenes) {{
     const pills = [];
     for (const s of (subdirs || [])) {{
         if (s.kind === 'simple') {{
@@ -1507,8 +1537,8 @@ function renderSummary(subdirs, slateCount) {{
             pills.push(`<span class="summary-subdir">📁 ${{escHtml(s.name)}}</span>`);
         }}
     }}
-    if (slateCount > 0) {{
-        pills.push(`<span class="summary-slates">Slates (${{slateCount}})</span>`);
+    if (slateCount > 0 && day) {{
+        pills.push(`<span class="summary-slates" data-day="${{escHtml(day)}}" data-scenes="${{escHtml((scenes||[]).join(','))}}" onclick="jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))">Slates (${{slateCount}})</span>`);
     }}
     return pills.length ? `<div class="entry-summary">${{pills.join('')}}</div>` : '';
 }}
@@ -1539,7 +1569,7 @@ function renderEntry(entry, q) {{
         <div class="entry-title-line">
             ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{copyBtn}}${{chevron}}
         </div>
-        ${{renderSummary(entry.subdirs, entry.slate_count || 0)}}
+        ${{renderSummary(entry.subdirs, entry.slate_count || 0, entry.day, entry.scenes)}}
         <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
     </div>`;
 }}
@@ -2127,7 +2157,43 @@ let dbSortKey      = 'scene';
 let dbSortAsc      = true;
 let dbFilters      = {{ slate: '', vfx_id: '', date: '', shoot_day: '', roll: '', lens: '', focal: '' }};
 let dbQuery        = '';
+let dbPinnedKeys   = null;  // Set of scene keys when filtering from Browse badge
+let dbPinnedLabel  = '';
 const expandedDbRows = new Set();
+
+function _slateSceneKey(slate) {{
+    const s = (slate || '').trim();
+    if (s.toUpperCase().startsWith('P')) {{
+        const m = s.match(/^[Pp](\d+)/);
+        return m ? 'P' + m[1] : null;
+    }}
+    const m = s.match(/^(\d+)/);
+    return m ? m[1] : null;
+}}
+
+function jumpToSlates(day, scenes) {{
+    const isPlate = day.startsWith('PJ');
+    const keys = new Set(scenes.map(s => {{
+        const n = parseInt(s.slice(1), 10);
+        return isPlate ? 'P' + n : String(n);
+    }}));
+    dbPinnedKeys  = keys;
+    dbPinnedLabel = day + ' · ' + scenes.join(' ');
+    Object.keys(dbFilters).forEach(k => {{ dbFilters[k] = ''; }});
+    document.querySelectorAll('.db-filter-input').forEach(i => {{ i.value = ''; }});
+    const gs = document.getElementById('db-global-search');
+    if (gs) {{ gs.value = ''; }}
+    dbQuery = '';
+    document.getElementById('db-search-clear').style.display = 'none';
+    setView('database');
+    if (dbRows.length > 0) renderDatabase();
+}}
+
+function clearDbPin() {{
+    dbPinnedKeys  = null;
+    dbPinnedLabel = '';
+    renderDatabase();
+}}
 
 const DB_KEY_FIELDS = ['Slate', 'VFX ID', 'Date', 'Shoot Day', 'Roll', 'Lens', 'Focal'];
 
@@ -2195,6 +2261,7 @@ function clearDbSearch() {{
 }}
 
 function dbRowMatches(row) {{
+    if (dbPinnedKeys && !dbPinnedKeys.has(_slateSceneKey(row['Slate'] || ''))) return false;
     const f = dbFilters;
     if (f.slate     && !(row['Slate']      || '').toLowerCase().includes(f.slate))     return false;
     if (f.vfx_id    && !(row['VFX ID']     || '').toLowerCase().includes(f.vfx_id))    return false;
@@ -2269,6 +2336,17 @@ async function loadDatabase() {{
 function renderDatabase() {{
     const el = document.getElementById('database-content');
     if (!el) return;
+
+    const banner = document.getElementById('db-pin-banner');
+    const label  = document.getElementById('db-pin-label');
+    if (banner && label) {{
+        if (dbPinnedKeys) {{
+            label.innerHTML = `Showing slates for <strong>${{escHtml(dbPinnedLabel)}}</strong>`;
+            banner.style.display = 'flex';
+        }} else {{
+            banner.style.display = 'none';
+        }}
+    }}
 
     const filtered = dbRows.filter(dbRowMatches);
     if (filtered.length === 0) {{
