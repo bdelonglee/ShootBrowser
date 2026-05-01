@@ -4,98 +4,53 @@ Collected ideas for future sessions, ordered roughly by complexity.
 
 ---
 
-## 1. Offline Static HTML Export
+## 1. ✅ Offline Static HTML Export
 
-**What:** A `generate_html.py` mode that produces a fully self-contained HTML
-file — no Flask server, no API calls, no `file://` system links.
+**Status: Done.**
 
-**How:**
-- All shoot data is JSON-embedded in the page (already done for Browse)
-- Database CSV rows are also embedded as a JS constant
-- Delivered packages manifests are embedded if present
-- All interactivity (search, group, sort, fold/unfold, tabs) works client-side
-- Cart / Queue / Build are hidden or disabled (read-only mode)
-- Single output file, can be sent by email or opened directly in any browser
+`generate_offline_html()` embeds all shoot data, database CSV rows, and delivered
+package manifests into a single self-contained HTML file. Cart, Queue, and all
+write actions are hidden. A purple banner marks the file as read-only.
 
-**Why:** Useful for sharing a snapshot of the shoot data with vendors, directors,
-or remote collaborators who don't have access to the server or the volumes.
+- CLI: `python generate_html.py --offline`
+- Server: `POST /api/generate-offline-html`
+- Browser button: **💾 Offline HTML** in the Browse controls bar
 
 ---
 
-## 2. Block ↔ Database Cross-Reference (with per-block CSV export)
+## 2. ✅ Block ↔ Database Cross-Reference
 
-**What:** Link each Browse block to its matching Database (CSV) rows, based on
-scene number. Show a clickable badge in Browse. Write a filtered CSV per block.
+**Status: Done.**
 
-### Matching logic
-
-- Block directory contains scene tags, e.g. `PJ04__S18__CAST__Desc` → scenes `["S18"]`
-- A CSV row matches if the **numeric prefix** of its Slate field equals the scene
-  number: slate `"18/2"` → scene `18` → matches `S18`.
-- A block with multiple scenes (e.g. `S01_S02`) matches rows for scene 1 OR scene 2.
-
-### Per-block CSV
-
-When parsing directories (or on-demand via a server endpoint), for each block:
-1. Extract scene numbers from the directory name.
-2. Filter the Database CSV to rows whose slate scene number is in that set.
-3. Write matching rows to `{block_path}/__00_Database/{block_name}_db.csv`
-   (inside the `__` prefixed dir so sanity check treats it as empty until renamed).
-
-This gives VFX wranglers a per-block reference CSV they can open offline.
-
-### Browse badge
-
-In Browse, next to the subdir pills (`10_Infos`, `20_HDR`, etc.), add:
-
-```
-[Slate (N)]
-```
-
-Where N = number of matching CSV rows for this block. The badge is only shown
-when N > 0.
-
-Clicking the badge:
-1. Switches to the Database tab
-2. Pre-fills the Slate filter input with the scene number(s) of the block
-   (e.g. `"18"` to show slates `18/1`, `18/2`, `18/3` …)
-3. Scrolls to the top of the results
-
-**Implementation notes:**
-- The match count can be computed client-side at render time if the full DB rows
-  are already loaded (cached in `dbRows`). If DB is not yet loaded, clicking
-  triggers `loadDatabase()` first, then applies the filter.
-- A JS function `scenesToSlateFilter(scenes)` converts `["S18", "S02"]` →
-  filter string to pass to `setDbFilter('slate', ...)` or a combined search.
-- The badge should use a distinct color (e.g. cyan, matching `.db-vfxid`) to
-  visually connect Browse and Database.
+- Per-block slate CSVs extracted to `00_Database/slates_YYYY-MM-DD.csv` via
+  `POST /api/extract-slates` (button: **📊 Extract Slates** in Browse controls).
+- Plate day slates (`PJ` prefix) matched as `P<N>` keys to avoid cross-contamination
+  with same-numbered regular scenes.
+- `Slates (N)` badge shown in collapsed Browse entries alongside subdir pills.
+- Clicking the badge switches to the Database tab filtered to that block's scenes
+  via a dismissible pin banner.
+- Extraction log written to `__SHOOT_BROWSER/Log/extract_slates_YYYY-MM-DD_HHMM.log`
+  with skipped blocks, unmatched CSV keys, and per-block counts.
 
 ---
 
-## 3. Browse ↔ Delivered Cross-Reference
+## 3. ✅ Browse ↔ Delivered Cross-Reference
 
-**What:** In Browse, each block shows a small badge if it has been included in
-at least one delivered package.
+**Status: Done.**
 
-**How:**
-- At page load, index delivered packages from `deliveredPackages` (already
-  fetched when Delivered tab is visited, or load lazily).
-- For each block path, check if any delivered manifest contains a block with
-  matching `original_name` or source path.
-- Show a badge like `[MPC ✓]` or `[2 deliveries]` on the Browse entry title line.
-- Clicking opens Delivered tab filtered to that block name.
+Delivered packages are fetched silently in the background on page load.
+Each Browse entry that has been delivered shows small vendor badges (e.g. `MPC`)
+to the right of the description. Clicking a badge switches to the Delivered tab
+grouped by vendor with that vendor pre-filled in the search.
 
 ---
 
-## 4. Database Stats Bar
+## 4. ✅ Database Stats Bar
 
-**What:** A live stats line below the Database filter row showing counts for the
-current filter result.
+**Status: Done.**
 
-**Content:** `N takes · M slates · P scenes · Q unique lenses`
-
-**How:** Computed in `renderDatabase()` from the `filtered` array before
-rendering cards. Updated on every filter/search change. No server needed.
+Live stats shown inline at the right end of the Database controls bar:
+`N takes · M slates · P scenes · Q lenses · R days`. Updates on every filter change.
 
 ---
 
@@ -112,10 +67,10 @@ rendering cards. Updated on every filter/search change. No server needed.
 
 ## 6. Database — Wrangler Quick Filter
 
-**What:** Two toggle buttons `Clem` and `Quentin` (the two wranglers in the
-current dataset) as quick filter chips, complementing the per-field inputs.
+**What:** Toggle chips for wrangler names as quick filter, complementing the
+per-field inputs.
 
-**How:** On click, set `dbFilters.wrangler = 'Clem'` (or clear it). The global
+**How:** On click, set `dbFilters.wrangler = 'name'` (or clear it). The global
 `dbRowMatches` already handles this if extended with a `wrangler` filter key.
 Wrangler values should be read dynamically from the loaded rows (not hardcoded)
 in case the list changes in future CSVs.
@@ -135,14 +90,15 @@ Small change, high daily value.
 
 ---
 
-## 8. Open in Finder (macOS)
+## 8. ✅ Open in File Manager (cross-platform)
 
-**What:** A button on each Browse entry that opens the block directory directly
-in macOS Finder, in addition to the existing "copy path" button.
+**Status: Done.**
 
-**How:** Server endpoint `POST /api/open-folder` that calls
-`subprocess.run(["open", path])`. The button calls this endpoint with the block
-path. Safe: validate the path starts with `DATA_PATH` before opening.
+- `POST /api/open-folder` endpoint dispatches `open` / `explorer` / `xdg-open`
+  for macOS / Windows / Linux. Path validated against `DATA_PATH`.
+- House-icon button on each Browse entry title line.
+- Subdir badges (`20_HDR`, `10_Infos`, etc.) in the collapsed summary are also
+  clickable and open the specific subdirectory directly.
 
 ---
 
@@ -184,17 +140,17 @@ subdir names map to which "data type" (configurable in `sanity_check.json`).
 
 ---
 
-## Priority Suggestion
+## Status Summary
 
-| Priority | Idea | Effort |
-|----------|------|--------|
-| High | Block ↔ Database cross-reference (idea 2) | Medium |
-| High | Persistent UI state (idea 7) | Low |
-| High | Offline HTML export (idea 1) | Medium |
-| Medium | Database stats bar (idea 4) | Low |
-| Medium | Browse ↔ Delivered badges (idea 3) | Low |
-| Medium | Export filtered CSV (idea 5) | Low |
-| Medium | Open in Finder (idea 8) | Low |
-| Low | Wrangler quick filter (idea 6) | Low |
-| Low | Keyboard shortcuts (idea 9) | Low |
-| Low | Scene coverage map (idea 10) | High |
+| # | Idea | Status | Effort |
+|---|------|--------|--------|
+| 1 | Offline HTML export | ✅ Done | Medium |
+| 2 | Block ↔ Database cross-reference | ✅ Done | Medium |
+| 3 | Browse ↔ Delivered badges | ✅ Done | Low |
+| 4 | Database stats bar | ✅ Done | Low |
+| 5 | Export filtered CSV | ⬜ Todo | Low |
+| 6 | Wrangler quick filter | ⬜ Todo | Low |
+| 7 | Persistent UI state | ⬜ Todo | Low |
+| 8 | Open in file manager | ✅ Done | Low |
+| 9 | Keyboard shortcuts | ⬜ Todo | Low |
+| 10 | Scene coverage map | ⬜ Todo | High |
