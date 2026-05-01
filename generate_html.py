@@ -664,6 +664,14 @@ class HTMLGenerator:
             padding: 0 4px;
         }}
         .db-pin-clear:hover {{ color: var(--text); }}
+        .db-stats-bar {{
+            margin-left: auto;
+            font-size: 0.75em;
+            color: var(--text-muted);
+            opacity: 0.6;
+            white-space: nowrap;
+        }}
+        .db-stats-bar strong {{ color: var(--text-muted); }}
 
         /* ── Details (expanded) ── */
         .entry-details {{ display: none; }}
@@ -1280,6 +1288,7 @@ class HTMLGenerator:
           <option value="focal">Sort: Focal</option>
         </select>
         <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
+        <span id="db-stats-bar" class="db-stats-bar"></span>
       </div>
       <div class="db-filter-row">
         <div class="db-filter-field">
@@ -2366,6 +2375,27 @@ function renderDatabase() {{
     }}
 
     const filtered = dbRows.filter(dbRowMatches);
+
+    const statsBar = document.getElementById('db-stats-bar');
+    if (statsBar) {{
+        if (filtered.length === 0) {{
+            statsBar.textContent = '';
+        }} else {{
+            const scenes = new Set(filtered.map(r => _slateSceneKey(r['Slate'] || '')).filter(Boolean));
+            const slates = new Set(filtered.map(r => (r['Slate'] || '').replace(/\/\d+$/, '').trim()).filter(Boolean));
+            const lenses = new Set(filtered.map(r => r['Lens'] || '').filter(Boolean));
+            const days   = new Set(filtered.map(r => r['Shoot Day'] || '').filter(Boolean));
+            const parts  = [
+                `<strong>${{filtered.length}}</strong> takes`,
+                `<strong>${{slates.size}}</strong> slates`,
+                `<strong>${{scenes.size}}</strong> scenes`,
+                lenses.size ? `<strong>${{lenses.size}}</strong> lenses` : '',
+                days.size   ? `<strong>${{days.size}}</strong> days` : '',
+            ].filter(Boolean).join(' · ');
+            statsBar.innerHTML = parts;
+        }}
+    }}
+
     if (filtered.length === 0) {{
         el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>No rows match the current filters.</p></div>';
         return;
