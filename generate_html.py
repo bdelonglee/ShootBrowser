@@ -678,6 +678,8 @@ class HTMLGenerator:
             border-radius: 4px;
             font-family: 'Monaco', 'Courier New', monospace;
         }}
+        .subdir-openable {{ cursor: pointer; }}
+        .subdir-openable:hover {{ border-color: var(--accent); color: var(--accent); }}
         .summary-slates {{
             font-size: 0.75em;
             color: var(--text-muted);
@@ -1612,13 +1614,19 @@ function renderSubdirs(subdirs) {{
 
 // ── Entry rendering ───────────────────────────────────────────────────────────
 
-function renderSummary(subdirs, slateCount, day, scenes) {{
+function renderSummary(subdirs, slateCount, day, scenes, entryPath) {{
     const pills = [];
     for (const s of (subdirs || [])) {{
         if (s.kind === 'simple') {{
-            s.children.forEach(c => pills.push(`<span class="summary-subdir">${{escHtml(c.name)}}</span>`));
+            s.children.forEach(c => {{
+                const sub = entryPath ? `${{entryPath}}/${{c.name}}` : null;
+                const attrs = sub ? ` data-subpath="${{escHtml(sub)}}" onclick="openInFinder(this.dataset.subpath)"` : '';
+                pills.push(`<span class="summary-subdir${{sub ? ' subdir-openable' : ''}}"${{attrs}}>${{escHtml(c.name)}}</span>`);
+            }});
         }} else {{
-            pills.push(`<span class="summary-subdir">📁 ${{escHtml(s.name)}}</span>`);
+            const sub = entryPath ? `${{entryPath}}/${{s.name}}` : null;
+            const attrs = sub ? ` data-subpath="${{escHtml(sub)}}" onclick="openInFinder(this.dataset.subpath)"` : '';
+            pills.push(`<span class="summary-subdir${{sub ? ' subdir-openable' : ''}}"${{attrs}}>📁 ${{escHtml(s.name)}}</span>`);
         }}
     }}
     if (slateCount > 0 && day) {{
@@ -1657,7 +1665,7 @@ function renderEntry(entry, q) {{
         <div class="entry-title-line">
             ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{copyBtn}}${{finderBtn}}${{chevron}}
         </div>
-        ${{renderSummary(entry.subdirs, entry.slate_count || 0, entry.day, entry.scenes)}}
+        ${{renderSummary(entry.subdirs, entry.slate_count || 0, entry.day, entry.scenes, entry.path)}}
         <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
     </div>`;
 }}
@@ -1771,6 +1779,7 @@ function copyPath(btn, path) {{
 }}
 
 async function openInFinder(path) {{
+    if (OFFLINE_MODE) return;
     try {{
         await fetch('/api/open-folder', {{
             method: 'POST',
