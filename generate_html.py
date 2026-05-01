@@ -640,6 +640,18 @@ class HTMLGenerator:
             font-size: 0.78em;
             font-weight: 600;
         }}
+        .vendor-badge {{
+            font-size: 0.72em;
+            color: var(--text-muted);
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            padding: 2px 7px;
+            border-radius: 4px;
+            opacity: 0.6;
+            cursor: pointer;
+            transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+        }}
+        .vendor-badge:hover {{ opacity: 1; border-color: var(--accent); color: var(--accent); }}
         .open-folder, .finder-btn, .toggle-btn {{
             background: none;
             border: none;
@@ -1658,12 +1670,16 @@ function renderEntry(entry, q) {{
             <polyline points="6 9 12 15 18 9"/>
         </svg></button>`;
 
+    const vendors     = deliveredByBlock[entry.directory_name] || [];
+    const vendorBadges = vendors.map(v =>
+        `<span class="vendor-badge" data-vendor="${{escHtml(v)}}" onclick="jumpToDeliveredVendor(this.dataset.vendor)">${{escHtml(v)}}</span>`
+    ).join('');
     const inCart     = cart.has(entry.path);
     const cb         = `<input type="checkbox" class="entry-cb" ${{inCart ? 'checked' : ''}} onclick="toggleCart(this.closest('.entry').dataset.path)">`;
     const isExpanded = expandedPaths.has(entry.path);
     return `<div class="entry${{inCart ? ' in-cart' : ''}}${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(entry.path)}}">
         <div class="entry-title-line">
-            ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{copyBtn}}${{finderBtn}}${{chevron}}
+            ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
         </div>
         ${{renderSummary(entry.subdirs, entry.slate_count || 0, entry.day, entry.scenes, entry.path)}}
         <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
@@ -2097,7 +2113,48 @@ function setView(view) {{
 let deliveredMode      = 'vendor';
 let deliveredQuery     = '';
 let deliveredPackages  = [];
+let deliveredByBlock   = {{}}; // directory_name → [vendor, ...]
 const expandedDelBlocks = new Set();
+
+function _buildDeliveredByBlock() {{
+    const map = {{}};
+    for (const pkg of deliveredPackages) {{
+        for (const block of (pkg.blocks || [])) {{
+            const key = block.original_name;
+            if (!key) continue;
+            if (!map[key]) map[key] = new Set();
+            map[key].add(pkg.vendor);
+        }}
+    }}
+    deliveredByBlock = {{}};
+    for (const k of Object.keys(map)) {{
+        deliveredByBlock[k] = [...map[k]].sort();
+    }}
+}}
+
+async function _loadDeliveredBackground() {{
+    if (deliveredPackages.length > 0) {{ _buildDeliveredByBlock(); render(); return; }}
+    if (OFFLINE_MODE) {{
+        deliveredPackages = offlineDelivered;
+        _buildDeliveredByBlock(); render(); return;
+    }}
+    try {{
+        const res  = await fetch('/api/delivered-packages');
+        const data = await res.json();
+        deliveredPackages = data.packages || [];
+        _buildDeliveredByBlock();
+        render();
+    }} catch(e) {{ /* silent — badges just won't show */ }}
+}}
+
+function jumpToDeliveredVendor(vendor) {{
+    deliveredQuery = vendor.toLowerCase();
+    const el = document.getElementById('del-search-input');
+    if (el) {{ el.value = vendor; document.getElementById('del-search-clear').style.display = 'flex'; }}
+    setDeliveredMode('vendor');
+    setView('delivered');
+    if (deliveredPackages.length > 0) renderDelivered();
+}}
 
 function setDeliveredMode(mode) {{
     deliveredMode = mode;
@@ -2148,6 +2205,7 @@ async function loadDelivered() {{
         const res  = await fetch('/api/delivered-packages');
         const data = await res.json();
         deliveredPackages = data.packages || [];
+        _buildDeliveredByBlock();
         renderDelivered();
     }} catch(e) {{
         el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>Could not load packages: ${{escHtml(e.message)}}</p></div>`;
@@ -2847,8 +2905,10 @@ if (OFFLINE_MODE) {{
     banner.className = 'offline-mode-banner';
     banner.textContent = '📄 Offline snapshot — read-only, no server required';
     document.querySelector('.container').prepend(banner);
+    _loadDeliveredBackground();
 }} else {{
     checkExtractStatus();
+    _loadDeliveredBackground();
 }}
 </script>
 </body>
