@@ -12,7 +12,9 @@ Install dependency once:
     pip install flask
 """
 
+import csv as _csv_mod
 import os
+import re
 import sys
 import json
 import shutil
@@ -22,6 +24,11 @@ import threading
 import webbrowser
 from datetime import datetime
 from pathlib import Path
+
+# Matches block directory names: J04__S01_S02__CODE__Desc
+_BLOCK_RE = re.compile(
+    r'^(J\d{2}|PJ\d{2})__(S\d{2}(?:_S\d{2})*)__([A-Z]{4}(?:_[A-Z]{4})*(?:_[A-Z0-9]{4})*)(?:__(.+))?$'
+)
 
 try:
     from flask import Flask, jsonify, request
@@ -277,6 +284,233 @@ def api_database():
         except UnicodeDecodeError:
             rows = []
     return jsonify({"success": True, "rows": rows, "filename": csvfile.name})
+
+
+# ── Slate extraction helpers ──────────────────────────────────────────────────
+
+def _find_db_csv() -> tuple:
+    """Return (Path, date_str) for the most recent non-hidden CSV in __DATABASE/."""
+    db_dir = Path(DATA_PATH) / "__DATABASE"
+    if not db_dir.exists():
+        return None, None
+    csvfiles = sorted(
+        (f for f in db_dir.glob("*.csv") if not f.name.startswith(".")),
+        key=lambda f: f.stat().st_mtime, reverse=True,
+    )
+    if not csvfiles:
+        return None, None
+    csvfile = csvfiles[0]
+    m = re.search(r'(\d{4}-\d{2}-\d{2})', csvfile.name)
+    return csvfile, (m.group(1) if m else None)
+
+
+def _load_db_csv(csvfile: Path) -> tuple:
+    """Return (fieldnames, rows) parsed from csvfile, trying multiple encodings."""
+    for encoding in ("mac_roman", "utf-8-sig", "latin-1"):
+        try:
+            with open(csvfile, encoding=encoding, newline="") as f:
+                reader = _csv_mod.DictReader(f)
+                fieldnames = list(reader.fieldnames or [])
+                rows = [dict(r) for r in reader]
+            return fieldnames, rows
+        except UnicodeDecodeError:
+            pass
+    return [], []
+
+
+def _slate_scene_key(slate: str) -> str | None:
+    """'18/2' → '18', '49A/1' → '49', 'P37A/3' → 'P37', 'P1/2' → 'P1'."""
+    s = slate.strip()
+    if s.upper().startswith('P'):
+        m = re.match(r'^[Pp](\d+)', s)
+        return f"P{m.group(1)}" if m else None
+    m = re.match(r'^(\d+)', s)
+    return m.group(1) if m else None
+
+
+def _block_scene_keys(dirname: str) -> set:
+    """'PJ02__S37__RIDE__x' → {'P37'}, 'J08__S08__PLAN' → {'8'}."""
+    match = _BLOCK_RE.match(dirname)
+    if not match:
+        return set()
+    is_plate = match.group(1).startswith('PJ')
+    nums = {int(s[1:]) for s in match.group(2).split("_") if s.startswith("S")}
+    return {f"P{n}" for n in nums} if is_plate else {str(n) for n in nums}
+
+
+def _resolve_db_subdir(block_path: Path) -> Path:
+    """Return the 00_Database dir inside block_path (with or without __ prefix)."""
+    for name in ("00_Database", "__00_Database"):
+        d = block_path / name
+        if d.exists():
+            return d
+    return block_path / "__00_Database"
+
+
+@app.route("/api/extract-slates-status")
+def api_extract_slates_status():
+    """Check whether slate extraction is up to date with the current DB CSV."""
+    csvfile, db_date = _find_db_csv()
+    if not db_date:
+        return jsonify({"success": True, "db_date": None, "needs_refresh": False,
+                        "filename": csvfile.name if csvfile else None})
+
+    meta_path = Path(DATA_PATH) / "__DATABASE" / "extraction_meta.json"
+    needs_refresh = True
+    last_extracted = None
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            last_extracted = meta.get("extracted_at")
+            needs_refresh = meta.get("db_date") != db_date
+        except Exception:
+            pass
+
+    return jsonify({
+        "success":        True,
+        "db_date":        db_date,
+        "filename":       csvfile.name,
+        "needs_refresh":  needs_refresh,
+        "last_extracted": last_extracted,
+    })
+
+
+@app.route("/api/extract-slates", methods=["POST"])
+def api_extract_slates():
+    """Extract per-block slate CSVs from the main database CSV."""
+    csvfile, db_date = _find_db_csv()
+    if not csvfile or not db_date:
+        return jsonify({"success": False, "error": "No database CSV found"}), 400
+
+    fieldnames, rows = _load_db_csv(csvfile)
+    if not rows:
+        return jsonify({"success": False, "error": "Could not parse CSV"}), 500
+
+    updated, errors = 0, []
+    skipped_blocks = []   # (block_name, scene_keys) — no matching CSV rows
+    block_counts   = []   # (block_name, n_slates) — successfully extracted
+    matched_keys   = set()
+
+    for item in sorted(Path(DATA_PATH).iterdir()):
+        if not item.is_dir() or not _BLOCK_RE.match(item.name):
+            continue
+
+        scene_keys = _block_scene_keys(item.name)
+        if not scene_keys:
+            continue
+
+        matching = [r for r in rows
+                    if _slate_scene_key(r.get("Slate", "")) in scene_keys]
+        if not matching:
+            skipped_blocks.append((item.name, scene_keys))
+            continue
+
+        try:
+            db_sub = _resolve_db_subdir(item)
+
+            # Rename __00_Database → 00_Database if needed (non-empty rule)
+            if db_sub.name.startswith("__"):
+                renamed = db_sub.parent / db_sub.name[2:]
+                db_sub.mkdir(exist_ok=True)
+                db_sub.rename(renamed)
+                db_sub = renamed
+            else:
+                db_sub.mkdir(exist_ok=True)
+
+            # Move existing slates_*.csv to history/
+            existing = list(db_sub.glob("slates_*.csv"))
+            if existing:
+                history_dir = db_sub / "history"
+                history_dir.mkdir(exist_ok=True)
+                for f in existing:
+                    shutil.move(str(f), str(history_dir / f.name))
+
+            # Write new CSV
+            out_path = db_sub / f"slates_{db_date}.csv"
+            with open(out_path, "w", encoding="utf-8", newline="") as f:
+                writer = _csv_mod.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(matching)
+
+            updated += 1
+            block_counts.append((item.name, len(matching)))
+            matched_keys.update(
+                _slate_scene_key(r.get("Slate", "")) for r in matching
+            )
+
+        except Exception as e:
+            errors.append(f"{item.name}: {e}")
+
+    all_csv_keys     = {_slate_scene_key(r.get("Slate", "")) for r in rows} - {None}
+    unmatched_keys   = sorted(all_csv_keys - matched_keys)
+    total_slates     = len(rows)
+    extracted_slates = sum(c for _, c in block_counts)
+    now              = datetime.now()
+    now_str          = now.strftime("%Y-%m-%dT%H:%M:%S")
+    log_suffix       = now.strftime("%Y-%m-%d_%H%M")
+
+    # Write log file (one per run, keyed by date+hour+minute)
+    log_dir  = Path(DATA_PATH) / "__SHOOT_BROWSER" / "Log"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"extract_slates_{log_suffix}.log"
+    lines = [
+        f"Slate extraction — {now_str}",
+        f"Source CSV : {csvfile.name}",
+        f"DB date    : {db_date}",
+        "",
+        "── Summary ──────────────────────────────────────────────",
+        f"  Blocks updated  : {updated}",
+        f"  Blocks skipped  : {len(skipped_blocks)}  (scenes absent from CSV)",
+        f"  Errors          : {len(errors)}",
+        f"  Slates in CSV   : {total_slates}",
+        f"  Slates extracted: {extracted_slates}",
+        f"  Slates unmatched: {total_slates - extracted_slates}"
+        f"  (keys with no block: {', '.join(unmatched_keys) if unmatched_keys else 'none'})",
+        "",
+    ]
+    if skipped_blocks:
+        lines.append("── Skipped blocks (scenes not in CSV) ───────────────────")
+        for name, keys in skipped_blocks:
+            lines.append(f"  {name}")
+            lines.append(f"    scene keys: {', '.join(sorted(keys))}")
+        lines.append("")
+    if unmatched_keys:
+        lines.append("── CSV scene keys with no matching block directory ───────")
+        for key in unmatched_keys:
+            count = sum(1 for r in rows if _slate_scene_key(r.get("Slate", "")) == key)
+            lines.append(f"  {key:6}  ({count} slate{'s' if count != 1 else ''})")
+        lines.append("")
+    if block_counts:
+        lines.append("── Extracted per block ───────────────────────────────────")
+        for name, count in block_counts:
+            lines.append(f"  {count:3}  {name}")
+        lines.append("")
+    if errors:
+        lines.append("── Errors ────────────────────────────────────────────────")
+        for e in errors:
+            lines.append(f"  {e}")
+        lines.append("")
+    log_path.write_text("\n".join(lines), encoding="utf-8")
+
+    # Save extraction metadata
+    meta_path = Path(DATA_PATH) / "__DATABASE" / "extraction_meta.json"
+    meta_path.write_text(json.dumps({
+        "db_date":          db_date,
+        "extracted_at":     now_str,
+        "blocks_updated":   updated,
+        "blocks_skipped":   len(skipped_blocks),
+        "slates_total":     total_slates,
+        "slates_extracted": extracted_slates,
+        "log_file":         log_path.name,
+    }, indent=2), encoding="utf-8")
+
+    return jsonify({
+        "success": True,
+        "db_date": db_date,
+        "updated": updated,
+        "skipped": len(skipped_blocks),
+        "errors":  errors,
+    })
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

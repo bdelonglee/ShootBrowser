@@ -1124,6 +1124,20 @@ class HTMLGenerator:
             border: 1px solid rgba(205,217,229,0.22);
             padding: 2px 9px; border-radius: 4px; margin: 1px 2px;
         }}
+        .extract-slates-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text-muted); cursor: pointer;
+            font-size: 0.82em; padding: 6px 12px; transition: all 0.15s; white-space: nowrap;
+        }}
+        .extract-slates-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .extract-slates-btn:disabled {{ opacity: 0.5; cursor: default; }}
+        .extract-slates-btn.needs-refresh {{
+            border-color: rgba(227,179,65,0.5); color: #e3b341;
+            background: rgba(227,179,65,0.08);
+        }}
+        .extract-status {{ font-size: 0.78em; color: var(--text-muted); }}
+        .extract-status.ok  {{ color: #56d364; }}
+        .extract-status.err {{ color: #f85149; }}
         body.cart-open {{ padding-bottom: 370px; }}
         body.cart-open.cart-collapsed {{ padding-bottom: 48px; }}
     </style>
@@ -1149,6 +1163,8 @@ class HTMLGenerator:
         <button class="mode-button"        onclick="setMode('scenes')" id="btn-scenes">🎞️ By Scenes</button>
         <button class="mode-button"        onclick="setMode('codes')"  id="btn-codes">🏷️ By Codes</button>
         <button class="mode-button"        onclick="toggleAll()"       id="btn-toggle-all">⊕ Expand All</button>
+        <button class="extract-slates-btn" id="extract-slates-btn"   onclick="runExtractSlates()">📊 Extract Slates</button>
+        <span id="extract-status" class="extract-status"></span>
 
         <div class="search-wrapper">
             <span class="search-icon">🔍</span>
@@ -2499,6 +2515,51 @@ renderCart();
 updateQueueBadge();
 
 render();
+
+// ── Slate extraction ──────────────────────────────────────────────────────────
+async function checkExtractStatus() {{
+    try {{
+        const res  = await fetch('/api/extract-slates-status');
+        const data = await res.json();
+        const btn  = document.getElementById('extract-slates-btn');
+        if (!btn) return;
+        if (data.needs_refresh) {{
+            btn.classList.add('needs-refresh');
+            btn.title = `DB updated ${{data.db_date}} — extraction needed`;
+        }} else {{
+            btn.classList.remove('needs-refresh');
+            btn.title = data.db_date ? `Slates extracted from ${{data.db_date}}` : 'No database CSV found';
+        }}
+    }} catch(e) {{ /* fail silently */ }}
+}}
+
+async function runExtractSlates() {{
+    const btn    = document.getElementById('extract-slates-btn');
+    const status = document.getElementById('extract-status');
+    if (btn) {{ btn.disabled = true; btn.textContent = '⏳ Extracting…'; }}
+    if (status) {{ status.textContent = ''; status.className = 'extract-status'; }}
+    try {{
+        const res  = await fetch('/api/extract-slates', {{ method: 'POST' }});
+        const data = await res.json();
+        if (data.success) {{
+            if (status) {{
+                const errs = data.errors && data.errors.length ? ` (${{data.errors.length}} errors)` : '';
+                status.textContent = `✓ ${{data.updated}} blocks updated, ${{data.skipped}} skipped${{errs}}`;
+                status.className = 'extract-status ok';
+                setTimeout(() => {{ if (status) {{ status.textContent = ''; status.className = 'extract-status'; }} }}, 6000);
+            }}
+            checkExtractStatus();
+        }} else {{
+            if (status) {{ status.textContent = `✗ ${{data.error || 'Failed'}}`; status.className = 'extract-status err'; }}
+        }}
+    }} catch(e) {{
+        if (status) {{ status.textContent = '✗ Network error'; status.className = 'extract-status err'; }}
+    }} finally {{
+        if (btn) {{ btn.disabled = false; btn.textContent = '📊 Extract Slates'; }}
+    }}
+}}
+
+checkExtractStatus();
 </script>
 </body>
 </html>"""
