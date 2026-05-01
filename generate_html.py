@@ -39,6 +39,7 @@ class ShootEntry:
     has_data: bool
     subdirs: List[SubdirSection]
     package_note: str = ''
+    slate_count: int = 0
 
 
 class HTMLGenerator:
@@ -173,12 +174,22 @@ class HTMLGenerator:
         return children
 
     def _list_files(self, dir_path: Path) -> List[SubdirChild]:
-        """List visible files directly inside dir_path (count field unused, set to -1)."""
+        """List visible files directly inside dir_path.
+        For slates_*.csv files, count holds the number of slate rows (excluding header).
+        """
         files = []
         try:
             for f in sorted(dir_path.iterdir()):
-                if f.is_file() and not f.name.startswith('.'):
-                    files.append(SubdirChild(f.name, -1))
+                if not f.is_file() or f.name.startswith('.'):
+                    continue
+                count = -1
+                if f.name.startswith('slates_') and f.name.endswith('.csv'):
+                    try:
+                        with open(f, encoding='utf-8', newline='') as fh:
+                            count = max(0, sum(1 for _ in fh) - 1)
+                    except Exception:
+                        pass
+                files.append(SubdirChild(f.name, count))
         except PermissionError:
             pass
         return files
@@ -234,6 +245,23 @@ class HTMLGenerator:
                                           [SubdirChild(n, -1) for n in simple_names], -1))
         return sections
 
+    def _count_block_slates(self, block_path: Path) -> int:
+        """Count rows in the block's slates_*.csv (0 if absent)."""
+        for db_name in ("00_Database", "__00_Database"):
+            db_dir = block_path / db_name
+            if not db_dir.is_dir():
+                continue
+            csvfiles = [f for f in db_dir.glob("slates_*.csv")
+                        if not f.name.startswith(".")]
+            if not csvfiles:
+                continue
+            try:
+                with open(csvfiles[0], encoding="utf-8", newline="") as f:
+                    return max(0, sum(1 for _ in f) - 1)  # subtract header row
+            except Exception:
+                return 0
+        return 0
+
     # ── Directory parsing ────────────────────────────────────────────────────
 
     def parse_directories(self):
@@ -264,6 +292,7 @@ class HTMLGenerator:
                 has_data=self.check_has_data(item),
                 subdirs=self.get_subdir_sections(item),
                 package_note=self._read_block_package_note(item),
+                slate_count=self._count_block_slates(item),
             ))
 
         print(f"   Found {len(self.entries)} shoot entries")
@@ -591,6 +620,15 @@ class HTMLGenerator:
         }}
         .entry.expanded .entry-summary {{ display: none; }}
         .summary-subdir {{
+            font-size: 0.75em;
+            color: var(--text-muted);
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }}
+        .summary-slates {{
             font-size: 0.75em;
             color: var(--text-muted);
             background: var(--surface-2);
@@ -1436,9 +1474,12 @@ function renderSubdirs(subdirs) {{
             </div>`;
 
         }} else if (s.kind === 'files') {{
-            const rows = s.children.map(c =>
-                `<div class="subdir-file">📄 ${{escHtml(c.name)}}</div>`
-            ).join('');
+            const rows = s.children.map(c => {{
+                const countBadge = c.count >= 0
+                    ? `<span class="subdir-child-count">(${{c.count}} slates)</span>`
+                    : '';
+                return `<div class="subdir-file">📄 ${{escHtml(c.name)}}${{countBadge}}</div>`;
+            }}).join('');
             parts += `<div class="subdir-section">
                 <div class="subdir-section-label">📁 ${{escHtml(s.name)}}</div>
                 <div class="subdir-children">${{rows}}</div>
@@ -1457,15 +1498,17 @@ function renderSubdirs(subdirs) {{
 
 // ── Entry rendering ───────────────────────────────────────────────────────────
 
-function renderSummary(subdirs) {{
-    if (!subdirs || subdirs.length === 0) return '';
+function renderSummary(subdirs, slateCount) {{
     const pills = [];
-    for (const s of subdirs) {{
+    for (const s of (subdirs || [])) {{
         if (s.kind === 'simple') {{
             s.children.forEach(c => pills.push(`<span class="summary-subdir">${{escHtml(c.name)}}</span>`));
         }} else {{
             pills.push(`<span class="summary-subdir">📁 ${{escHtml(s.name)}}</span>`);
         }}
+    }}
+    if (slateCount > 0) {{
+        pills.push(`<span class="summary-slates">Slates (${{slateCount}})</span>`);
     }}
     return pills.length ? `<div class="entry-summary">${{pills.join('')}}</div>` : '';
 }}
@@ -1496,7 +1539,7 @@ function renderEntry(entry, q) {{
         <div class="entry-title-line">
             ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{copyBtn}}${{chevron}}
         </div>
-        ${{renderSummary(entry.subdirs)}}
+        ${{renderSummary(entry.subdirs, entry.slate_count || 0)}}
         <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
     </div>`;
 }}
