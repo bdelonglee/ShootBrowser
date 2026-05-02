@@ -32,7 +32,7 @@ _BLOCK_RE = re.compile(
 )
 
 try:
-    from flask import Flask, jsonify, request
+    from flask import Flask, jsonify, request, send_from_directory
 except ImportError:
     print("\n❌ Flask is not installed.")
     print("   Run: pip install flask\n")
@@ -88,6 +88,13 @@ def api_generate_offline_html():
     g = make_generator()
     out = g.generate_offline_html()
     return jsonify({"success": True, "path": out})
+
+
+@app.route("/offline-site/<path:filename>")
+def offline_site_file(filename):
+    """Serve the generated OfflineSite directory (HTML + photos)."""
+    directory = Path(DATA_PATH) / "__SHOOT_BROWSER" / "OfflineSite"
+    return send_from_directory(str(directory), filename)
 
 
 @app.route("/api/run-sanity-check", methods=["POST"])

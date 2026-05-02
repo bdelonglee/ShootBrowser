@@ -3123,6 +3123,9 @@ async function runExtractSlates() {{
 async function generateOfflineHtml() {{
     const btn    = document.getElementById('offline-html-btn');
     const status = document.getElementById('offline-html-status');
+    // Open blank tab now while we're still in the click-handler gesture context.
+    // Navigating it after an await would be blocked as a popup.
+    const newTab = window.open('', '_blank');
     if (btn) {{ btn.disabled = true; btn.textContent = '⏳ Generating…'; }}
     if (status) {{ status.textContent = ''; status.className = 'extract-status'; }}
     try {{
@@ -3131,11 +3134,13 @@ async function generateOfflineHtml() {{
         if (data.success) {{
             if (status) {{ status.textContent = '✓ Saved'; status.className = 'extract-status ok'; }}
             setTimeout(() => {{ if (status) {{ status.textContent = ''; status.className = 'extract-status'; }} }}, 4000);
-            if (data.path) window.open('file://' + data.path, '_blank');
+            if (newTab) newTab.location.href = '/offline-site/vfx_shoot_browser_offline.html';
         }} else {{
+            if (newTab) newTab.close();
             if (status) {{ status.textContent = `✗ ${{data.error || 'Failed'}}`; status.className = 'extract-status err'; }}
         }}
     }} catch(e) {{
+        if (newTab) newTab.close();
         if (status) {{ status.textContent = '✗ Network error'; status.className = 'extract-status err'; }}
     }} finally {{
         if (btn) {{ btn.disabled = false; btn.textContent = '💾 Export Offline HTML'; }}
