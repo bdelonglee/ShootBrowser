@@ -3131,6 +3131,7 @@ async function generateOfflineHtml() {{
         if (data.success) {{
             if (status) {{ status.textContent = '✓ Saved'; status.className = 'extract-status ok'; }}
             setTimeout(() => {{ if (status) {{ status.textContent = ''; status.className = 'extract-status'; }} }}, 4000);
+            if (data.path) window.open('file://' + data.path, '_blank');
         }} else {{
             if (status) {{ status.textContent = `✗ ${{data.error || 'Failed'}}`; status.className = 'extract-status err'; }}
         }}
