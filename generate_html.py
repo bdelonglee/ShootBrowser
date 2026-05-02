@@ -339,18 +339,57 @@ class HTMLGenerator:
 
     def generate_offline_html(self, output_path: Optional[str] = None):
         print("🎨 Generating offline HTML page...")
+        pages_dir = self.data_path / '__SHOOT_BROWSER' / 'OfflineSite'
+        pages_dir.mkdir(parents=True, exist_ok=True)
         out = Path(output_path) if output_path else (
-            self.default_output_path().parent / 'vfx_shoot_browser_offline.html'
+            pages_dir / 'vfx_shoot_browser_offline.html'
         )
-        out.parent.mkdir(parents=True, exist_ok=True)
+        photos_dir = pages_dir / 'photos'
         offline_data = {
             'db_rows':   self._load_offline_db_rows(),
             'delivered': self._load_offline_delivered(),
+            'photos':    self._extract_offline_photos(photos_dir),
         }
         with open(out, 'w', encoding='utf-8') as f:
             f.write(self._build_html(self.build_data(), offline_data=offline_data))
         print(f"   Saved to: {out}")
         return str(out)
+
+    def _extract_offline_photos(self, photos_dir: Path) -> dict:
+        """Decode base64 photos from JSON DB to JPEG files; return {slate_id: [rel_path,...]}."""
+        import base64 as _b64
+        db_dir = self.data_path / '__DATABASE'
+        if not db_dir.exists():
+            return {}
+        jsonfiles = sorted(
+            [f for f in db_dir.glob('*.json') if not f.name.startswith('.')],
+            key=lambda f: f.stat().st_mtime, reverse=True,
+        )
+        if not jsonfiles:
+            return {}
+        try:
+            db = json.loads(jsonfiles[0].read_text(encoding='utf-8'))
+        except Exception:
+            return {}
+        photos_dir.mkdir(parents=True, exist_ok=True)
+        result = {}
+        count = 0
+        for record in db.get('records', []):
+            slate_id = record.get('slateId', '')
+            photos   = record.get('referencePictures', [])
+            if not slate_id or not photos:
+                continue
+            safe_id = slate_id.replace('/', '_').replace(' ', '_')
+            paths = []
+            for i, src in enumerate(photos):
+                b64_data = src.split(',', 1)[1] if ',' in src else src
+                filename = f"{safe_id}_{i}.jpg"
+                (photos_dir / filename).write_bytes(_b64.b64decode(b64_data))
+                paths.append(f"./photos/{filename}")
+                count += 1
+            result[slate_id] = paths
+        print(f"   Extracted {count} photo(s) for {len(result)} slate(s) → {photos_dir}")
+        return result
 
     def _load_offline_db_rows(self) -> list:
         """Load database CSV rows for embedding in offline HTML."""
@@ -392,9 +431,10 @@ class HTMLGenerator:
             'default_output_dir': self.default_output_dir,
         })
         generated_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        offline_mode        = offline_data is not None
-        offline_db_json     = json.dumps(offline_data['db_rows']   if offline_data else [])
-        offline_del_json    = json.dumps(offline_data['delivered']  if offline_data else [])
+        offline_mode         = offline_data is not None
+        offline_db_json      = json.dumps(offline_data['db_rows']   if offline_data else [])
+        offline_del_json     = json.dumps(offline_data['delivered']  if offline_data else [])
+        offline_photos_json  = json.dumps(offline_data['photos']    if offline_data else {})
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -1556,8 +1596,9 @@ class HTMLGenerator:
 const data           = {data_json};
 const deliveryCfg    = {delivery_cfg_json};
 const OFFLINE_MODE   = {'true' if offline_mode else 'false'};
-const offlineDbRows  = {offline_db_json};
+const offlineDbRows    = {offline_db_json};
 const offlineDelivered = {offline_del_json};
+const offlinePhotos    = {offline_photos_json};
 
 // Flat index: path → entry object (for cart lookups)
 const allEntries = {{}};
@@ -2850,10 +2891,10 @@ function toggleDbCard(btn) {{
     const expanded = entry.classList.toggle('expanded');
     if (expanded) {{
         expandedDbRows.add(id);
-        if (!OFFLINE_MODE && slate && slatesWithPhotos.has(slate)) {{
+        if (slate && slatesWithPhotos.has(slate)) {{
             if (photosBySlate[slate]) {{
                 _injectPhotoStrip(entry, photosBySlate[slate]);
-            }} else {{
+            }} else if (!OFFLINE_MODE) {{
                 fetch(`/api/database-photos/${{encodeURIComponent(slate)}}`)
                     .then(r => r.json())
                     .then(data => {{
@@ -3152,6 +3193,10 @@ function lightboxStep(dir) {{
 function openCurrentPhotoInTab() {{
     const src = (photosBySlate[_lbSlate] || [])[_lbIdx];
     if (!src) return;
+    if (!src.startsWith('data:')) {{
+        window.open(src, '_blank');
+        return;
+    }}
     const parts   = src.split(',');
     const mime    = (parts[0].split(';')[0] || 'image/jpeg').split(':')[1] || 'image/jpeg';
     const byteStr = atob(parts[1]);
@@ -3178,6 +3223,10 @@ if (OFFLINE_MODE) {{
     banner.className = 'offline-mode-banner';
     banner.textContent = '📄 Offline snapshot — read-only, no server required';
     document.querySelector('.container').prepend(banner);
+    for (const [slate, paths] of Object.entries(offlinePhotos)) {{
+        slatesWithPhotos.add(slate);
+        photosBySlate[slate] = paths;
+    }}
     _loadDeliveredBackground();
 }} else {{
     checkExtractStatus();
