@@ -1276,6 +1276,41 @@ class HTMLGenerator:
             object-fit: cover;
         }}
         .db-photo-thumb:hover {{ opacity: 0.85; border-color: var(--accent); }}
+        /* Lightbox */
+        #lightbox {{
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.92); z-index: 2000;
+            align-items: center; justify-content: center; flex-direction: column;
+        }}
+        #lightbox.open {{ display: flex; }}
+        #lightbox-img {{
+            max-width: 90vw; max-height: 80vh;
+            object-fit: contain; border-radius: 4px;
+        }}
+        #lightbox-close {{
+            position: absolute; top: 16px; right: 20px;
+            background: none; border: none; color: #fff;
+            font-size: 28px; cursor: pointer; opacity: 0.6; line-height: 1;
+        }}
+        #lightbox-close:hover {{ opacity: 1; }}
+        #lightbox-prev, #lightbox-next {{
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: none; border: none; color: #fff;
+            font-size: 52px; cursor: pointer; opacity: 0.5;
+            user-select: none; line-height: 1; padding: 0 12px;
+        }}
+        #lightbox-prev:hover, #lightbox-next:hover {{ opacity: 1; }}
+        #lightbox-prev {{ left: 8px; }}
+        #lightbox-next {{ right: 8px; }}
+        #lightbox-footer {{
+            margin-top: 14px; display: flex; align-items: center; gap: 20px;
+            color: rgba(255,255,255,0.5); font-size: 13px;
+        }}
+        #lightbox-open-tab {{
+            background: none; border: none; cursor: pointer;
+            color: var(--accent); font-size: 13px; padding: 0;
+        }}
+        #lightbox-open-tab:hover {{ text-decoration: underline; }}
         .db-section {{ display: flex; flex-direction: column; gap: 2px; }}
         .db-section-label {{
             font-size: 0.7em; letter-spacing: 0.06em;
@@ -2692,6 +2727,22 @@ function renderDbDetails(row) {{
     return `<div class="db-details">${{photoStrip}}${{sections}}</div>`;
 }}
 
+function _injectPhotoStrip(entry, photos) {{
+    if (!photos.length) return;
+    if (entry.querySelector('.db-photo-strip')) return; // already present
+    const detailsEl = entry.querySelector('.entry-details');
+    if (!detailsEl) return;
+    const slate = entry.dataset.slate || '';
+    const strip = '<div class="db-photo-strip">' +
+        photos.map((src, i) =>
+            '<img class="db-photo-thumb" src="' + src + '" alt="Set ref"' +
+            ' data-slate="' + escHtml(slate) + '" data-idx="' + i + '"' +
+            ' onclick="openLightbox(this.dataset.slate,+this.dataset.idx)">'
+        ).join('') +
+        '</div>';
+    detailsEl.insertAdjacentHTML('afterbegin', strip);
+}}
+
 function toggleDbCard(btn) {{
     const entry    = btn.closest('.entry');
     const id       = entry.dataset.dbId;
@@ -2699,22 +2750,18 @@ function toggleDbCard(btn) {{
     const expanded = entry.classList.toggle('expanded');
     if (expanded) {{
         expandedDbRows.add(id);
-        if (!OFFLINE_MODE && slate && slatesWithPhotos.has(slate) && !photosBySlate[slate]) {{
-            fetch(`/api/database-photos/${{encodeURIComponent(slate)}}`)
-                .then(r => r.json())
-                .then(data => {{
-                    photosBySlate[slate] = data.photos || [];
-                    if (!photosBySlate[slate].length) return;
-                    const detailsEl = entry.querySelector('.entry-details');
-                    if (!detailsEl) return;
-                    const strip = `<div class="db-photo-strip">${{
-                        photosBySlate[slate].map(src =>
-                            '<img class="db-photo-thumb" src="' + src + '" alt="Set ref">'
-                        ).join('')
-                    }}</div>`;
-                    detailsEl.insertAdjacentHTML('afterbegin', strip);
-                }})
-                .catch(() => {{}});
+        if (!OFFLINE_MODE && slate && slatesWithPhotos.has(slate)) {{
+            if (photosBySlate[slate]) {{
+                _injectPhotoStrip(entry, photosBySlate[slate]);
+            }} else {{
+                fetch(`/api/database-photos/${{encodeURIComponent(slate)}}`)
+                    .then(r => r.json())
+                    .then(data => {{
+                        photosBySlate[slate] = data.photos || [];
+                        _injectPhotoStrip(entry, photosBySlate[slate]);
+                    }})
+                    .catch(() => {{}});
+            }}
         }}
     }} else {{
         expandedDbRows.delete(id);
@@ -2952,6 +2999,78 @@ async function generateOfflineHtml() {{
         if (btn) {{ btn.disabled = false; btn.textContent = '💾 Export Offline HTML'; }}
     }}
 }}
+
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+let _lbSlate = '';
+let _lbIdx   = 0;
+
+(function () {{
+    const el = document.createElement('div');
+    el.id = 'lightbox';
+    el.innerHTML =
+        '<button id="lightbox-close" onclick="closeLightbox()" title="Close">&#x2715;</button>' +
+        '<button id="lightbox-prev"  onclick="event.stopPropagation();lightboxStep(-1)">&#8249;</button>' +
+        '<img id="lightbox-img" alt="Reference photo" onclick="event.stopPropagation()">' +
+        '<button id="lightbox-next"  onclick="event.stopPropagation();lightboxStep(1)">&#8250;</button>' +
+        '<div id="lightbox-footer" onclick="event.stopPropagation()">' +
+            '<span id="lightbox-counter"></span>' +
+            '<button id="lightbox-open-tab" onclick="openCurrentPhotoInTab()">Open in new tab &#8599;</button>' +
+        '</div>';
+    el.addEventListener('click', closeLightbox);
+    document.body.appendChild(el);
+}})();
+
+function _lbUpdate() {{
+    const photos = photosBySlate[_lbSlate] || [];
+    const src = photos[_lbIdx] || '';
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('lightbox-counter').textContent = (_lbIdx + 1) + ' / ' + photos.length;
+    const multi = photos.length > 1;
+    document.getElementById('lightbox-prev').style.display = multi ? '' : 'none';
+    document.getElementById('lightbox-next').style.display = multi ? '' : 'none';
+}}
+
+function openLightbox(slate, idx) {{
+    const photos = photosBySlate[slate] || [];
+    if (!photos.length) return;
+    _lbSlate = slate;
+    _lbIdx   = idx;
+    _lbUpdate();
+    document.getElementById('lightbox').classList.add('open');
+}}
+
+function closeLightbox() {{
+    document.getElementById('lightbox').classList.remove('open');
+}}
+
+function lightboxStep(dir) {{
+    const photos = photosBySlate[_lbSlate] || [];
+    _lbIdx = (_lbIdx + dir + photos.length) % photos.length;
+    _lbUpdate();
+}}
+
+function openCurrentPhotoInTab() {{
+    const src = (photosBySlate[_lbSlate] || [])[_lbIdx];
+    if (!src) return;
+    const parts   = src.split(',');
+    const mime    = (parts[0].split(';')[0] || 'image/jpeg').split(':')[1] || 'image/jpeg';
+    const byteStr = atob(parts[1]);
+    const arr     = new Uint8Array(byteStr.length);
+    for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([arr], {{type: mime}}));
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+}}
+
+document.addEventListener('keydown', e => {{
+    const lb = document.getElementById('lightbox');
+    if (lb && lb.classList.contains('open')) {{
+        if (e.key === 'Escape')                              closeLightbox();
+        else if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  lightboxStep(1);
+        else if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    lightboxStep(-1);
+        return;
+    }}
+}});
 
 if (OFFLINE_MODE) {{
     document.body.classList.add('offline-mode');
