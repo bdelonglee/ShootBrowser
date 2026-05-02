@@ -447,13 +447,13 @@ class HTMLGenerator:
 
         :root {{
             --bg:           #0d1117;
-            --surface:      #161b22;
-            --surface-2:    #1c2128;
-            --surface-3:    #22272e;
-            --border:       rgba(175,184,193,0.12);
-            --border-hover: rgba(175,184,193,0.22);
-            --text:         #cdd9e5;
-            --text-muted:   #768390;
+            --surface:      #1e2432;
+            --surface-2:    #262f3f;
+            --surface-3:    #2e394d;
+            --border:       rgba(175,184,193,0.22);
+            --border-hover: rgba(175,184,193,0.38);
+            --text:         #dce7f3;
+            --text-muted:   #8fa3b8;
             --accent:       #4493f8;
             --accent-glow:  rgba(68,147,248,0.15);
         }}
