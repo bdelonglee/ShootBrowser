@@ -1569,7 +1569,96 @@ for (const view of Object.values(data)) {{
 
 let currentMode  = 'days';
 let currentQuery = '';
+let currentView  = 'browse';
 const expandedPaths = new Set();
+
+// ── Persistent UI state ───────────────────────────────────────────────────────
+const _UI_KEY = 'vfx_ui_state';
+
+function _saveUiState() {{
+    try {{
+        localStorage.setItem(_UI_KEY, JSON.stringify({{
+            view:          currentView,
+            browseMode:    currentMode,
+            browseQuery:   currentQuery,
+            dbGroup:       dbGroupMode,
+            dbSort:        dbSortKey,
+            dbSortAsc:     dbSortAsc,
+            dbQuery:       dbQuery,
+            dbFilters:     Object.assign({{}}, dbFilters),
+            deliveredMode: deliveredMode,
+            deliveredQuery: deliveredQuery,
+        }}));
+    }} catch(e) {{}}
+}}
+
+function _restoreUiState() {{
+    try {{
+        const s = JSON.parse(localStorage.getItem(_UI_KEY) || 'null');
+        if (!s) return;
+        // Browse
+        if (s.browseMode  && ['days','scenes','codes'].includes(s.browseMode)) {{
+            currentMode = s.browseMode;
+            document.getElementById(`btn-${{s.browseMode}}`).classList.add('active');
+            ['days','scenes','codes'].filter(m => m !== s.browseMode).forEach(m =>
+                document.getElementById(`btn-${{m}}`).classList.remove('active'));
+        }}
+        if (s.browseQuery) {{
+            currentQuery = s.browseQuery;
+            const el = document.getElementById('search-input');
+            if (el) {{ el.value = s.browseQuery; document.getElementById('search-clear').style.display = 'block'; }}
+        }}
+        // Database
+        if (s.dbGroup && ['scene','vfx_id','date','shoot_day','lens','focal'].includes(s.dbGroup)) {{
+            dbGroupMode = s.dbGroup;
+            ['scene','vfx_id','date','shoot_day','lens','focal'].forEach(m => {{
+                const btn = document.getElementById(`db-grp-${{m}}`);
+                if (btn) btn.classList.toggle('active', m === s.dbGroup);
+            }});
+        }}
+        if (s.dbSort) {{
+            dbSortKey = s.dbSort;
+            const sel = document.getElementById('db-sort-select');
+            if (sel) sel.value = s.dbSort;
+        }}
+        if (s.dbSortAsc !== undefined) {{
+            dbSortAsc = s.dbSortAsc;
+            const dirEl = document.getElementById('db-sort-dir');
+            if (dirEl) dirEl.textContent = dbSortAsc ? '↑' : '↓';
+        }}
+        if (s.dbQuery) {{
+            dbQuery = s.dbQuery;
+            const el = document.getElementById('db-search-input');
+            if (el) {{ el.value = s.dbQuery; document.getElementById('db-search-clear').style.display = 'flex'; }}
+        }}
+        if (s.dbFilters && typeof s.dbFilters === 'object') {{
+            Object.keys(dbFilters).forEach(k => {{
+                if (s.dbFilters[k]) {{
+                    dbFilters[k] = s.dbFilters[k];
+                    const inp = document.getElementById(`dbf-${{k}}`);
+                    if (inp) inp.value = s.dbFilters[k];
+                }}
+            }});
+        }}
+        // Delivered
+        if (s.deliveredMode && ['vendor','date','scene','code'].includes(s.deliveredMode)) {{
+            deliveredMode = s.deliveredMode;
+            ['vendor','date','scene','code'].forEach(m => {{
+                const btn = document.getElementById(`del-btn-${{m}}`);
+                if (btn) btn.classList.toggle('active', m === s.deliveredMode);
+            }});
+        }}
+        if (s.deliveredQuery) {{
+            deliveredQuery = s.deliveredQuery;
+            const el = document.getElementById('del-search-input');
+            if (el) {{ el.value = s.deliveredQuery; document.getElementById('del-search-clear').style.display = 'flex'; }}
+        }}
+        // Active tab — restore last
+        if (s.view && ['browse','database','queue','delivered'].includes(s.view)) {{
+            setView(s.view);
+        }}
+    }} catch(e) {{}}
+}}
 
 // ── Mode ─────────────────────────────────────────────────────────────────────
 
@@ -1578,6 +1667,7 @@ function setMode(mode) {{
     document.querySelectorAll('.mode-button').forEach(b => b.classList.remove('active'));
     document.getElementById(`btn-${{mode}}`).classList.add('active');
     render();
+    _saveUiState();
 }}
 
 // ── Search ───────────────────────────────────────────────────────────────────
@@ -1586,6 +1676,7 @@ function onSearch(value) {{
     currentQuery = value.trim().toLowerCase();
     document.getElementById('search-clear').style.display = currentQuery ? 'block' : 'none';
     render();
+    _saveUiState();
 }}
 
 function clearSearch() {{
@@ -2144,6 +2235,7 @@ function updateQueueBadge() {{
 }}
 
 function setView(view) {{
+    currentView = view;
     ['browse', 'database', 'queue', 'delivered'].forEach(v => {{
         document.getElementById(`view-${{v}}`).style.display = v === view ? 'block' : 'none';
         document.getElementById(`tab-${{v}}`).classList.toggle('active', v === view);
@@ -2154,6 +2246,7 @@ function setView(view) {{
     if (view === 'delivered') loadDelivered();
     if (view === 'database')  loadDatabase();
     if (view === 'queue')     renderQueue();
+    _saveUiState();
 }}
 
 // ── Delivered packages view ───────────────────────────────────────────────────
@@ -2209,12 +2302,14 @@ function setDeliveredMode(mode) {{
         document.getElementById(`del-btn-${{m}}`).classList.toggle('active', m === mode);
     }});
     renderDelivered();
+    _saveUiState();
 }}
 
 function onDeliveredSearch(val) {{
     deliveredQuery = val.trim().toLowerCase();
     document.getElementById('del-search-clear').style.display = val ? 'flex' : 'none';
     renderDelivered();
+    _saveUiState();
 }}
 
 function clearDeliveredSearch() {{
@@ -2451,28 +2546,33 @@ function setDbGroup(mode) {{
         document.getElementById(`db-grp-${{m}}`).classList.toggle('active', m === mode);
     }});
     renderDatabase();
+    _saveUiState();
 }}
 
 function setDbSort(key) {{
     dbSortKey = key;
     renderDatabase();
+    _saveUiState();
 }}
 
 function toggleDbSortDir() {{
     dbSortAsc = !dbSortAsc;
     document.getElementById('db-sort-dir').textContent = dbSortAsc ? '↑' : '↓';
     renderDatabase();
+    _saveUiState();
 }}
 
 function setDbFilter(key, val) {{
     dbFilters[key] = val.trim().toLowerCase();
     renderDatabase();
+    _saveUiState();
 }}
 
 function setDbQuery(val) {{
     dbQuery = val.trim().toLowerCase();
     document.getElementById('db-search-clear').style.display = val ? 'flex' : 'none';
     renderDatabase();
+    _saveUiState();
 }}
 
 function clearDbSearch() {{
@@ -2933,7 +3033,7 @@ loadPackageNote();
 loadBuildForm();
 renderCart();
 updateQueueBadge();
-
+_restoreUiState();
 render();
 
 // ── Slate extraction ──────────────────────────────────────────────────────────

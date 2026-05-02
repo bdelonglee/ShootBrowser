@@ -77,16 +77,14 @@ in case the list changes in future CSVs.
 
 ---
 
-## 7. Persistent UI State
+## 7. ✅ Persistent UI State
 
-**What:** Remember active tab, group mode, sort key, sort direction, and search
-queries across page reloads.
+**Status: Done.**
 
-**How:** Save to `localStorage` on every change; restore on page load before
-the first `render()` call. Keys: `vfx_ui_tab`, `vfx_ui_mode`,
-`vfx_db_group`, `vfx_db_sort`, `vfx_db_sort_asc`.
-
-Small change, high daily value.
+Active tab, browse/database/delivered group mode, sort key, sort direction,
+all search queries, and all per-field database filters (Slate, VFX ID, Date,
+Shoot Day, Roll, Lens, Focal) are saved to `localStorage` key `vfx_ui_state`
+on every change and restored before the first `render()` call.
 
 ---
 
@@ -150,7 +148,7 @@ subdir names map to which "data type" (configurable in `sanity_check.json`).
 | 4 | Database stats bar | ✅ Done | Low |
 | 5 | Export filtered CSV | ⬜ Todo | Low |
 | 6 | Wrangler quick filter | ⬜ Todo | Low |
-| 7 | Persistent UI state | ⬜ Todo | Low |
+| 7 | Persistent UI state | ✅ Done | Low |
 | 8 | Open in file manager | ✅ Done | Low |
 | 9 | Keyboard shortcuts | ⬜ Todo | Low |
 | 10 | Scene coverage map | ⬜ Todo | High |
