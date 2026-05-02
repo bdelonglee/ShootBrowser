@@ -295,6 +295,50 @@ def api_database():
     return jsonify({"success": True, "rows": rows, "filename": csvfile.name})
 
 
+def _load_db_json() -> dict:
+    """Load the most recent JSON database export, cached in module scope."""
+    db_dir = Path(DATA_PATH) / "__DATABASE"
+    if not db_dir.exists():
+        return {}
+    jsonfiles = sorted(
+        (f for f in db_dir.glob("*.json") if not f.name.startswith(".")),
+        key=lambda f: f.stat().st_mtime, reverse=True,
+    )
+    if not jsonfiles:
+        return {}
+    return json.loads(jsonfiles[0].read_text(encoding="utf-8"))
+
+
+@app.route("/api/database-json")
+def api_database_json():
+    """Return the list of slate IDs that have reference photos."""
+    try:
+        data = _load_db_json()
+        slates_with_photos = [
+            r["slateId"] for r in data.get("records", [])
+            if r.get("referencePictures")
+        ]
+        return jsonify({"success": True, "slates_with_photos": slates_with_photos})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/database-photos/<path:slate_id>")
+def api_database_photos(slate_id):
+    """Return base64 photos for a specific slate ID."""
+    try:
+        data = _load_db_json()
+        record = next(
+            (r for r in data.get("records", []) if r.get("slateId") == slate_id),
+            None,
+        )
+        if not record:
+            return jsonify({"success": True, "photos": []})
+        return jsonify({"success": True, "photos": record.get("referencePictures", [])})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ── Slate extraction helpers ──────────────────────────────────────────────────
 
 def _find_db_csv() -> tuple:

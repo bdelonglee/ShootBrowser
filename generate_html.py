@@ -1264,6 +1264,18 @@ class HTMLGenerator:
             border: 1px solid rgba(247,129,102,0.2); padding: 2px 8px; border-radius: 6px;
         }}
         .db-details {{ display: flex; flex-direction: column; gap: 16px; }}
+        .db-photo-strip {{
+            display: flex; flex-wrap: wrap; gap: 8px;
+        }}
+        .db-photo-thumb {{
+            height: 120px; width: auto;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: opacity 0.15s, border-color 0.15s;
+            object-fit: cover;
+        }}
+        .db-photo-thumb:hover {{ opacity: 0.85; border-color: var(--accent); }}
         .db-section {{ display: flex; flex-direction: column; gap: 2px; }}
         .db-section-label {{
             font-size: 0.7em; letter-spacing: 0.06em;
@@ -2323,7 +2335,9 @@ function toggleDelBlock(btn) {{
 }}
 
 // ── Database view ─────────────────────────────────────────────────────────────
-let dbRows         = [];
+let dbRows            = [];
+let slatesWithPhotos  = new Set(); // slate IDs that have photos in the JSON
+let photosBySlate     = {{}};       // cache: slateId → [base64, ...]
 let dbGroupMode    = 'scene';
 let dbSortKey      = 'scene';
 let dbSortAsc      = true;
@@ -2501,9 +2515,14 @@ async function loadDatabase() {{
     }}
     el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><p>Loading…</p></div>';
     try {{
-        const res  = await fetch('/api/database');
-        const data = await res.json();
-        dbRows = data.rows || [];
+        const [dbRes, photosRes] = await Promise.all([
+            fetch('/api/database'),
+            fetch('/api/database-json'),
+        ]);
+        const dbData     = await dbRes.json();
+        const photosData = await photosRes.json();
+        dbRows           = dbData.rows || [];
+        slatesWithPhotos = new Set(photosData.slates_with_photos || []);
         renderDatabase();
     }} catch(e) {{
         el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>Could not load database: ${{escHtml(e.message)}}</p></div>`;
@@ -2599,7 +2618,11 @@ function renderDbCard(row, idx) {{
              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"/>
         </svg></button>`;
-    return `<div class="entry${{isExpanded ? ' expanded' : ''}}" data-db-id="${{escHtml(id)}}">
+    const hasPhotos = slatesWithPhotos.has(slate);
+    const photoBadge = hasPhotos
+        ? `<span class="db-photo-badge" title="Has reference photos">📷</span>`
+        : '';
+    return `<div class="entry${{isExpanded ? ' expanded' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}">
         <div class="entry-title-line">
             <span class="db-slate">${{escHtml(slate)}}</span>
             ${{vfxId  ? `<span class="db-vfxid">${{escHtml(vfxId)}}</span>` : ''}}
@@ -2609,6 +2632,7 @@ function renderDbCard(row, idx) {{
             <span class="db-lens">${{escHtml(lens)}}</span>
             <span class="db-focal">${{escHtml(focal)}}</span>
             ${{tilt   ? `<span class="db-tilt">${{escHtml(tilt)}}</span>` : ''}}
+            ${{photoBadge}}
             ${{chevron}}
         </div>
         <div class="entry-details">${{renderDbDetails(row)}}</div>
@@ -2656,15 +2680,45 @@ function renderDbDetails(row) {{
             ${{rowsHtml}}
         </div>`;
     }}).join('');
-    return `<div class="db-details">${{sections}}</div>`;
+    const photos = photosBySlate[row['Slate'] || ''] || [];
+    const photoStrip = photos.length ? `<div class="db-photo-strip">${{
+        photos.map(src =>
+            `<a href="${{src}}" target="_blank" rel="noopener">
+                <img class="db-photo-thumb" src="${{src}}" alt="Set ref">
+            </a>`
+        ).join('')
+    }}</div>` : '';
+
+    return `<div class="db-details">${{photoStrip}}${{sections}}</div>`;
 }}
 
 function toggleDbCard(btn) {{
     const entry    = btn.closest('.entry');
     const id       = entry.dataset.dbId;
+    const slate    = entry.dataset.slate || '';
     const expanded = entry.classList.toggle('expanded');
-    if (expanded) expandedDbRows.add(id);
-    else          expandedDbRows.delete(id);
+    if (expanded) {{
+        expandedDbRows.add(id);
+        if (!OFFLINE_MODE && slate && slatesWithPhotos.has(slate) && !photosBySlate[slate]) {{
+            fetch(`/api/database-photos/${{encodeURIComponent(slate)}}`)
+                .then(r => r.json())
+                .then(data => {{
+                    photosBySlate[slate] = data.photos || [];
+                    if (!photosBySlate[slate].length) return;
+                    const detailsEl = entry.querySelector('.entry-details');
+                    if (!detailsEl) return;
+                    const strip = `<div class="db-photo-strip">${{
+                        photosBySlate[slate].map(src =>
+                            '<img class="db-photo-thumb" src="' + src + '" alt="Set ref">'
+                        ).join('')
+                    }}</div>`;
+                    detailsEl.insertAdjacentHTML('afterbegin', strip);
+                }})
+                .catch(() => {{}});
+        }}
+    }} else {{
+        expandedDbRows.delete(id);
+    }}
 }}
 
 function renderQueue() {{
