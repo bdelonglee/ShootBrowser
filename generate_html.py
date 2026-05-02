@@ -1377,6 +1377,13 @@ class HTMLGenerator:
         .tool-btn:hover {{ opacity: 1; color: var(--text); }}
         .tool-btn:disabled {{ opacity: 0.25; cursor: default; }}
         .tool-btn.needs-refresh {{ opacity: 1; color: #e3b341; }}
+        .export-btn {{
+            border: 1px solid var(--border); border-radius: 4px;
+            background: none; cursor: pointer;
+            color: var(--text-muted); font-size: 0.78em; padding: 3px 8px;
+            transition: border-color 0.15s, color 0.15s; white-space: nowrap;
+        }}
+        .export-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
         .extract-status {{ font-size: 0.78em; color: var(--text-muted); }}
         .extract-status.ok  {{ color: #56d364; }}
         .extract-status.err {{ color: #f85149; }}
@@ -1461,6 +1468,7 @@ class HTMLGenerator:
         </select>
         <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
         <span id="db-stats-bar" class="db-stats-bar"></span>
+        <button class="export-btn" onclick="exportDbCsv()" title="Export filtered rows as CSV">⬇ Export CSV</button>
       </div>
       <div class="db-filter-row">
         <div class="db-filter-field">
@@ -2622,6 +2630,31 @@ function clearDbSearch() {{
     setDbQuery('');
 }}
 
+function exportDbCsv() {{
+    const rows = dbRows.filter(dbRowMatches);
+    if (!rows.length) return;
+    const ORDERED = [
+        'Slate','VFX ID','Take','Roll','Take Notes','Scene Description','Notes',
+        'VFX Work','Camera','Body','Camera Move','Resolution','Lens','Focal',
+        'F-Stop','Focus','Tilt','Height','Shutter','FPS','WB','ISO','Filter',
+        'Shoot Day','Date','Set Location','Script Location','Int/Ext','Day/Night',
+        'Unit','Timestamp','Set Refs',
+    ];
+    const allCols  = Object.keys(rows[0]);
+    const ordered  = ORDERED.filter(c => allCols.includes(c));
+    const rest     = allCols.filter(c => !ORDERED.includes(c));
+    const cols     = [...ordered, ...rest];
+    const esc      = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const lines    = [cols.map(esc).join(',')];
+    for (const row of rows) lines.push(cols.map(c => esc(row[c])).join(','));
+    const blob = new Blob([lines.join('\\r\\n')], {{ type: 'text/csv' }});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'database_export.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}}
+
 function dbRowMatches(row) {{
     if (dbPinnedKeys && !dbPinnedKeys.has(_slateSceneKey(row['Slate'] || ''))) return false;
     const f = dbFilters;
@@ -3214,12 +3247,48 @@ function openCurrentPhotoInTab() {{
 }}
 
 document.addEventListener('keydown', e => {{
+    // Lightbox takes full priority
     const lb = document.getElementById('lightbox');
     if (lb && lb.classList.contains('open')) {{
-        if (e.key === 'Escape')                              closeLightbox();
-        else if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  lightboxStep(1);
-        else if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    lightboxStep(-1);
+        if (e.key === 'Escape')                                   closeLightbox();
+        else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') lightboxStep(1);
+        else if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   lightboxStep(-1);
         return;
+    }}
+
+    // Don't intercept when the user is typing in any input / textarea
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {{
+        // Escape still clears search inputs
+        if (e.key === 'Escape') {{
+            if (currentView === 'browse')    clearSearch();
+            else if (currentView === 'database') {{ clearDbSearch(); Object.keys(dbFilters).forEach(k => {{ dbFilters[k]=''; const el=document.getElementById('dbf-'+k); if(el) el.value=''; }}); renderDatabase(); _saveUiState(); }}
+            else if (currentView === 'delivered') clearDeliveredSearch();
+            document.activeElement.blur();
+        }}
+        return;
+    }}
+
+    // Tab shortcuts: 1/2/3/4
+    if (e.key === '1') {{ setView('browse');    return; }}
+    if (e.key === '2') {{ setView('database');  return; }}
+    if (e.key === '3') {{ setView('queue');     return; }}
+    if (e.key === '4') {{ setView('delivered'); return; }}
+
+    // ⌘F / Ctrl+F — focus the active tab's search
+    if (e.key === 'f' && (e.metaKey || e.ctrlKey)) {{
+        e.preventDefault();
+        const ids = {{ browse: 'search-input', database: 'db-global-search', delivered: 'del-search-input' }};
+        const el = document.getElementById(ids[currentView] || 'search-input');
+        if (el) el.focus();
+        return;
+    }}
+
+    // Escape — clear the active tab's search
+    if (e.key === 'Escape') {{
+        if (currentView === 'browse')         clearSearch();
+        else if (currentView === 'database')  clearDbSearch();
+        else if (currentView === 'delivered') clearDeliveredSearch();
     }}
 }});
 
