@@ -1,0 +1,109 @@
+================================================================================
+  VFX SHOOT BROWSER — Windows Setup Instructions
+================================================================================
+
+
+STEP 1 — Install Python
+------------------------
+1. Go to https://www.python.org/downloads/
+2. Download Python 3.12 (or later).
+3. Run the installer.
+   IMPORTANT: check both boxes at the bottom of the first screen:
+     [x] Add Python to PATH
+     [x] Install pip
+4. Click "Install Now".
+
+Verify the install: open a new Command Prompt and type:
+    python --version
+    pip --version
+Both should print a version number (not an error).
+
+
+STEP 2 — Copy the project files
+---------------------------------
+Copy this entire folder (python_shoot) to the Windows machine, e.g.:
+    C:\VFX\python_shoot\
+
+The folder must contain at least:
+    server.py
+    generate_html.py
+    sanity_check.py
+    requirements.txt
+    launch.bat
+
+
+STEP 3 — Create a virtual environment and install Flask
+--------------------------------------------------------
+Open Command Prompt, then run:
+
+    cd C:\VFX\python_shoot
+    python -m venv venv
+    venv\Scripts\activate
+    pip install flask
+
+You will see "(venv)" appear in the prompt — that means the environment
+is active. Flask is the only external dependency needed.
+
+This step only needs to be done ONCE on a new machine.
+
+
+STEP 4 — Configure the data path
+----------------------------------
+Open launch.bat with Notepad and edit the DATA_PATH line at the top:
+
+    set DATA_PATH=D:\POSEIDON\DATA
+
+Replace D:\POSEIDON\DATA with the actual path to your shoot data root —
+the folder that contains __DATABASE, __SHOOT_BROWSER, and your block
+folders (J01__..., J02__..., etc.).
+
+If the data is on a network drive, use its mapped drive letter, e.g.:
+    set DATA_PATH=Z:\POSEIDON\DATA
+
+
+STEP 5 — Run the server
+-------------------------
+Double-click launch.bat.
+
+A Command Prompt window will open and the server will start.
+Your default browser will open automatically at:
+    http://127.0.0.1:5000
+
+To stop the server, close the Command Prompt window (or press Ctrl+C).
+
+
+STEP 6 — Every subsequent launch
+----------------------------------
+Just double-click launch.bat — no other steps needed.
+
+
+================================================================================
+  TROUBLESHOOTING
+================================================================================
+
+"python is not recognized..."
+    Python was not added to PATH during install.
+    Uninstall Python and reinstall it, making sure to check "Add to PATH".
+
+"No module named flask"
+    The venv was not activated before running the server.
+    Open Command Prompt, run:
+        cd C:\VFX\python_shoot
+        venv\Scripts\activate
+        pip install flask
+    Then double-click launch.bat again.
+
+"Could not find data path" or no data shown
+    The DATA_PATH in launch.bat is incorrect.
+    Double-check the drive letter and folder path in launch.bat.
+
+Browser does not open automatically
+    Open your browser manually and go to: http://127.0.0.1:5000
+
+Accessing the server from another computer on the network
+    Edit launch.bat and add --host 0.0.0.0 to the python line:
+        python server.py --data-path "%DATA_PATH%" --host 0.0.0.0
+    Then allow port 5000 through Windows Firewall when prompted.
+    Other machines can reach it at: http://<this-machine-ip>:5000
+
+================================================================================
