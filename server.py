@@ -308,7 +308,8 @@ def _load_db_json() -> dict:
     if not db_dir.exists():
         return {}
     jsonfiles = sorted(
-        (f for f in db_dir.glob("*.json") if not f.name.startswith(".")),
+        (f for f in db_dir.glob("*.json")
+         if not f.name.startswith(".") and f.name != "extraction_meta.json"),
         key=lambda f: f.stat().st_mtime, reverse=True,
     )
     if not jsonfiles:
