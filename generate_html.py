@@ -713,6 +713,8 @@ class HTMLGenerator:
         .toggle-btn svg {{ transition: transform 0.2s; }}
         .entry.expanded .toggle-btn {{ opacity: 0.7; }}
         .entry.expanded .toggle-btn svg {{ transform: rotate(180deg); }}
+        .entry.vfx-pass {{ border-left-color: #3a9e6a; }}
+        .entry.vfx-pass.expanded {{ background: #1b2b21; border-left-color: #3fb06a; }}
 
         /* ── Summary (collapsed) ── */
         .entry-summary {{
@@ -1263,6 +1265,15 @@ class HTMLGenerator:
         }}
         .db-filter-input:focus {{ outline: none; border-color: var(--accent); }}
         .db-filter-input::placeholder {{ color: var(--text-muted); }}
+        .vfx-filter-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text-muted); font-size: 0.82em;
+            padding: 5px 10px; cursor: pointer; white-space: nowrap;
+            transition: border-color 0.15s, color 0.15s, background 0.15s;
+        }}
+        .vfx-filter-btn:hover {{ border-color: var(--border-hover); color: var(--text); }}
+        .vfx-filter-btn.active-yes {{ border-color: #3fb06a; color: #3fb06a; background: rgba(63,176,106,0.08); }}
+        .vfx-filter-btn.active-no  {{ border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }}
         .db-sort-select {{
             background: var(--surface-2); border: 1px solid var(--border);
             border-radius: 6px; color: var(--text); font-size: 0.82em;
@@ -1507,12 +1518,22 @@ class HTMLGenerator:
           <input class="db-filter-input" type="text" id="dbf-focal"
                  oninput="setDbFilter('focal', this.value)" placeholder="35mm">
         </div>
-        <div class="search-wrapper" style="flex:1;min-width:180px">
-          <span class="search-icon">🔍</span>
-          <input id="db-global-search" type="text"
-                 placeholder="Search all other fields…"
-                 oninput="setDbQuery(this.value)">
-          <button id="db-search-clear" onclick="clearDbSearch()" title="Clear">✕</button>
+        <div class="db-filter-field">
+          <label>VFX Pass</label>
+          <button id="vfx-filter-btn" class="vfx-filter-btn" onclick="cycleVfxFilter()" title="Cycle VFX Pass filter">All</button>
+        </div>
+        <div class="db-filter-field" style="flex:1;min-width:180px">
+          <label>Search</label>
+          <div style="position:relative;display:flex">
+            <input id="db-global-search" class="db-filter-input" type="text"
+                   style="flex:1;width:100%;box-sizing:border-box;padding-right:24px"
+                   placeholder="All other fields…"
+                   oninput="setDbQuery(this.value)">
+            <button id="db-search-clear" onclick="clearDbSearch()" title="Clear"
+                    style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);
+                           background:none;border:none;color:var(--text-muted);cursor:pointer;
+                           font-size:0.8em;padding:0;line-height:1">✕</button>
+          </div>
         </div>
       </div>
       <div id="db-pin-banner" class="db-pin-banner" style="display:none;margin-top:12px">
@@ -1636,6 +1657,7 @@ function _saveUiState() {{
             dbSortAsc:     dbSortAsc,
             dbQuery:       dbQuery,
             dbFilters:     Object.assign({{}}, dbFilters),
+            dbVfxFilter:   dbVfxFilter,
             deliveredMode: deliveredMode,
             deliveredQuery: deliveredQuery,
         }}));
@@ -1689,6 +1711,10 @@ function _restoreUiState() {{
                     if (inp) inp.value = s.dbFilters[k];
                 }}
             }});
+        }}
+        if (s.dbVfxFilter && ['all','yes','no'].includes(s.dbVfxFilter)) {{
+            dbVfxFilter = s.dbVfxFilter;
+            _updateVfxFilterBtn();
         }}
         // Delivered
         if (s.deliveredMode && ['vendor','date','scene','code'].includes(s.deliveredMode)) {{
@@ -2523,6 +2549,7 @@ let dbSortKey      = 'scene';
 let dbSortAsc      = true;
 let dbFilters      = {{ slate: '', vfx_id: '', date: '', shoot_day: '', roll: '', lens: '', focal: '' }};
 let dbQuery        = '';
+let dbVfxFilter    = 'all'; // 'all' | 'yes' | 'no'
 let dbPinnedKeys   = null;  // Set of scene keys when filtering from Browse badge
 let dbPinnedLabel  = '';
 const expandedDbRows = new Set();
@@ -2656,6 +2683,26 @@ function exportDbCsv() {{
     setTimeout(() => URL.revokeObjectURL(url), 10000);
 }}
 
+function _isVfxPass(row) {{
+    return (row['Take Notes'] || '').trim().toLowerCase() === 'vfx pass';
+}}
+
+function _updateVfxFilterBtn() {{
+    const btn = document.getElementById('vfx-filter-btn');
+    if (!btn) return;
+    const labels = {{ all: 'All', yes: '✓ VFX Pass', no: '✗ Non-VFX' }};
+    btn.textContent = labels[dbVfxFilter];
+    btn.className = 'vfx-filter-btn' + (dbVfxFilter !== 'all' ? ` active-${{dbVfxFilter}}` : '');
+}}
+
+function cycleVfxFilter() {{
+    const next = {{ all: 'yes', yes: 'no', no: 'all' }};
+    dbVfxFilter = next[dbVfxFilter];
+    _updateVfxFilterBtn();
+    renderDatabase();
+    _saveUiState();
+}}
+
 function dbRowMatches(row) {{
     if (dbPinnedKeys && !dbPinnedKeys.has(_slateSceneKey(row['Slate'] || ''))) return false;
     const f = dbFilters;
@@ -2666,6 +2713,11 @@ function dbRowMatches(row) {{
     if (f.roll      && !(row['Roll']       || '').toLowerCase().includes(f.roll))       return false;
     if (f.lens      && !(row['Lens']       || '').toLowerCase().includes(f.lens))       return false;
     if (f.focal     && !(row['Focal']      || '').toLowerCase().includes(f.focal))      return false;
+    if (dbVfxFilter !== 'all') {{
+        const isPass = _isVfxPass(row);
+        if (dbVfxFilter === 'yes' && !isPass) return false;
+        if (dbVfxFilter === 'no'  &&  isPass) return false;
+    }}
     if (dbQuery) {{
         const others = Object.entries(row)
             .filter(([ k ]) => !DB_KEY_FIELDS.includes(k))
@@ -2832,7 +2884,8 @@ function renderDbCard(row, idx) {{
     const photoBadge = hasPhotos
         ? `<span class="db-photo-badge" title="Has reference photos">📷</span>`
         : '';
-    return `<div class="entry${{isExpanded ? ' expanded' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}">
+    const vfxPass = _isVfxPass(row);
+    return `<div class="entry${{isExpanded ? ' expanded' : ''}}${{vfxPass ? ' vfx-pass' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}">
         <div class="entry-title-line">
             <span class="db-slate">${{escHtml(slate)}}</span>
             ${{vfxId  ? `<span class="db-vfxid">${{escHtml(vfxId)}}</span>` : ''}}
