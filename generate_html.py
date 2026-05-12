@@ -2684,7 +2684,7 @@ function exportDbCsv() {{
 }}
 
 function _isVfxPass(row) {{
-    return (row['Take Notes'] || '').trim().toLowerCase() === 'vfx pass';
+    return (row['VFX Pass / Ref'] || '').trim().toLowerCase() === 'yes';
 }}
 
 function _updateVfxFilterBtn() {{
