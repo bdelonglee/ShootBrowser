@@ -1681,7 +1681,7 @@ function _restoreUiState() {{
             if (el) {{ el.value = s.browseQuery; document.getElementById('search-clear').style.display = 'block'; }}
         }}
         // Database
-        if (s.dbGroup && ['scene','vfx_id','date','shoot_day','lens','focal'].includes(s.dbGroup)) {{
+        if (s.dbGroup && ['scene','vfx_id','date','shoot_day','lens','focal','none'].includes(s.dbGroup)) {{
             dbGroupMode = s.dbGroup;
             ['scene','vfx_id','date','shoot_day','lens','focal'].forEach(m => {{
                 const btn = document.getElementById(`db-grp-${{m}}`);
@@ -2618,9 +2618,9 @@ const DB_SECTIONS = [
 ];
 
 function setDbGroup(mode) {{
-    dbGroupMode = mode;
+    dbGroupMode = (dbGroupMode === mode) ? 'none' : mode;
     ['scene','vfx_id','date','shoot_day','lens','focal'].forEach(m => {{
-        document.getElementById(`db-grp-${{m}}`).classList.toggle('active', m === mode);
+        document.getElementById(`db-grp-${{m}}`).classList.toggle('active', m === dbGroupMode);
     }});
     renderDatabase();
     _saveUiState();
@@ -2840,6 +2840,11 @@ function renderDatabase() {{
         else cmp = String(av).localeCompare(String(bv));
         return dbSortAsc ? cmp : -cmp;
     }});
+
+    if (dbGroupMode === 'none') {{
+        el.innerHTML = sorted.map(row => renderDbCard(row, dbRows.indexOf(row))).join('');
+        return;
+    }}
 
     const groupKeys = [];
     const groups    = {{}};
