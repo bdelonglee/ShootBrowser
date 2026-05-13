@@ -1340,6 +1340,93 @@ class HTMLGenerator:
         .vfx-filter-btn:hover {{ border-color: var(--border-hover); color: var(--text); }}
         .vfx-filter-btn.active-yes {{ border-color: #3fb06a; color: #3fb06a; background: rgba(63,176,106,0.08); }}
         .vfx-filter-btn.active-no  {{ border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }}
+
+        /* ── Bins ── */
+        .bin-badge {{
+            position: relative;
+            background: rgba(163,113,247,0.12); color: #a371f7;
+            border: 1px solid rgba(163,113,247,0.25);
+            border-radius: 5px; padding: 2px 7px;
+            font-size: 0.75em; font-weight: 600;
+            cursor: default; white-space: nowrap; user-select: none;
+        }}
+        .bin-badge-tooltip {{
+            display: none; position: absolute;
+            bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+            background: var(--surface-3); border: 1px solid var(--border);
+            border-radius: 6px; padding: 6px 10px;
+            font-size: 0.8em; color: var(--text); white-space: nowrap;
+            z-index: 200; pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        }}
+        .bin-badge:hover .bin-badge-tooltip {{ display: block; }}
+        .bin-add-btn {{
+            background: none; border: 1px solid var(--border);
+            border-radius: 5px; color: var(--text-muted);
+            font-size: 1em; font-weight: 700; line-height: 1;
+            padding: 1px 6px; cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+        }}
+        .bin-add-btn:hover {{ border-color: #a371f7; color: #a371f7; }}
+        #bin-menu {{
+            position: fixed; z-index: 3000;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 5px 0;
+            min-width: 200px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+        }}
+        .bin-menu-section-label {{
+            padding: 5px 12px 2px; font-size: 0.68em;
+            color: var(--text-muted); font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.06em;
+        }}
+        .bin-menu-divider {{ border: none; border-top: 1px solid var(--border); margin: 4px 0; }}
+        .bin-menu-item {{
+            display: flex; align-items: center; gap: 6px;
+            padding: 5px 12px; cursor: pointer;
+            font-size: 0.83em; color: var(--text);
+            transition: background 0.1s;
+        }}
+        .bin-menu-item:hover {{ background: var(--surface-3); }}
+        .bin-menu-item.in-bin {{ color: #a371f7; }}
+        .bin-menu-item.new-bin {{ color: var(--accent); }}
+        .bin-menu-icon {{ width: 14px; text-align: center; flex-shrink: 0; }}
+        #bin-modal-overlay {{
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6); z-index: 2500;
+            align-items: center; justify-content: center;
+        }}
+        #bin-modal {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 24px;
+            min-width: 340px; max-width: 480px; width: 90%;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+        }}
+        .bin-modal-title {{ font-size: 1em; font-weight: 700; color: var(--text); margin-bottom: 16px; }}
+        .bin-modal-empty {{ color: var(--text-muted); font-size: 0.85em; text-align: center; padding: 16px 0; }}
+        .bin-modal-row {{
+            display: flex; align-items: center; gap: 8px;
+            padding: 9px 0; border-bottom: 1px solid var(--border);
+        }}
+        .bin-modal-row:last-child {{ border-bottom: none; }}
+        .bin-modal-name {{ flex: 1; font-size: 0.88em; color: var(--text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+        .bin-modal-count {{ font-size: 0.75em; color: var(--text-muted); flex-shrink: 0; }}
+        .bin-modal-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 5px; color: var(--text-muted); font-size: 0.78em;
+            padding: 3px 9px; cursor: pointer; flex-shrink: 0;
+            transition: border-color 0.15s, color 0.15s;
+        }}
+        .bin-modal-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .bin-modal-btn.danger:hover {{ border-color: #f47067; color: #f47067; }}
+        .bin-modal-close {{
+            margin-top: 16px; width: 100%;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.85em;
+            padding: 8px; cursor: pointer;
+            transition: border-color 0.15s;
+        }}
+        .bin-modal-close:hover {{ border-color: var(--accent); }}
         .db-sort-select {{
             background: var(--surface-2); border: 1px solid var(--border);
             border-radius: 6px; color: var(--text); font-size: 0.82em;
@@ -1602,6 +1689,13 @@ class HTMLGenerator:
                            font-size:0.8em;padding:0;line-height:1">✕</button>
           </div>
         </div>
+        <div class="db-filter-field">
+          <label>Bin</label>
+          <select id="bin-select" class="db-sort-select" style="min-width:110px" onchange="setActiveBin(this.value)">
+            <option value="">No Bin</option>
+            <option value="__edit__">── Edit Bins…</option>
+          </select>
+        </div>
       </div>
       <div id="db-pin-banner" class="db-pin-banner" style="display:none;margin-top:12px">
         <span id="db-pin-label"></span>
@@ -1725,6 +1819,7 @@ function _saveUiState() {{
             dbQuery:       dbQuery,
             dbFilters:     Object.assign({{}}, dbFilters),
             dbVfxFilter:   dbVfxFilter,
+            activeBinId:   activeBinId,
             deliveredMode: deliveredMode,
             deliveredQuery: deliveredQuery,
         }}));
@@ -1782,6 +1877,10 @@ function _restoreUiState() {{
         if (s.dbVfxFilter && ['all','yes','no'].includes(s.dbVfxFilter)) {{
             dbVfxFilter = s.dbVfxFilter;
             _updateVfxFilterBtn();
+        }}
+        if (s.activeBinId && bins[s.activeBinId]) {{
+            activeBinId = s.activeBinId;
+            _updateBinSelect();
         }}
         // Delivered
         if (s.deliveredMode && ['vendor','date','scene','code'].includes(s.deliveredMode)) {{
@@ -2618,6 +2717,9 @@ let dbFilters      = {{ slate: '', vfx_id: '', date: '', shoot_day: '', roll: ''
 let dbQuery        = '';
 let dbVfxFilter    = 'all'; // 'all' | 'yes' | 'no'
 let dbPinnedKeys   = null;  // Set of scene keys when filtering from Browse badge
+let bins       = {{}};
+let activeBinId = null;
+const BINS_KEY = 'vfx_bins';
 let dbPinnedLabel  = '';
 const expandedDbRows = new Set();
 
@@ -2750,6 +2852,215 @@ function exportDbCsv() {{
     setTimeout(() => URL.revokeObjectURL(url), 10000);
 }}
 
+// ── Bins ──────────────────────────────────────────────────────────────────────
+function _loadBins() {{
+    try {{ bins = JSON.parse(localStorage.getItem(BINS_KEY) || '{{}}'); }} catch(e) {{ bins = {{}}; }}
+}}
+function _saveBins() {{
+    try {{ localStorage.setItem(BINS_KEY, JSON.stringify(bins)); }} catch(e) {{}}
+}}
+function _newBinId() {{
+    return 'bin_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+}}
+function _rowInBin(row, bin) {{
+    const slate = row['Slate']  || '';
+    const take  = row['Take']   || '';
+    const cam   = row['Camera'] || '';
+    return bin.items.some(item =>
+        item.type === 'slate'
+            ? item.slate === slate
+            : item.slate === slate && item.take === take && item.camera === cam
+    );
+}}
+function _rowBins(row) {{
+    return Object.values(bins).filter(b => _rowInBin(row, b));
+}}
+function _updateBinSelect() {{
+    const sel = document.getElementById('bin-select');
+    if (!sel) return;
+    const binList = Object.values(bins);
+    sel.innerHTML =
+        '<option value="">No Bin</option>' +
+        binList.map(b => `<option value="${{escHtml(b.id)}}"${{activeBinId === b.id ? ' selected' : ''}}>${{escHtml(b.name)}}</option>`).join('') +
+        '<option value="__edit__" style="color:var(--text-muted)">── Edit Bins…</option>';
+}}
+function setActiveBin(val) {{
+    if (val === '__edit__') {{
+        const sel = document.getElementById('bin-select');
+        if (sel) sel.value = activeBinId || '';
+        openBinModal();
+        return;
+    }}
+    activeBinId = val || null;
+    renderDatabase();
+    _saveUiState();
+}}
+function _addItemToBin(binId, item) {{
+    const bin = bins[binId];
+    if (!bin) return;
+    const exists = bin.items.some(i =>
+        i.type === item.type && i.slate === item.slate &&
+        (i.type === 'slate' || (i.take === item.take && i.camera === item.camera))
+    );
+    if (!exists) bin.items.push(item);
+    _saveBins();
+    renderDatabase();
+    _updateBinSelect();
+    closeBinMenu();
+}}
+function _removeItemFromBin(binId, item) {{
+    const bin = bins[binId];
+    if (!bin) return;
+    bin.items = bin.items.filter(i => !(
+        i.type === item.type && i.slate === item.slate &&
+        (i.type === 'slate' || (i.take === item.take && i.camera === item.camera))
+    ));
+    _saveBins();
+    renderDatabase();
+    _updateBinSelect();
+    closeBinMenu();
+}}
+function _createBinAndAdd(item) {{
+    closeBinMenu();
+    const name = prompt('New bin name:');
+    if (!name || !name.trim()) return;
+    const id = _newBinId();
+    bins[id] = {{ id, name: name.trim(), items: [item] }};
+    _saveBins();
+    _updateBinSelect();
+    renderDatabase();
+}}
+
+// Context menu — current row state
+let _bmSlate = '', _bmTake = '', _bmCam = '';
+function _binMenuAction(binId, action, type) {{
+    const item = type === 'slate'
+        ? {{ type: 'slate', slate: _bmSlate }}
+        : {{ type: 'take', slate: _bmSlate, take: _bmTake, camera: _bmCam }};
+    if (action === 'add') _addItemToBin(binId, item);
+    else _removeItemFromBin(binId, item);
+}}
+function _binMenuCreate(type) {{
+    const item = type === 'slate'
+        ? {{ type: 'slate', slate: _bmSlate }}
+        : {{ type: 'take', slate: _bmSlate, take: _bmTake, camera: _bmCam }};
+    _createBinAndAdd(item);
+}}
+function openBinMenu(e, btn) {{
+    e.stopPropagation();
+    _bmSlate = btn.dataset.slate  || '';
+    _bmTake  = btn.dataset.take   || '';
+    _bmCam   = btn.dataset.cam    || '';
+    const menu     = document.getElementById('bin-menu');
+    const binList  = Object.values(bins);
+    function sectionRows(type) {{
+        if (!binList.length) return '<div class="bin-menu-item" style="color:var(--text-muted);cursor:default">No bins yet</div>';
+        return binList.map(b => {{
+            const item = type === 'slate'
+                ? {{ type:'slate', slate: _bmSlate }}
+                : {{ type:'take', slate: _bmSlate, take: _bmTake, camera: _bmCam }};
+            const inBin = b.items.some(i =>
+                i.type === item.type && i.slate === item.slate &&
+                (i.type === 'slate' || (i.take === item.take && i.camera === item.camera))
+            );
+            const action = inBin ? 'remove' : 'add';
+            return `<div class="bin-menu-item${{inBin ? ' in-bin' : ''}}"
+                onclick="_binMenuAction('${{b.id}}','${{action}}','${{type}}')">
+                <span class="bin-menu-icon">${{inBin ? '✓' : ''}}</span>
+                ${{escHtml(b.name)}}
+            </div>`;
+        }}).join('');
+    }}
+    const takeLabel  = `Take ${{escHtml(_bmTake)}}${{_bmCam ? '  Cam ' + escHtml(_bmCam) : ''}}`;
+    const slateLabel = `Slate ${{escHtml(_bmSlate)}}`;
+    menu.innerHTML =
+        `<div class="bin-menu-section-label">ADD ${{takeLabel}} TO BIN</div>` +
+        sectionRows('take') +
+        `<div class="bin-menu-item new-bin" onclick="_binMenuCreate('take')"><span class="bin-menu-icon">+</span>New bin…</div>` +
+        `<hr class="bin-menu-divider">` +
+        `<div class="bin-menu-section-label">ADD ${{slateLabel}} TO BIN</div>` +
+        sectionRows('slate') +
+        `<div class="bin-menu-item new-bin" onclick="_binMenuCreate('slate')"><span class="bin-menu-icon">+</span>New bin…</div>`;
+    menu.style.display = 'block';
+    const rect = btn.getBoundingClientRect();
+    const mw   = menu.offsetWidth  || 220;
+    const mh   = menu.offsetHeight || 200;
+    let top  = rect.bottom + 6;
+    let left = rect.left;
+    if (left + mw > window.innerWidth  - 8) left = window.innerWidth  - mw - 8;
+    if (top  + mh > window.innerHeight - 8) top  = rect.top - mh - 6;
+    menu.style.top  = top  + 'px';
+    menu.style.left = left + 'px';
+}}
+function closeBinMenu() {{
+    const m = document.getElementById('bin-menu');
+    if (m) m.style.display = 'none';
+}}
+function openBinModal() {{
+    _renderBinModal();
+    document.getElementById('bin-modal-overlay').style.display = 'flex';
+}}
+function closeBinModal() {{
+    document.getElementById('bin-modal-overlay').style.display = 'none';
+}}
+function _renderBinModal() {{
+    const list   = document.getElementById('bin-modal-list');
+    if (!list) return;
+    const binArr = Object.values(bins);
+    if (!binArr.length) {{
+        list.innerHTML = '<p class="bin-modal-empty">No bins yet. Use the + button on any take to create one.</p>';
+        return;
+    }}
+    list.innerHTML = binArr.map(b => `
+        <div class="bin-modal-row">
+            <span class="bin-modal-name" title="${{escHtml(b.name)}}">${{escHtml(b.name)}}</span>
+            <span class="bin-modal-count">${{b.items.length}} item${{b.items.length !== 1 ? 's' : ''}}</span>
+            <button class="bin-modal-btn" onclick="renameBin('${{b.id}}')">Rename</button>
+            <button class="bin-modal-btn danger" onclick="deleteBin('${{b.id}}')">Delete</button>
+        </div>`).join('');
+}}
+function renameBin(binId) {{
+    const bin = bins[binId];
+    if (!bin) return;
+    const name = prompt('Rename bin:', bin.name);
+    if (!name || !name.trim()) return;
+    bin.name = name.trim();
+    _saveBins();
+    _renderBinModal();
+    _updateBinSelect();
+    renderDatabase();
+}}
+function deleteBin(binId) {{
+    const bin = bins[binId];
+    if (!bin || !confirm(`Delete bin "${{bin.name}}"?`)) return;
+    delete bins[binId];
+    if (activeBinId === binId) {{ activeBinId = null; renderDatabase(); }}
+    _saveBins();
+    _renderBinModal();
+    _updateBinSelect();
+}}
+
+// Inject bin modal + menu into DOM
+;(function() {{
+    const overlay = document.createElement('div');
+    overlay.id = 'bin-modal-overlay';
+    overlay.addEventListener('click', e => {{ if (e.target === overlay) closeBinModal(); }});
+    overlay.innerHTML =
+        '<div id="bin-modal">' +
+        '<div class="bin-modal-title">Edit Bins</div>' +
+        '<div id="bin-modal-list"></div>' +
+        '<button class="bin-modal-close" onclick="closeBinModal()">Close</button>' +
+        '</div>';
+    document.body.appendChild(overlay);
+    const menu = document.createElement('div');
+    menu.id = 'bin-menu';
+    menu.style.display = 'none';
+    document.body.appendChild(menu);
+    document.addEventListener('click', e => {{
+        if (!e.target.closest('#bin-menu') && !e.target.closest('.bin-add-btn')) closeBinMenu();
+    }});
+}})();
+
 function _isVfxPass(row) {{
     return (row['VFX Pass / Ref'] || '').trim().toLowerCase() === 'yes';
 }}
@@ -2772,6 +3083,10 @@ function cycleVfxFilter() {{
 
 function dbRowMatches(row) {{
     if (dbPinnedKeys && !dbPinnedKeys.has(_slateSceneKey(row['Slate'] || ''))) return false;
+    if (activeBinId) {{
+        const bin = bins[activeBinId];
+        if (!bin || !_rowInBin(row, bin)) return false;
+    }}
     const f = dbFilters;
     if (f.slate     && !(row['Slate']      || '').toLowerCase().includes(f.slate))     return false;
     if (f.vfx_id    && !(row['VFX ID']     || '').toLowerCase().includes(f.vfx_id))    return false;
@@ -2957,6 +3272,13 @@ function renderDbCard(row, idx) {{
     const photoBadge = hasPhotos
         ? `<span class="db-photo-badge" title="Has reference photos">📷</span>`
         : '';
+    const rowBinsList = _rowBins(row);
+    const binBadge = rowBinsList.length
+        ? `<span class="bin-badge"><span class="bin-badge-tooltip">${{rowBinsList.map(b => escHtml(b.name)).join('\\n')}}</span>${{rowBinsList.length}} bin${{rowBinsList.length > 1 ? 's' : ''}}</span>`
+        : '';
+    const addBinBtn = `<button class="bin-add-btn" onclick="openBinMenu(event,this)"
+        data-slate="${{escHtml(slate)}}" data-take="${{escHtml(row['Take'] || '')}}" data-cam="${{escHtml(row['Camera'] || '')}}"
+        title="Add to bin">+</button>`;
     const vfxPass = _isVfxPass(row);
     return `<div class="entry${{isExpanded ? ' expanded' : ''}}${{vfxPass ? ' vfx-pass' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}">
         <div class="entry-title-line">
@@ -2969,6 +3291,8 @@ function renderDbCard(row, idx) {{
             <span class="db-focal">${{escHtml(focal)}}</span>
             ${{tilt   ? `<span class="db-tilt">${{escHtml(tilt)}}</span>` : ''}}
             ${{photoBadge}}
+            ${{binBadge}}
+            ${{addBinBtn}}
             ${{chevron}}
         </div>
         <div class="entry-details">${{renderDbDetails(row)}}</div>
@@ -3234,6 +3558,8 @@ loadPackageNote();
 loadBuildForm();
 renderCart();
 updateQueueBadge();
+_loadBins();
+_updateBinSelect();
 _restoreUiState();
 render();
 
@@ -3411,8 +3737,10 @@ document.addEventListener('keydown', e => {{
         return;
     }}
 
-    // Escape — clear the active tab's search
+    // Escape — close bin menu first, then clear search
     if (e.key === 'Escape') {{
+        const bm = document.getElementById('bin-menu');
+        if (bm && bm.style.display !== 'none') {{ closeBinMenu(); return; }}
         if (currentView === 'browse')         clearSearch();
         else if (currentView === 'database')  clearDbSearch();
         else if (currentView === 'delivered') clearDeliveredSearch();
