@@ -1618,6 +1618,7 @@ class HTMLGenerator:
       <div class="controls">
         <button class="mode-button active" onclick="setDbGroup('scene')"     id="db-grp-scene">🎬 Scene</button>
         <button class="mode-button"        onclick="setDbGroup('vfx_id')"    id="db-grp-vfx_id">🎭 VFX ID</button>
+        <button class="mode-button"        onclick="setDbGroup('slate')"     id="db-grp-slate">🎞 Slate</button>
         <button class="mode-button"        onclick="setDbGroup('date')"      id="db-grp-date">📅 Date</button>
         <button class="mode-button"        onclick="setDbGroup('shoot_day')" id="db-grp-shoot_day">🎬 Shoot Day</button>
         <button class="mode-button"        onclick="setDbGroup('lens')"      id="db-grp-lens">🔭 Lens</button>
@@ -1843,9 +1844,9 @@ function _restoreUiState() {{
             if (el) {{ el.value = s.browseQuery; document.getElementById('search-clear').style.display = 'block'; }}
         }}
         // Database
-        if (s.dbGroup && ['scene','vfx_id','date','shoot_day','lens','focal','none'].includes(s.dbGroup)) {{
+        if (s.dbGroup && ['scene','vfx_id','date','shoot_day','lens','focal','slate','none'].includes(s.dbGroup)) {{
             dbGroupMode = s.dbGroup;
-            ['scene','vfx_id','date','shoot_day','lens','focal'].forEach(m => {{
+            ['scene','vfx_id','date','shoot_day','lens','focal','slate'].forEach(m => {{
                 const btn = document.getElementById(`db-grp-${{m}}`);
                 if (btn) btn.classList.toggle('active', m === s.dbGroup);
             }});
@@ -2788,7 +2789,7 @@ const DB_SECTIONS = [
 
 function setDbGroup(mode) {{
     dbGroupMode = (dbGroupMode === mode) ? 'none' : mode;
-    ['scene','vfx_id','date','shoot_day','lens','focal'].forEach(m => {{
+    ['scene','vfx_id','date','shoot_day','lens','focal','slate'].forEach(m => {{
         document.getElementById(`db-grp-${{m}}`).classList.toggle('active', m === dbGroupMode);
     }});
     renderDatabase();
@@ -3120,6 +3121,7 @@ function dbGroupKey(row) {{
         case 'shoot_day': return `Day ${{row['Shoot Day'] || '—'}}`;
         case 'lens':      return row['Lens']       || '—';
         case 'focal':     return row['Focal']      || '—';
+        case 'slate':     return row['Slate']      || '—';
         default:          return '—';
     }}
 }}
@@ -3238,12 +3240,32 @@ function renderDatabase() {{
     }});
 
     el.innerHTML = groupKeys.map(key => {{
-        const rows   = groups[key];
-        const cards  = rows.map(row => renderDbCard(row, dbRows.indexOf(row))).join('');
+        const rows       = groups[key];
+        const cards      = rows.map(row => renderDbCard(row, dbRows.indexOf(row))).join('');
         const countLabel = `${{rows.length}} take${{rows.length === 1 ? '' : 's'}}`;
+        let headerLeft;
+        if (dbGroupMode === 'slate') {{
+            const first  = rows[0];
+            const slate  = first['Slate'] || key;
+            const vfxId  = first['VFX ID']    || '';
+            const date   = first['Date']       || '';
+            const day    = first['Shoot Day']  || '';
+            const sceneM = slate.match(/^(\\d+)/);
+            const scene  = sceneM ? `Scene ${{sceneM[1]}}` : '';
+            headerLeft =
+                `<span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">` +
+                (scene ? `<span class="db-slate">${{escHtml(scene)}}</span>` : '') +
+                `<span class="db-slate">${{escHtml(slate)}}</span>` +
+                (vfxId ? `<span class="db-vfxid">${{escHtml(vfxId)}}</span>` : '') +
+                (date  ? `<span class="db-date">${{escHtml(date)}}</span>`  : '') +
+                (day   ? `<span class="db-day">${{escHtml(day)}}</span>`    : '') +
+                `</span>`;
+        }} else {{
+            headerLeft = `<span>🎬 ${{escHtml(key)}}</span>`;
+        }}
         return `<div class="group">
             <div class="group-header">
-                <span>🎬 ${{escHtml(key)}}</span>
+                ${{headerLeft}}
                 <span class="group-count">${{countLabel}}</span>
             </div>
             ${{cards}}
