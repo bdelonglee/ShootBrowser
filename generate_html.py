@@ -1543,6 +1543,7 @@ class HTMLGenerator:
           <option value="shoot_day">Sort: Shoot Day</option>
           <option value="lens">Sort: Lens</option>
           <option value="focal">Sort: Focal</option>
+          <option value="roll">Sort: Roll (Clipname)</option>
         </select>
         <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
         <span id="db-stats-bar" class="db-stats-bar"></span>
@@ -2823,6 +2824,7 @@ function dbSortValue(row) {{
             const n  = m ? parseInt(m[1]) : 9999;
             return sd.toUpperCase().startsWith('P') ? n + 10000 : n;
         }}
+        case 'roll':  return row['Roll'] || '';
         case 'lens':  return row['Lens'] || '';
         case 'focal': {{
             const m = (row['Focal'] || '').match(/(\\d+)/);
