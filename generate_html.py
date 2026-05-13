@@ -1576,7 +1576,12 @@ class HTMLGenerator:
         <button class="mode-button active" onclick="setMode('days')"   id="btn-days">📅 By Days</button>
         <button class="mode-button"        onclick="setMode('scenes')" id="btn-scenes">🎞️ By Scenes</button>
         <button class="mode-button"        onclick="setMode('codes')"  id="btn-codes">🏷️ By Codes</button>
-        <button class="mode-button"        onclick="toggleAll()"       id="btn-toggle-all">⊕ Expand All</button>
+        <select id="browse-sort-select" class="db-sort-select" onchange="setBrowseSort(this.value)">
+            <option value="day">Sort: Day</option>
+            <option value="scene">Sort: Scene</option>
+            <option value="code">Sort: Code</option>
+        </select>
+        <button id="browse-sort-dir" class="db-sort-dir" onclick="toggleBrowseSortDir()" title="Toggle sort direction">↑</button>
 
         <div class="search-wrapper">
             <span class="search-icon">🔍</span>
@@ -1585,6 +1590,7 @@ class HTMLGenerator:
                    oninput="onSearch(this.value)">
             <button id="search-clear" onclick="clearSearch()" title="Clear">✕</button>
         </div>
+        <button class="mode-button" onclick="toggleAll()" id="btn-toggle-all">⊕ Expand All</button>
 
         <button class="tool-btn" id="extract-slates-btn" onclick="runExtractSlates()">📊 Extract Slates</button>
         <span id="extract-status" class="extract-status"></span>
@@ -1800,9 +1806,11 @@ for (const view of Object.values(data)) {{
     }}
 }}
 
-let currentMode  = 'days';
-let currentQuery = '';
-let currentView  = 'browse';
+let currentMode     = 'days';
+let currentQuery    = '';
+let currentView     = 'browse';
+let browseSortKey   = 'day';
+let browseSortAsc   = true;
 const expandedPaths = new Set();
 
 // ── Persistent UI state ───────────────────────────────────────────────────────
@@ -1813,6 +1821,8 @@ function _saveUiState() {{
         localStorage.setItem(_UI_KEY, JSON.stringify({{
             view:          currentView,
             browseMode:    currentMode,
+            browseSort:    browseSortKey,
+            browseSortAsc: browseSortAsc,
             browseQuery:   currentQuery,
             dbGroup:       dbGroupMode,
             dbSort:        dbSortKey,
@@ -1836,6 +1846,16 @@ function _restoreUiState() {{
             currentMode = s.browseMode;
             ['days','scenes','codes'].forEach(m =>
                 document.getElementById(`btn-${{m}}`).classList.toggle('active', m === s.browseMode));
+        }}
+        if (s.browseSort && ['day','scene','code'].includes(s.browseSort)) {{
+            browseSortKey = s.browseSort;
+            const sel = document.getElementById('browse-sort-select');
+            if (sel) sel.value = s.browseSort;
+        }}
+        if (s.browseSortAsc !== undefined) {{
+            browseSortAsc = s.browseSortAsc;
+            const dirEl = document.getElementById('browse-sort-dir');
+            if (dirEl) dirEl.textContent = browseSortAsc ? '↑' : '↓';
         }}
         if (s.browseQuery) {{
             currentQuery = s.browseQuery;
@@ -1910,6 +1930,28 @@ function setMode(mode) {{
         document.getElementById(`btn-${{m}}`).classList.toggle('active', m === currentMode));
     render();
     _saveUiState();
+}}
+
+function setBrowseSort(key) {{
+    browseSortKey = key;
+    render();
+    _saveUiState();
+}}
+
+function toggleBrowseSortDir() {{
+    browseSortAsc = !browseSortAsc;
+    document.getElementById('browse-sort-dir').textContent = browseSortAsc ? '↑' : '↓';
+    render();
+    _saveUiState();
+}}
+
+function _browseSortValue(e) {{
+    switch (browseSortKey) {{
+        case 'day':   return e.day   || '';
+        case 'scene': return (e.scenes && e.scenes[0]) || '';
+        case 'code':  return e.code  || '';
+        default:      return '';
+    }}
 }}
 
 // ── Search ───────────────────────────────────────────────────────────────────
@@ -2074,7 +2116,8 @@ function render() {{
     const q         = currentQuery;
 
     if (currentMode === 'none') {{
-        const allEntries = Object.values(data.by_days || {{}}).flat();
+        const allEntries = Object.values(data.by_days || {{}}).flat()
+            .sort((a, b) => _browseSortValue(a).localeCompare(_browseSortValue(b)) * (browseSortAsc ? 1 : -1));
         const matched    = q ? allEntries.filter(e => entryMatches(e, q)) : allEntries;
         contentEl.innerHTML = matched.length
             ? matched.map(e => renderEntry(e, q)).join('')
@@ -2103,7 +2146,8 @@ function render() {{
     let groupsShown = 0;
 
     for (const [key, entries] of Object.entries(modeData)) {{
-        const matched = q ? entries.filter(e => entryMatches(e, q)) : entries;
+        const sorted  = [...entries].sort((a, b) => _browseSortValue(a).localeCompare(_browseSortValue(b)) * (browseSortAsc ? 1 : -1));
+        const matched = q ? sorted.filter(e => entryMatches(e, q)) : sorted;
         if (matched.length === 0) continue;
 
         groupsShown++;
