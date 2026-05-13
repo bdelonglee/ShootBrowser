@@ -379,6 +379,34 @@ def _resolve_db_subdir(block_path: Path) -> Path:
     return block_path / "__00_Database"
 
 
+@app.route("/api/check-slates-freshness", methods=["POST"])
+def api_check_slates_freshness():
+    """For each block path, verify its slates CSV was generated from the current DB JSON."""
+    body   = request.get_json() or {}
+    blocks = body.get("blocks") or []
+
+    jsonfile, db_date = _find_db_json_file()
+    if not db_date:
+        return jsonify({"success": True, "db_date": None, "stale": [], "fresh": []})
+
+    stale, fresh = [], []
+    for b in blocks:
+        path   = Path(b.get("path", ""))
+        name   = b.get("delivery_name") or path.name
+        db_sub = _resolve_db_subdir(path)
+        if (db_sub / f"slates_{db_date}.csv").exists():
+            fresh.append(name)
+        else:
+            found = sorted(db_sub.glob("slates_*.csv")) if db_sub.exists() else []
+            stale.append({
+                "name":  name,
+                "path":  str(path),
+                "found": found[-1].name if found else None,
+            })
+
+    return jsonify({"success": True, "db_date": db_date, "stale": stale, "fresh": fresh})
+
+
 @app.route("/api/extract-slates-status")
 def api_extract_slates_status():
     """Check whether slate extraction is up to date with the current DB JSON."""

@@ -3584,6 +3584,29 @@ async function buildSelected() {{
     }}
 
     const toProcess = loadQueue().filter(p => selected.includes(p.id));
+
+    // ── Pre-check: verify all block CSVs are up to date ──────────────────────
+    try {{
+        const allBlocks = toProcess.flatMap(p => p.blocks || []);
+        const chkRes  = await fetch('/api/check-slates-freshness', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ blocks: allBlocks }}),
+        }});
+        const chkData = await chkRes.json();
+        if (chkData.success && chkData.stale && chkData.stale.length > 0) {{
+            const lines = chkData.stale.map(b => {{
+                const found = b.found ? `has: ${{b.found}}` : 'no CSV found';
+                return `  • ${{b.name}}  (${{found}}, expected: slates_${{chkData.db_date}}.csv)`;
+            }});
+            const msg =
+                `⚠️  ${{chkData.stale.length}} block${{chkData.stale.length > 1 ? 's have' : ' has'}} an outdated slate CSV:\n\n` +
+                lines.join('\\n') +
+                `\n\nRun "Extract Slates" first, or proceed anyway?`;
+            if (!confirm(msg)) return;
+        }}
+    }} catch(e) {{ /* freshness check failed — proceed without blocking */ }}
+
     const btn    = document.getElementById('queue-build-btn');
     const progEl = document.getElementById('build-progress');
 
