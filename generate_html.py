@@ -1832,11 +1832,10 @@ function _restoreUiState() {{
         const s = JSON.parse(localStorage.getItem(_UI_KEY) || 'null');
         if (!s) return;
         // Browse
-        if (s.browseMode  && ['days','scenes','codes'].includes(s.browseMode)) {{
+        if (s.browseMode  && ['days','scenes','codes','none'].includes(s.browseMode)) {{
             currentMode = s.browseMode;
-            document.getElementById(`btn-${{s.browseMode}}`).classList.add('active');
-            ['days','scenes','codes'].filter(m => m !== s.browseMode).forEach(m =>
-                document.getElementById(`btn-${{m}}`).classList.remove('active'));
+            ['days','scenes','codes'].forEach(m =>
+                document.getElementById(`btn-${{m}}`).classList.toggle('active', m === s.browseMode));
         }}
         if (s.browseQuery) {{
             currentQuery = s.browseQuery;
@@ -1906,9 +1905,9 @@ function _restoreUiState() {{
 // ── Mode ─────────────────────────────────────────────────────────────────────
 
 function setMode(mode) {{
-    currentMode = mode;
-    document.querySelectorAll('.mode-button').forEach(b => b.classList.remove('active'));
-    document.getElementById(`btn-${{mode}}`).classList.add('active');
+    currentMode = (currentMode === mode) ? 'none' : mode;
+    ['days','scenes','codes'].forEach(m =>
+        document.getElementById(`btn-${{m}}`).classList.toggle('active', m === currentMode));
     render();
     _saveUiState();
 }}
@@ -2072,8 +2071,25 @@ function renderEntry(entry, q) {{
 function render() {{
     const contentEl = document.getElementById('content');
     const infoEl    = document.getElementById('search-info');
-    const modeData  = data[`by_${{currentMode}}`];
     const q         = currentQuery;
+
+    if (currentMode === 'none') {{
+        const allEntries = Object.values(data.by_days || {{}}).flat();
+        const matched    = q ? allEntries.filter(e => entryMatches(e, q)) : allEntries;
+        contentEl.innerHTML = matched.length
+            ? matched.map(e => renderEntry(e, q)).join('')
+            : emptyState(q ? `No results for "<strong>${{escHtml(q)}}</strong>"` : 'No data found');
+        updateStats(matched.length, 0);
+        if (q) {{
+            infoEl.style.display = 'block';
+            infoEl.textContent = `Showing ${{matched.length}} of ${{allEntries.length}} entries matching "${{q}}"`;
+        }} else {{
+            infoEl.style.display = 'none';
+        }}
+        return;
+    }}
+
+    const modeData  = data[`by_${{currentMode}}`];
 
     if (!modeData || Object.keys(modeData).length === 0) {{
         contentEl.innerHTML = emptyState('No data found');
