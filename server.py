@@ -40,7 +40,7 @@ except ImportError:
 
 # Make sure our sibling modules are importable
 sys.path.insert(0, str(Path(__file__).parent))
-from generate_html import HTMLGenerator
+from generate_html import HTMLGenerator, _denormalize_json_to_rows
 
 app = Flask(__name__)
 DATA_PATH: str = ""
@@ -277,29 +277,13 @@ def api_delivered_packages():
 
 @app.route("/api/database")
 def api_database():
-    """Return CSV rows from __DATABASE/*.csv (most recent file by mtime)."""
-    import csv as csv_mod
-    db_dir = Path(DATA_PATH) / "__DATABASE"
-    if not db_dir.exists():
-        return jsonify({"success": True, "rows": [], "filename": None})
-    csvfiles = sorted(
-        (f for f in db_dir.glob("*.csv") if not f.name.startswith(".")),
-        key=lambda f: f.stat().st_mtime, reverse=True,
-    )
-    if not csvfiles:
-        return jsonify({"success": True, "rows": [], "filename": None})
-    csvfile = csvfiles[0]
-    rows = []
-    for encoding in ("mac_roman", "utf-8-sig", "latin-1"):
-        try:
-            with open(csvfile, encoding=encoding, newline="") as f:
-                reader = csv_mod.DictReader(f)
-                rows = [{k: (v or "").strip() for k, v in row.items() if k is not None}
-                        for row in reader]
-            break
-        except UnicodeDecodeError:
-            rows = []
-    return jsonify({"success": True, "rows": rows, "filename": csvfile.name})
+    """Return database rows from __DATABASE/*.json (most recent file by mtime)."""
+    try:
+        data = _load_db_json()
+        rows = _denormalize_json_to_rows(data)
+        return jsonify({"success": True, "rows": rows})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 def _load_db_json() -> dict:
@@ -349,34 +333,21 @@ def api_database_photos(slate_id):
 
 # ── Slate extraction helpers ──────────────────────────────────────────────────
 
-def _find_db_csv() -> tuple:
-    """Return (Path, date_str) for the most recent non-hidden CSV in __DATABASE/."""
+def _find_db_json_file() -> tuple:
+    """Return (Path, date_str) for the most recent non-hidden JSON in __DATABASE/."""
     db_dir = Path(DATA_PATH) / "__DATABASE"
     if not db_dir.exists():
         return None, None
-    csvfiles = sorted(
-        (f for f in db_dir.glob("*.csv") if not f.name.startswith(".")),
+    jsonfiles = sorted(
+        (f for f in db_dir.glob("*.json")
+         if not f.name.startswith(".") and f.name != "extraction_meta.json"),
         key=lambda f: f.stat().st_mtime, reverse=True,
     )
-    if not csvfiles:
+    if not jsonfiles:
         return None, None
-    csvfile = csvfiles[0]
-    m = re.search(r'(\d{4}-\d{2}-\d{2})', csvfile.name)
-    return csvfile, (m.group(1) if m else None)
-
-
-def _load_db_csv(csvfile: Path) -> tuple:
-    """Return (fieldnames, rows) parsed from csvfile, trying multiple encodings."""
-    for encoding in ("mac_roman", "utf-8-sig", "latin-1"):
-        try:
-            with open(csvfile, encoding=encoding, newline="") as f:
-                reader = _csv_mod.DictReader(f)
-                fieldnames = list(reader.fieldnames or [])
-                rows = [dict(r) for r in reader]
-            return fieldnames, rows
-        except UnicodeDecodeError:
-            pass
-    return [], []
+    jsonfile = jsonfiles[0]
+    m = re.search(r'(\d{4}-\d{2}-\d{2})', jsonfile.name)
+    return jsonfile, (m.group(1) if m else None)
 
 
 def _slate_scene_key(slate: str) -> str | None:
@@ -410,11 +381,11 @@ def _resolve_db_subdir(block_path: Path) -> Path:
 
 @app.route("/api/extract-slates-status")
 def api_extract_slates_status():
-    """Check whether slate extraction is up to date with the current DB CSV."""
-    csvfile, db_date = _find_db_csv()
+    """Check whether slate extraction is up to date with the current DB JSON."""
+    jsonfile, db_date = _find_db_json_file()
     if not db_date:
         return jsonify({"success": True, "db_date": None, "needs_refresh": False,
-                        "filename": csvfile.name if csvfile else None})
+                        "filename": jsonfile.name if jsonfile else None})
 
     meta_path = Path(DATA_PATH) / "__DATABASE" / "extraction_meta.json"
     needs_refresh = True
@@ -430,7 +401,7 @@ def api_extract_slates_status():
     return jsonify({
         "success":        True,
         "db_date":        db_date,
-        "filename":       csvfile.name,
+        "filename":       jsonfile.name,
         "needs_refresh":  needs_refresh,
         "last_extracted": last_extracted,
     })
@@ -438,14 +409,19 @@ def api_extract_slates_status():
 
 @app.route("/api/extract-slates", methods=["POST"])
 def api_extract_slates():
-    """Extract per-block slate CSVs from the main database CSV."""
-    csvfile, db_date = _find_db_csv()
-    if not csvfile or not db_date:
-        return jsonify({"success": False, "error": "No database CSV found"}), 400
+    """Extract per-block slate CSVs from the main database JSON."""
+    jsonfile, db_date = _find_db_json_file()
+    if not jsonfile or not db_date:
+        return jsonify({"success": False, "error": "No database JSON found"}), 400
 
-    fieldnames, rows = _load_db_csv(csvfile)
+    try:
+        data = _load_db_json()
+        rows = _denormalize_json_to_rows(data)
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Could not parse JSON: {e}"}), 500
     if not rows:
-        return jsonify({"success": False, "error": "Could not parse CSV"}), 500
+        return jsonify({"success": False, "error": "No rows in JSON"}), 500
+    fieldnames = list(rows[0].keys())
 
     updated, errors = 0, []
     skipped_blocks = []   # (block_name, scene_keys) — no matching CSV rows
@@ -516,12 +492,12 @@ def api_extract_slates():
     log_path = log_dir / f"extract_slates_{log_suffix}.log"
     lines = [
         f"Slate extraction — {now_str}",
-        f"Source CSV : {csvfile.name}",
+        f"Source JSON: {jsonfile.name}",
         f"DB date    : {db_date}",
         "",
         "── Summary ──────────────────────────────────────────────",
         f"  Blocks updated  : {updated}",
-        f"  Blocks skipped  : {len(skipped_blocks)}  (scenes absent from CSV)",
+        f"  Blocks skipped  : {len(skipped_blocks)}  (scenes absent from JSON)",
         f"  Errors          : {len(errors)}",
         f"  Slates in CSV   : {total_slates}",
         f"  Slates extracted: {extracted_slates}",

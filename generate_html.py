@@ -14,6 +14,72 @@ from collections import defaultdict
 from datetime import datetime
 
 
+def _denormalize_json_to_rows(data: dict) -> list:
+    """Flatten JSON records+takes into CSV-compatible row dicts."""
+    records_by_id = {r['id']: r for r in data.get('records', [])}
+    rows = []
+    for take in data.get('takes', []):
+        rec = records_by_id.get(take.get('recordId', ''))
+        if not rec:
+            continue
+        cd           = take.get('cameraData') or {}
+        cam          = take.get('cameraLetter', '')
+        cam_settings = (rec.get('cameraSettings') or {}).get(cam, {})
+        cam_moves    = rec.get('cameraMoves') or {}
+
+        def _join(v):
+            if isinstance(v, list):
+                return ', '.join(str(x) for x in v if x)
+            return str(v) if v else ''
+
+        ts = take.get('timestamp', '')
+        if ts:
+            try:
+                dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                ts = dt.strftime('%d/%m/%Y %H:%M:%S')
+            except Exception:
+                pass
+
+        rows.append({
+            'Slate':             rec.get('slateId', ''),
+            'Scene Description': rec.get('sceneDescription', ''),
+            'VFX ID':            (rec.get('customData') or {}).get('VFX ID', ''),
+            'Camera Move':       cam_moves.get(cam, rec.get('cameraMove', '') or ''),
+            'Notes':             rec.get('notes', ''),
+            'Date':              rec.get('date', ''),
+            'Shoot Day':         rec.get('shootDay', ''),
+            'Set Location':      rec.get('setLocation', ''),
+            'Script Location':   rec.get('scriptLocation', ''),
+            'Int/Ext':           rec.get('intExt', ''),
+            'Day/Night':         rec.get('dayNight', ''),
+            'Unit':              rec.get('unit', ''),
+            'Wrangler':          rec.get('wrangler', ''),
+            'VFX Work':          _join(rec.get('vfxWork')),
+            'Set Refs':          _join(rec.get('setRefs')),
+            'Camera':            cam,
+            'Body':              cam_settings.get('body', ''),
+            'Resolution':        cam_settings.get('resolution', ''),
+            'Take':              str(take.get('takeNumber', '')),
+            'Take Notes':        take.get('notes', ''),
+            'Balls & Chart':     'Yes' if take.get('isBallsAndChart') else 'No',
+            'VFX Pass / Ref':    'Yes' if take.get('vfxPass') else 'No',
+            'Roll':              cd.get('roll', ''),
+            'Lens':              cd.get('lens', ''),
+            'F-Stop':            cd.get('fStop', ''),
+            'Shutter':           cd.get('shutter', ''),
+            'FPS':               cd.get('fps', ''),
+            'WB':                cd.get('wb', ''),
+            'ISO':               cd.get('iso', ''),
+            'Focal':             cd.get('focal', ''),
+            'Focus':             cd.get('focus', ''),
+            'Tilt':              cd.get('tilt', ''),
+            'Height':            cd.get('height', ''),
+            'Filter':            cd.get('filter', ''),
+            'Timestamp':         ts,
+        })
+    return rows
+
+
 @dataclass
 class SubdirChild:
     name: str
@@ -393,22 +459,22 @@ class HTMLGenerator:
         return result
 
     def _load_offline_db_rows(self) -> list:
-        """Load database CSV rows for embedding in offline HTML."""
+        """Load database rows from JSON for embedding in offline HTML."""
         db_dir = self.data_path / '__DATABASE'
         if not db_dir.exists():
             return []
-        csvfiles = sorted(
-            [f for f in db_dir.glob('*.csv') if not f.name.startswith('.')],
+        jsonfiles = sorted(
+            [f for f in db_dir.glob('*.json')
+             if not f.name.startswith('.') and f.name != 'extraction_meta.json'],
             key=lambda f: f.stat().st_mtime, reverse=True,
         )
-        if not csvfiles:
+        if not jsonfiles:
             return []
-        import csv as _csv
-        for encoding in ('mac_roman', 'utf-8-sig', 'latin-1'):
+        for encoding in ('utf-8-sig', 'utf-8', 'mac_roman', 'latin-1'):
             try:
-                with open(csvfiles[0], encoding=encoding, newline='') as f:
-                    return [dict(r) for r in _csv.DictReader(f)]
-            except UnicodeDecodeError:
+                data = json.loads(jsonfiles[0].read_text(encoding=encoding))
+                return _denormalize_json_to_rows(data)
+            except (UnicodeDecodeError, json.JSONDecodeError):
                 pass
         return []
 
