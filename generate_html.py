@@ -1579,7 +1579,8 @@ class HTMLGenerator:
             border-left-color: var(--accent); transform: translateX(3px);
         }}
         .lidar-card-header {{
-            display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            cursor: pointer; margin-bottom: 6px;
         }}
         .lidar-code {{
             font-family: 'Monaco','Courier New',monospace; font-size: 0.8em; font-weight: 700;
@@ -1590,7 +1591,24 @@ class HTMLGenerator:
             font-size: 0.95em; font-weight: 600; color: var(--text); flex: 1;
         }}
         .lidar-card:hover .finder-btn,
-        .lidar-card:hover .open-folder {{ opacity: 0.7; }}
+        .lidar-card:hover .open-folder,
+        .lidar-card:hover .toggle-btn {{ opacity: 0.7; }}
+        .lidar-card.expanded .toggle-btn {{ opacity: 0.7; }}
+        .lidar-card.expanded .toggle-btn svg {{ transform: rotate(180deg); }}
+        .lidar-summary {{
+            display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px;
+        }}
+        .lidar-card.expanded .lidar-summary {{ display: none; }}
+        .lidar-ext-tag {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.75em;
+            color: var(--text-muted); background: var(--surface-2);
+            border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px;
+        }}
+        .lidar-details {{
+            display: none;
+            padding-top: 10px; margin-top: 6px; border-top: 1px solid var(--border);
+        }}
+        .lidar-card.expanded .lidar-details {{ display: block; }}
         .lidar-ext-group {{
             display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; flex-wrap: wrap;
         }}
@@ -1803,6 +1821,7 @@ class HTMLGenerator:
                  oninput="setLidarQuery(this.value)">
           <button id="lidar-search-clear" onclick="clearLidarSearch()" title="Clear">✕</button>
         </div>
+        <button class="mode-button" onclick="toggleAllLidar()" id="lidar-expand-all">⊕ Expand All</button>
       </div>
       <div id="lidar-content">
         <div class="empty-state"><div class="empty-state-icon">📡</div><p>Loading…</p></div>
@@ -3864,12 +3883,13 @@ async function generateOfflineHtml() {{
 }}
 
 // ── Lidar ─────────────────────────────────────────────────────────────────────
-let lidarEntries   = [];
-let lidarGroupMode = 'code';
-let lidarSortKey   = 'name';
-let lidarSortAsc   = true;
-let lidarQuery     = '';
-let _lidarLoaded   = false;
+let lidarEntries        = [];
+let lidarGroupMode      = 'code';
+let lidarSortKey        = 'name';
+let lidarSortAsc        = true;
+let lidarQuery          = '';
+let _lidarLoaded        = false;
+const expandedLidarDirs = new Set();
 
 function loadLidar() {{
     if (_lidarLoaded) {{ renderLidar(); return; }}
@@ -3922,6 +3942,31 @@ function clearLidarSearch() {{
     _saveUiState();
 }}
 
+function toggleLidarCard(dirName) {{
+    if (expandedLidarDirs.has(dirName)) expandedLidarDirs.delete(dirName);
+    else expandedLidarDirs.add(dirName);
+    const card = document.querySelector('.lidar-card[data-dir="' + dirName + '"]');
+    if (card) card.classList.toggle('expanded', expandedLidarDirs.has(dirName));
+    const btn = document.getElementById('lidar-expand-all');
+    if (btn) {{
+        const cards = document.querySelectorAll('#lidar-content .lidar-card');
+        const anyCollapsed = Array.from(cards).some(c => !c.classList.contains('expanded'));
+        btn.textContent = anyCollapsed ? '⊕ Expand All' : '⊖ Collapse All';
+    }}
+}}
+
+function toggleAllLidar() {{
+    const cards = document.querySelectorAll('#lidar-content .lidar-card');
+    const anyCollapsed = Array.from(cards).some(c => !c.classList.contains('expanded'));
+    cards.forEach(c => {{
+        c.classList.toggle('expanded', anyCollapsed);
+        if (anyCollapsed) expandedLidarDirs.add(c.dataset.dir);
+        else expandedLidarDirs.delete(c.dataset.dir);
+    }});
+    const btn = document.getElementById('lidar-expand-all');
+    if (btn) btn.textContent = anyCollapsed ? '⊖ Collapse All' : '⊕ Expand All';
+}}
+
 function renderLidar() {{
     const el = document.getElementById('lidar-content');
     if (!el) return;
@@ -3972,15 +4017,18 @@ function renderLidarCard(entry) {{
         ...extOrder.filter(e => byExt[e]),
         ...Object.keys(byExt).filter(e => !extOrder.includes(e))
     ];
+    // Summary: one tag per extension type
+    const summaryHtml = allExts.map(ext => '<span class="lidar-ext-tag">.' + ext + '</span>').join('');
+    // Details: full file listing per extension
     let filesHtml = '';
     for (const ext of allExts) {{
-        const names = byExt[ext] || [];
         filesHtml += '<div class="lidar-ext-group">' +
             '<span class="lidar-ext-label">.' + ext + '</span>' +
             '<div class="lidar-file-chips">' +
-            names.map(n => '<span class="lidar-file-chip">' + n + '</span>').join('') +
+            (byExt[ext] || []).map(n => '<span class="lidar-file-chip">' + n + '</span>').join('') +
             '</div></div>';
     }}
+    // Preview strip
     const previews = entry.previews || [];
     let previewHtml = '';
     if (previews.length) {{
@@ -3990,27 +4038,34 @@ function renderLidarCard(entry) {{
                 ' data-dir="' + entry.dir_name + '"' +
                 ' data-pidx="' + i + '"' +
                 ' src="/api/lidar-preview/' + entry.dir_name + '/' + p + '"' +
-                ' onclick="openLidarLightbox(this.dataset.dir,+this.dataset.pidx)"' +
+                ' onclick="event.stopPropagation();openLidarLightbox(this.dataset.dir,+this.dataset.pidx)"' +
                 ' title="' + p + '">'
             ).join('') +
             '</div>';
     }}
-    return '<div class="lidar-card">' +
-        '<div class="lidar-card-header">' +
+    const expandedClass = expandedLidarDirs.has(entry.dir_name) ? ' expanded' : '';
+    const chevron = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
+    return '<div class="lidar-card' + expandedClass + '" data-dir="' + entry.dir_name + '">' +
+        '<div class="lidar-card-header" data-dir="' + entry.dir_name + '" onclick="toggleLidarCard(this.dataset.dir)">' +
         '<span class="lidar-code">' + entry.code + '</span>' +
         '<span class="lidar-name">' + entry.name + '</span>' +
         '<button class="finder-btn" data-path="' + entry.path + '"' +
-        ' onclick="openInFinder(this.dataset.path)" title="Open in Finder">' +
+        ' onclick="event.stopPropagation();openInFinder(this.dataset.path)" title="Open in Finder">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>' +
         '</svg></button>' +
         '<button class="open-folder" data-path="' + entry.path + '"' +
-        ' onclick="copyPath(this,this.dataset.path)" title="Copy path">' +
+        ' onclick="event.stopPropagation();copyPath(this,this.dataset.path)" title="Copy path">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
         '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' +
         '</svg></button>' +
-        '</div>' + filesHtml + previewHtml + '</div>';
+        '<button class="toggle-btn" data-dir="' + entry.dir_name + '" onclick="event.stopPropagation();toggleLidarCard(this.dataset.dir)">' +
+        chevron + '</button>' +
+        '</div>' +
+        '<div class="lidar-summary">' + summaryHtml + '</div>' +
+        '<div class="lidar-details">' + filesHtml + previewHtml + '</div>' +
+        '</div>';
 }}
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
