@@ -32,6 +32,9 @@ _BLOCK_RE = re.compile(
     r'^(J\d{2}|PJ\d{2})__(S\d{2}(?:_S\d{2})*)__([A-Z]{4}(?:_[A-Z]{4})*(?:_[A-Z0-9]{4})*)(?:__(.+))?$'
 )
 
+# Matches lidar directory names: CODE__Name  (CODE = 4+ uppercase letters)
+_LIDAR_DIR_RE = re.compile(r'^([A-Z]{4,})__(.+)$')
+
 try:
     from flask import Flask, jsonify, request, send_from_directory
 except ImportError:
@@ -427,6 +430,63 @@ def api_check_slates_freshness():
     return jsonify({"success": True, "db_date": db_date, "stale": stale, "fresh": fresh})
 
 
+def _parse_lidar_entries() -> list:
+    """Scan LIDAR_DIR and return structured entry list."""
+    lidar_path = Path(LIDAR_DIR)
+    if not lidar_path.exists():
+        return []
+    entries = []
+    for item in sorted(lidar_path.iterdir()):
+        if not item.is_dir():
+            continue
+        m = _LIDAR_DIR_RE.match(item.name)
+        if not m:
+            continue
+        code = m.group(1)
+        name = m.group(2)
+        all_files, previews = [], []
+        try:
+            for f in sorted(item.iterdir()):
+                if not f.is_file() or f.name.startswith('.'):
+                    continue
+                if f.name.startswith('preview_') and f.suffix.lower() == '.png':
+                    previews.append(f.name)
+                else:
+                    all_files.append({'name': f.name, 'ext': f.suffix.lower().lstrip('.')})
+        except PermissionError:
+            pass
+        entries.append({
+            'code':     code,
+            'name':     name,
+            'dir_name': item.name,
+            'path':     str(item),
+            'files':    all_files,
+            'previews': previews,
+        })
+    return entries
+
+
+@app.route("/api/lidar")
+def api_lidar():
+    """Return all lidar entries from LIDAR_DIR."""
+    try:
+        return jsonify({"success": True, "entries": _parse_lidar_entries()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/lidar-preview/<path:file_path>")
+def api_lidar_preview(file_path):
+    """Serve a lidar preview image (path must be inside LIDAR_DIR)."""
+    from flask import send_file
+    resolved = (Path(LIDAR_DIR) / file_path).resolve()
+    if not str(resolved).startswith(str(Path(LIDAR_DIR).resolve())):
+        return jsonify({"error": "Forbidden"}), 403
+    if not resolved.is_file():
+        return jsonify({"error": "Not found"}), 404
+    return send_file(str(resolved), mimetype='image/png')
+
+
 @app.route("/api/extract-slates-status")
 def api_extract_slates_status():
     """Check whether slate extraction is up to date with the current DB JSON."""
@@ -605,8 +665,9 @@ def api_open_folder():
     if not path:
         return jsonify({"success": False, "error": "No path provided"}), 400
     resolved = Path(path).resolve()
-    if not str(resolved).startswith(str(Path(DATA_DIR).resolve())):
-        return jsonify({"success": False, "error": "Path outside data directory"}), 403
+    allowed_roots = [str(Path(DATA_DIR).resolve()), str(Path(LIDAR_DIR).resolve())]
+    if not any(str(resolved).startswith(r) for r in allowed_roots):
+        return jsonify({"success": False, "error": "Path outside allowed directories"}), 403
     if not resolved.is_dir():
         return jsonify({"success": False, "error": "Directory not found"}), 404
     system = platform.system()

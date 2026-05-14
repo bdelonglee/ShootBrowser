@@ -844,6 +844,7 @@ class HTMLGenerator:
         /* ── Offline / read-only mode ── */
         .offline-mode #tab-queue,
         .offline-mode #tab-delivered,
+        .offline-mode #tab-lidar,
         .offline-mode #cart-panel,
         .offline-mode .entry-cb,
         .offline-mode .finder-btn,
@@ -1558,6 +1559,77 @@ class HTMLGenerator:
         .extract-status.err {{ color: #f85149; }}
         body.cart-open {{ padding-bottom: 370px; }}
         body.cart-open.cart-collapsed {{ padding-bottom: 48px; }}
+
+        /* ── Lidar view ── */
+        .lidar-active {{
+            --accent:      #39c5cf;
+            --accent-glow: rgba(57,197,207,0.15);
+        }}
+        .lidar-active .tab-btn.active {{
+            color: #39c5cf; border-bottom-color: #39c5cf;
+        }}
+        .lidar-card {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-left: 3px solid transparent;
+            padding: 14px 16px; margin-bottom: 8px;
+            border-radius: 8px; transition: all 0.15s;
+        }}
+        .lidar-card:hover {{
+            background: var(--surface-2); border-color: var(--border-hover);
+            border-left-color: var(--accent); transform: translateX(3px);
+        }}
+        .lidar-card-header {{
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+        }}
+        .lidar-code {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.8em; font-weight: 700;
+            background: rgba(57,197,207,0.12); color: #39c5cf;
+            border: 1px solid rgba(57,197,207,0.2); padding: 3px 9px; border-radius: 6px;
+        }}
+        .lidar-name {{
+            font-size: 0.95em; font-weight: 600; color: var(--text); flex: 1;
+        }}
+        .lidar-card:hover .finder-btn,
+        .lidar-card:hover .open-folder {{ opacity: 0.7; }}
+        .lidar-ext-group {{
+            display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; flex-wrap: wrap;
+        }}
+        .lidar-ext-label {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.72em; font-weight: 700;
+            color: var(--text-muted); background: var(--surface-2);
+            border: 1px solid var(--border); padding: 2px 7px; border-radius: 4px;
+            min-width: 42px; text-align: center; flex-shrink: 0;
+        }}
+        .lidar-file-chips {{ display: flex; flex-wrap: wrap; gap: 4px; }}
+        .lidar-file-chip {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.75em;
+            color: var(--text-muted); background: var(--surface-2);
+            border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px;
+        }}
+        .lidar-preview-strip {{
+            display: flex; flex-wrap: wrap; gap: 8px;
+            margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+        }}
+        .lidar-preview-thumb {{
+            height: 90px; width: auto; border-radius: 5px;
+            border: 1px solid var(--border); cursor: pointer;
+            object-fit: cover; transition: opacity 0.15s, border-color 0.15s;
+        }}
+        .lidar-preview-thumb:hover {{ opacity: 0.85; border-color: var(--accent); }}
+        #lidar-search-input {{
+            width: 100%; padding: 8px 34px;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.9em;
+            outline: none; transition: border-color 0.15s;
+        }}
+        #lidar-search-input::placeholder {{ color: var(--text-muted); }}
+        #lidar-search-input:focus {{ border-color: var(--accent); }}
+        #lidar-search-clear {{
+            position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; cursor: pointer;
+            color: var(--text-muted); font-size: 1em; display: none; line-height: 1;
+        }}
+        #lidar-search-clear:hover {{ color: var(--text); }}
     </style>
 </head>
 <body>
@@ -1571,6 +1643,7 @@ class HTMLGenerator:
     <nav class="tab-bar">
       <button class="tab-btn active" onclick="setView('browse')" id="tab-browse">📂 Browse</button>
       <button class="tab-btn" onclick="setView('database')" id="tab-database">🗄️ Database</button>
+      <button class="tab-btn" onclick="setView('lidar')" id="tab-lidar">📡 Lidar</button>
       <button class="tab-btn" onclick="setView('queue')" id="tab-queue">📋 Queue</button>
       <button class="tab-btn" onclick="setView('delivered')" id="tab-delivered">✅ Delivered</button>
     </nav>
@@ -1715,6 +1788,27 @@ class HTMLGenerator:
       <div id="database-content" style="margin-top:16px"></div>
     </div>
 
+    <div id="view-lidar" style="display:none">
+      <div class="controls">
+        <button class="mode-button active" onclick="setLidarGroup('code')" id="lidar-grp-code">🏷️ Group by Code</button>
+        <select id="lidar-sort-select" class="db-sort-select" onchange="setLidarSort(this.value)">
+          <option value="name">Sort: Name</option>
+          <option value="code">Sort: Code</option>
+        </select>
+        <button id="lidar-sort-dir" class="db-sort-dir" onclick="toggleLidarSortDir()" title="Toggle sort direction">↑</button>
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input id="lidar-search-input" type="text"
+                 placeholder="Search code, name…"
+                 oninput="setLidarQuery(this.value)">
+          <button id="lidar-search-clear" onclick="clearLidarSearch()" title="Clear">✕</button>
+        </div>
+      </div>
+      <div id="lidar-content">
+        <div class="empty-state"><div class="empty-state-icon">📡</div><p>Loading…</p></div>
+      </div>
+    </div>
+
     <div id="view-queue" style="display:none">
       <div class="queue-toolbar">
         <button class="queue-build-btn" id="queue-build-btn" onclick="buildSelected()">🏗️ Build selected</button>
@@ -1835,8 +1929,12 @@ function _saveUiState() {{
             dbFilters:     Object.assign({{}}, dbFilters),
             dbVfxFilter:   dbVfxFilter,
             activeBinId:   activeBinId,
-            deliveredMode: deliveredMode,
+            deliveredMode:  deliveredMode,
             deliveredQuery: deliveredQuery,
+            lidarGroup:     lidarGroupMode,
+            lidarSort:      lidarSortKey,
+            lidarSortAsc:   lidarSortAsc,
+            lidarQuery:     lidarQuery,
         }}));
     }} catch(e) {{}}
 }}
@@ -1919,8 +2017,29 @@ function _restoreUiState() {{
             const el = document.getElementById('del-search-input');
             if (el) {{ el.value = s.deliveredQuery; document.getElementById('del-search-clear').style.display = 'flex'; }}
         }}
+        // Lidar
+        if (s.lidarGroup && ['code','none'].includes(s.lidarGroup)) {{
+            lidarGroupMode = s.lidarGroup;
+            const btn = document.getElementById('lidar-grp-code');
+            if (btn) btn.classList.toggle('active', s.lidarGroup === 'code');
+        }}
+        if (s.lidarSort && ['name','code'].includes(s.lidarSort)) {{
+            lidarSortKey = s.lidarSort;
+            const sel = document.getElementById('lidar-sort-select');
+            if (sel) sel.value = s.lidarSort;
+        }}
+        if (s.lidarSortAsc !== undefined) {{
+            lidarSortAsc = s.lidarSortAsc;
+            const dirEl = document.getElementById('lidar-sort-dir');
+            if (dirEl) dirEl.textContent = lidarSortAsc ? '↑' : '↓';
+        }}
+        if (s.lidarQuery) {{
+            lidarQuery = s.lidarQuery.toLowerCase();
+            const el = document.getElementById('lidar-search-input');
+            if (el) {{ el.value = s.lidarQuery; document.getElementById('lidar-search-clear').style.display = 'block'; }}
+        }}
         // Active tab — restore last
-        if (s.view && ['browse','database','queue','delivered'].includes(s.view)) {{
+        if (s.view && ['browse','database','lidar','queue','delivered'].includes(s.view)) {{
             setView(s.view);
         }}
     }} catch(e) {{}}
@@ -2543,15 +2662,17 @@ function updateQueueBadge() {{
 
 function setView(view) {{
     currentView = view;
-    ['browse', 'database', 'queue', 'delivered'].forEach(v => {{
+    ['browse', 'database', 'lidar', 'queue', 'delivered'].forEach(v => {{
         document.getElementById(`view-${{v}}`).style.display = v === view ? 'block' : 'none';
         document.getElementById(`tab-${{v}}`).classList.toggle('active', v === view);
     }});
     const container = document.querySelector('.container');
     container.classList.toggle('delivered-active', view === 'delivered');
     container.classList.toggle('database-active',  view === 'database');
+    container.classList.toggle('lidar-active',     view === 'lidar');
     if (view === 'delivered') loadDelivered();
     if (view === 'database')  loadDatabase();
+    if (view === 'lidar')     loadLidar();
     if (view === 'queue')     renderQueue();
     _saveUiState();
 }}
@@ -3742,9 +3863,160 @@ async function generateOfflineHtml() {{
     }}
 }}
 
+// ── Lidar ─────────────────────────────────────────────────────────────────────
+let lidarEntries   = [];
+let lidarGroupMode = 'code';
+let lidarSortKey   = 'name';
+let lidarSortAsc   = true;
+let lidarQuery     = '';
+let _lidarLoaded   = false;
+
+function loadLidar() {{
+    if (_lidarLoaded) {{ renderLidar(); return; }}
+    fetch('/api/lidar')
+        .then(r => r.json())
+        .then(d => {{
+            lidarEntries  = d.entries || [];
+            _lidarLoaded  = true;
+            renderLidar();
+        }})
+        .catch(() => {{
+            const el = document.getElementById('lidar-content');
+            if (el) el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>Failed to load Lidar data</p></div>';
+        }});
+}}
+
+function setLidarGroup(mode) {{
+    lidarGroupMode = (lidarGroupMode === mode) ? 'none' : mode;
+    document.getElementById('lidar-grp-code').classList.toggle('active', lidarGroupMode === 'code');
+    renderLidar();
+    _saveUiState();
+}}
+
+function setLidarSort(key) {{
+    lidarSortKey = key;
+    renderLidar();
+    _saveUiState();
+}}
+
+function toggleLidarSortDir() {{
+    lidarSortAsc = !lidarSortAsc;
+    document.getElementById('lidar-sort-dir').textContent = lidarSortAsc ? '↑' : '↓';
+    renderLidar();
+    _saveUiState();
+}}
+
+function setLidarQuery(q) {{
+    lidarQuery = q.toLowerCase();
+    document.getElementById('lidar-search-clear').style.display = q ? 'block' : 'none';
+    renderLidar();
+    _saveUiState();
+}}
+
+function clearLidarSearch() {{
+    lidarQuery = '';
+    const el = document.getElementById('lidar-search-input');
+    if (el) el.value = '';
+    document.getElementById('lidar-search-clear').style.display = 'none';
+    renderLidar();
+    _saveUiState();
+}}
+
+function renderLidar() {{
+    const el = document.getElementById('lidar-content');
+    if (!el) return;
+    let entries = lidarEntries.filter(e =>
+        !lidarQuery ||
+        (e.code || '').toLowerCase().includes(lidarQuery) ||
+        (e.name || '').toLowerCase().includes(lidarQuery)
+    );
+    entries = entries.slice().sort((a, b) => {{
+        const av = lidarSortKey === 'code' ? (a.code || '') : (a.name || '');
+        const bv = lidarSortKey === 'code' ? (b.code || '') : (b.name || '');
+        return lidarSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    }});
+    if (!entries.length) {{
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📡</div><p>No Lidar entries found</p></div>';
+        return;
+    }}
+    if (lidarGroupMode === 'code') {{
+        const groups = {{}};
+        for (const e of entries) {{
+            if (!groups[e.code]) groups[e.code] = [];
+            groups[e.code].push(e);
+        }}
+        const codes = Object.keys(groups).sort((a, b) => lidarSortAsc ? a.localeCompare(b) : b.localeCompare(a));
+        let html = '';
+        for (const code of codes) {{
+            const items = groups[code];
+            html += '<div class="group">' +
+                '<div class="group-header"><span>' + code + '</span>' +
+                '<span class="group-count">' + items.length + '</span></div>';
+            for (const entry of items) html += renderLidarCard(entry);
+            html += '</div>';
+        }}
+        el.innerHTML = html;
+    }} else {{
+        el.innerHTML = entries.map(renderLidarCard).join('');
+    }}
+}}
+
+function renderLidarCard(entry) {{
+    const extOrder = ['abc', 'e57', 'obj', 'png'];
+    const byExt = {{}};
+    for (const f of (entry.files || [])) {{
+        if (!byExt[f.ext]) byExt[f.ext] = [];
+        byExt[f.ext].push(f.name);
+    }}
+    const allExts = [
+        ...extOrder.filter(e => byExt[e]),
+        ...Object.keys(byExt).filter(e => !extOrder.includes(e))
+    ];
+    let filesHtml = '';
+    for (const ext of allExts) {{
+        const names = byExt[ext] || [];
+        filesHtml += '<div class="lidar-ext-group">' +
+            '<span class="lidar-ext-label">.' + ext + '</span>' +
+            '<div class="lidar-file-chips">' +
+            names.map(n => '<span class="lidar-file-chip">' + n + '</span>').join('') +
+            '</div></div>';
+    }}
+    const previews = entry.previews || [];
+    let previewHtml = '';
+    if (previews.length) {{
+        previewHtml = '<div class="lidar-preview-strip">' +
+            previews.map((p, i) =>
+                '<img class="lidar-preview-thumb"' +
+                ' data-dir="' + entry.dir_name + '"' +
+                ' data-pidx="' + i + '"' +
+                ' src="/api/lidar-preview/' + entry.dir_name + '/' + p + '"' +
+                ' onclick="openLidarLightbox(this.dataset.dir,+this.dataset.pidx)"' +
+                ' title="' + p + '">'
+            ).join('') +
+            '</div>';
+    }}
+    return '<div class="lidar-card">' +
+        '<div class="lidar-card-header">' +
+        '<span class="lidar-code">' + entry.code + '</span>' +
+        '<span class="lidar-name">' + entry.name + '</span>' +
+        '<button class="finder-btn" data-path="' + entry.path + '"' +
+        ' onclick="openInFinder(this.dataset.path)" title="Open in Finder">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>' +
+        '</svg></button>' +
+        '<button class="open-folder" data-path="' + entry.path + '"' +
+        ' onclick="copyPath(this,this.dataset.path)" title="Copy path">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
+        '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' +
+        '</svg></button>' +
+        '</div>' + filesHtml + previewHtml + '</div>';
+}}
+
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 let _lbSlate = '';
 let _lbIdx   = 0;
+let _lbUrls  = null;  // when non-null, used instead of photosBySlate[_lbSlate]
 
 (function () {{
     const el = document.createElement('div');
@@ -3763,7 +4035,7 @@ let _lbIdx   = 0;
 }})();
 
 function _lbUpdate() {{
-    const photos = photosBySlate[_lbSlate] || [];
+    const photos = _lbUrls !== null ? _lbUrls : (photosBySlate[_lbSlate] || []);
     const src = photos[_lbIdx] || '';
     document.getElementById('lightbox-img').src = src;
     document.getElementById('lightbox-counter').textContent = (_lbIdx + 1) + ' / ' + photos.length;
@@ -3776,23 +4048,35 @@ function openLightbox(slate, idx) {{
     const photos = photosBySlate[slate] || [];
     if (!photos.length) return;
     _lbSlate = slate;
+    _lbUrls  = null;
     _lbIdx   = idx;
+    _lbUpdate();
+    document.getElementById('lightbox').classList.add('open');
+}}
+
+function openLidarLightbox(dirName, idx) {{
+    const entry = lidarEntries.find(e => e.dir_name === dirName);
+    if (!entry || !entry.previews.length) return;
+    _lbUrls = entry.previews.map(p => '/api/lidar-preview/' + entry.dir_name + '/' + p);
+    _lbIdx  = idx;
     _lbUpdate();
     document.getElementById('lightbox').classList.add('open');
 }}
 
 function closeLightbox() {{
     document.getElementById('lightbox').classList.remove('open');
+    _lbUrls = null;
 }}
 
 function lightboxStep(dir) {{
-    const photos = photosBySlate[_lbSlate] || [];
+    const photos = _lbUrls !== null ? _lbUrls : (photosBySlate[_lbSlate] || []);
     _lbIdx = (_lbIdx + dir + photos.length) % photos.length;
     _lbUpdate();
 }}
 
 function openCurrentPhotoInTab() {{
-    const src = (photosBySlate[_lbSlate] || [])[_lbIdx];
+    const photos = _lbUrls !== null ? _lbUrls : (photosBySlate[_lbSlate] || []);
+    const src = photos[_lbIdx];
     if (!src) return;
     if (!src.startsWith('data:')) {{
         window.open(src, '_blank');
@@ -3825,22 +4109,24 @@ document.addEventListener('keydown', e => {{
         if (e.key === 'Escape') {{
             if (currentView === 'browse')    clearSearch();
             else if (currentView === 'database') {{ clearDbSearch(); Object.keys(dbFilters).forEach(k => {{ dbFilters[k]=''; const el=document.getElementById('dbf-'+k); if(el) el.value=''; }}); renderDatabase(); _saveUiState(); }}
+            else if (currentView === 'lidar')     clearLidarSearch();
             else if (currentView === 'delivered') clearDeliveredSearch();
             document.activeElement.blur();
         }}
         return;
     }}
 
-    // Tab shortcuts: 1/2/3/4
+    // Tab shortcuts: 1/2/3/4/5
     if (e.key === '1') {{ setView('browse');    return; }}
     if (e.key === '2') {{ setView('database');  return; }}
-    if (e.key === '3') {{ setView('queue');     return; }}
-    if (e.key === '4') {{ setView('delivered'); return; }}
+    if (e.key === '3') {{ setView('lidar');     return; }}
+    if (e.key === '4') {{ setView('queue');     return; }}
+    if (e.key === '5') {{ setView('delivered'); return; }}
 
     // ⌘F / Ctrl+F — focus the active tab's search
     if (e.key === 'f' && (e.metaKey || e.ctrlKey)) {{
         e.preventDefault();
-        const ids = {{ browse: 'search-input', database: 'db-global-search', delivered: 'del-search-input' }};
+        const ids = {{ browse: 'search-input', database: 'db-global-search', lidar: 'lidar-search-input', delivered: 'del-search-input' }};
         const el = document.getElementById(ids[currentView] || 'search-input');
         if (el) el.focus();
         return;
@@ -3852,6 +4138,7 @@ document.addEventListener('keydown', e => {{
         if (bm && bm.style.display !== 'none') {{ closeBinMenu(); return; }}
         if (currentView === 'browse')         clearSearch();
         else if (currentView === 'database')  clearDbSearch();
+        else if (currentView === 'lidar')     clearLidarSearch();
         else if (currentView === 'delivered') clearDeliveredSearch();
     }}
 }});
