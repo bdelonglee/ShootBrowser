@@ -51,14 +51,14 @@ STEP 4 — Configure the data path
 ----------------------------------
 Open launch.bat with Notepad and edit the DATA_PATH line at the top:
 
-    set DATA_PATH=D:\POSEIDON\DATA
+    set DATA_PATH=D:\POSEIDON\SHOOT_BROWSER
 
-Replace D:\POSEIDON\DATA with the actual path to your shoot data root —
-the folder that contains __DATABASE, __SHOOT_BROWSER, and your block
+Replace D:\POSEIDON\SHOOT_BROWSER with the actual path to your project root —
+the folder that contains __DATABASE, SHOOT_BROWSER\, LIDAR\, and your block
 folders (J01__..., J02__..., etc.).
 
 If the data is on a network drive, use its mapped drive letter, e.g.:
-    set DATA_PATH=Z:\POSEIDON\DATA
+    set DATA_PATH=Z:\POSEIDON\SHOOT_BROWSER
 
 
 STEP 5 — Run the server

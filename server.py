@@ -3,10 +3,11 @@
 VFX Shoot Browser — Local web server
 
 Usage:
-    python server.py                              # default data path
-    python server.py --data-path /path/to/data   # custom data path
-    python server.py --port 8080                 # custom port
-    python server.py --no-browser                # don't auto-open browser
+    python server.py                                          # default paths
+    python server.py --root /path/to/project_root            # custom root
+    python server.py --root /path/root --data /other/DATA    # override data dir
+    python server.py --port 8080                             # custom port
+    python server.py --no-browser                            # don't auto-open browser
 
 Install dependency once:
     pip install flask
@@ -43,14 +44,46 @@ sys.path.insert(0, str(Path(__file__).parent))
 from generate_html import HTMLGenerator, _denormalize_json_to_rows
 
 app = Flask(__name__)
-DATA_PATH: str = ""
+
+# Resolved at startup — see _resolve_project_paths()
+PROJECT_ROOT: str = ""
+DATA_DIR:     str = ""
+LIDAR_DIR:    str = ""
+DELIVERY_DIR: str = ""
+ASSETS_DIR:   str = ""
+
+_DIR_DEFAULTS = {
+    "data":              "DATA",
+    "lidar":             "LIDAR",
+    "delivery_packages": "DELIVERY_PACKAGES",
+    "assets":            "ASSETS",
+}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _load_project_config() -> dict:
+    """Read project_config.json from SHOOT_BROWSER/Config/ (best-effort)."""
+    cfg_path = Path(PROJECT_ROOT) / "SHOOT_BROWSER" / "Config" / "project_config.json"
+    try:
+        return json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _resolve_dir(key: str, cli_val, cfg_paths: dict) -> str:
+    """Priority: CLI arg > project_config.json > {PROJECT_ROOT}/{default_name}."""
+    if cli_val:
+        return str(Path(cli_val).resolve())
+    cfg_val = (cfg_paths.get(key) or "").strip()
+    if cfg_val:
+        return str(Path(cfg_val).resolve())
+    return str(Path(PROJECT_ROOT) / _DIR_DEFAULTS[key])
+
+
 def make_generator() -> HTMLGenerator:
     """Create a fresh generator, parse directories, and return it."""
-    g = HTMLGenerator(DATA_PATH)
+    g = HTMLGenerator(PROJECT_ROOT, data_dir=DATA_DIR, delivery_dir=DELIVERY_DIR)
     g.parse_directories()
     return g
 
@@ -93,7 +126,7 @@ def api_generate_offline_html():
 @app.route("/offline-site/<path:filename>")
 def offline_site_file(filename):
     """Serve the generated OfflineSite directory (HTML + photos)."""
-    directory = Path(DATA_PATH) / "__SHOOT_BROWSER" / "OfflineSite"
+    directory = Path(PROJECT_ROOT) / "SHOOT_BROWSER" / "OfflineSite"
     return send_from_directory(str(directory), filename)
 
 
@@ -103,7 +136,7 @@ def api_run_sanity_check():
     script = Path(__file__).parent / "sanity_check.py"
     try:
         result = subprocess.run(
-            [sys.executable, str(script), DATA_PATH],
+            [sys.executable, str(script), PROJECT_ROOT],
             capture_output=True,
             text=True,
             cwd=str(Path(__file__).parent),
@@ -181,7 +214,7 @@ def api_build_package():
     try:
         pkg_dir.mkdir(parents=True, exist_ok=True)
 
-        g_meta = HTMLGenerator(DATA_PATH)  # for subdir computation only
+        g_meta = HTMLGenerator(PROJECT_ROOT, data_dir=DATA_DIR)  # for subdir computation only
         copied = []
         for block in blocks:
             src  = Path(block["path"])
@@ -217,7 +250,7 @@ def api_build_package():
             "version":           version,
             "timestamp":         datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
             "created_by":        "vfx_shoot_browser",
-            "source_data_path":  DATA_PATH,
+            "source_data_path":  DATA_DIR,
             "output_path":       str(pkg_dir),
             "package_note":      package_note,
             "blocks":            enriched_blocks,
@@ -249,29 +282,16 @@ def api_build_package():
 
 @app.route("/api/delivered-packages")
 def api_delivered_packages():
-    """Return all delivered package manifests from __packages_infos/."""
-    cfg_path = Path(DATA_PATH) / "__SHOOT_BROWSER" / "Config" / "delivery_config.json"
-    try:
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-    except Exception:
-        cfg = {}
-
-    output_dir = (cfg.get("default_output_dir") or "").strip()
-    if not output_dir:
-        return jsonify({"success": True, "packages": [],
-                        "warning": "No default_output_dir in delivery_config.json"})
-
-    pkg_infos_dir = Path(output_dir) / "__packages_infos"
+    """Return all delivered package manifests from DELIVERY_DIR/__packages_infos/."""
+    pkg_infos_dir = Path(DELIVERY_DIR) / "__packages_infos"
     if not pkg_infos_dir.exists():
         return jsonify({"success": True, "packages": []})
-
     packages = []
     for f in sorted(pkg_infos_dir.glob("*.json"), reverse=True):
         try:
             packages.append(json.loads(f.read_text(encoding="utf-8")))
         except Exception:
             pass
-
     return jsonify({"success": True, "packages": packages})
 
 
@@ -288,7 +308,7 @@ def api_database():
 
 def _load_db_json() -> dict:
     """Load the most recent JSON database export, cached in module scope."""
-    db_dir = Path(DATA_PATH) / "__DATABASE"
+    db_dir = Path(DATA_DIR) / "__DATABASE"
     if not db_dir.exists():
         return {}
     jsonfiles = sorted(
@@ -335,7 +355,7 @@ def api_database_photos(slate_id):
 
 def _find_db_json_file() -> tuple:
     """Return (Path, date_str) for the most recent non-hidden JSON in __DATABASE/."""
-    db_dir = Path(DATA_PATH) / "__DATABASE"
+    db_dir = Path(DATA_DIR) / "__DATABASE"
     if not db_dir.exists():
         return None, None
     jsonfiles = sorted(
@@ -415,7 +435,7 @@ def api_extract_slates_status():
         return jsonify({"success": True, "db_date": None, "needs_refresh": False,
                         "filename": jsonfile.name if jsonfile else None})
 
-    meta_path = Path(DATA_PATH) / "__DATABASE" / "extraction_meta.json"
+    meta_path = Path(DATA_DIR) / "__DATABASE" / "extraction_meta.json"
     needs_refresh = True
     last_extracted = None
     if meta_path.exists():
@@ -456,7 +476,7 @@ def api_extract_slates():
     block_counts   = []   # (block_name, n_slates) — successfully extracted
     matched_keys   = set()
 
-    for item in sorted(Path(DATA_PATH).iterdir()):
+    for item in sorted(Path(DATA_DIR).iterdir()):
         if not item.is_dir() or not _BLOCK_RE.match(item.name):
             continue
 
@@ -515,7 +535,7 @@ def api_extract_slates():
     log_suffix       = now.strftime("%Y-%m-%d_%H%M")
 
     # Write log file (one per run, keyed by date+hour+minute)
-    log_dir  = Path(DATA_PATH) / "__SHOOT_BROWSER" / "Log"
+    log_dir  = Path(PROJECT_ROOT) / "SHOOT_BROWSER" / "Log"
     log_dir.mkdir(exist_ok=True)
     log_path = log_dir / f"extract_slates_{log_suffix}.log"
     lines = [
@@ -558,7 +578,7 @@ def api_extract_slates():
     log_path.write_text("\n".join(lines), encoding="utf-8")
 
     # Save extraction metadata
-    meta_path = Path(DATA_PATH) / "__DATABASE" / "extraction_meta.json"
+    meta_path = Path(DATA_DIR) / "__DATABASE" / "extraction_meta.json"
     meta_path.write_text(json.dumps({
         "db_date":          db_date,
         "extracted_at":     now_str,
@@ -585,7 +605,7 @@ def api_open_folder():
     if not path:
         return jsonify({"success": False, "error": "No path provided"}), 400
     resolved = Path(path).resolve()
-    if not str(resolved).startswith(str(Path(DATA_PATH).resolve())):
+    if not str(resolved).startswith(str(Path(DATA_DIR).resolve())):
         return jsonify({"success": False, "error": "Path outside data directory"}), 403
     if not resolved.is_dir():
         return jsonify({"success": False, "error": "Directory not found"}), 404
@@ -613,22 +633,37 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="VFX Shoot Browser — Local web server")
     parser.add_argument(
-        "--data-path",
-        default="/Volumes/MACGUFF001/POSEIDON/DATA",
-        help="Path to the shoot data directory",
+        "--root",
+        default="/Volumes/MACGUFF001/POSEIDON/SHOOT_BROWSER",
+        help="Project root directory (contains DATA/, SHOOT_BROWSER/, LIDAR/, …)",
     )
-    parser.add_argument("--port", type=int, default=5000, help="Port to listen on (default: 5000)")
-    parser.add_argument("--no-browser", action="store_true", help="Do not open browser automatically")
+    parser.add_argument("--data",     default=None, help="Override DATA directory path")
+    parser.add_argument("--lidar",    default=None, help="Override LIDAR directory path")
+    parser.add_argument("--asset",    default=None, help="Override ASSETS directory path")
+    parser.add_argument("--delivery-packages", default=None, dest="delivery_packages",
+                        help="Override DELIVERY_PACKAGES directory path")
+    parser.add_argument("--port",       type=int, default=5001, help="Port (default: 5001)")
+    parser.add_argument("--no-browser", action="store_true",    help="Do not open browser automatically")
     args = parser.parse_args()
 
-    global DATA_PATH
-    DATA_PATH = args.data_path
+    global PROJECT_ROOT, DATA_DIR, LIDAR_DIR, DELIVERY_DIR, ASSETS_DIR
+    PROJECT_ROOT = str(Path(args.root).resolve())
+    cfg          = _load_project_config()
+    cfg_paths    = cfg.get("paths", {})
+    DATA_DIR     = _resolve_dir("data",              args.data,               cfg_paths)
+    LIDAR_DIR    = _resolve_dir("lidar",             args.lidar,              cfg_paths)
+    DELIVERY_DIR = _resolve_dir("delivery_packages", args.delivery_packages,  cfg_paths)
+    ASSETS_DIR   = _resolve_dir("assets",            args.asset,              cfg_paths)
 
     print("\n" + "=" * 60)
     print("🎬  VFX SHOOT BROWSER — Local Server")
     print("=" * 60)
-    print(f"  Data path : {DATA_PATH}")
-    print(f"  URL       : http://127.0.0.1:{args.port}")
+    print(f"  Root     : {PROJECT_ROOT}")
+    print(f"  Data     : {DATA_DIR}")
+    print(f"  Delivery : {DELIVERY_DIR}")
+    print(f"  Lidar    : {LIDAR_DIR}")
+    print(f"  Assets   : {ASSETS_DIR}")
+    print(f"  URL      : http://127.0.0.1:{args.port}")
     print(f"\n  Press Ctrl+C to stop the server.")
     print("=" * 60 + "\n")
 

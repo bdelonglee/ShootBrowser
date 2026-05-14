@@ -117,8 +117,8 @@ class HTMLGenerator:
     DEFAULT_SKIP_DIRS   = {'TODO__', '__RAPPORTS_SCRIPT', '__Souvenirs_Vrac', '__CALLSHEETS'}
     DEFAULT_TEMPLATE_DIR = 'J00_TEMPLATE'
     DEFAULT_HDR_SUBDIRS  = {'Fisheye': 'F', 'Theta': 'T', 'Theta_Underwater': 'U'}
-    CONFIG_PATH          = '__SHOOT_BROWSER/Config/sanity_check.json'
-    DELIVERY_CONFIG_PATH = '__SHOOT_BROWSER/Config/delivery_config.json'
+    CONFIG_PATH    = 'SHOOT_BROWSER/Config/sanity_check.json'
+    PROJECT_CONFIG = 'SHOOT_BROWSER/Config/project_config.json'
 
     # Subdirectory display modes (matched against non-__ subdir names)
     HDR_DIRS         = {'20_HDR'}
@@ -127,12 +127,15 @@ class HTMLGenerator:
     COUNT_ONLY_DIRS  = {'60_Temoin_Photos'}
     LIST_FILES_DIRS  = {'10_Infos', '00_Database', '80_References'}
 
-    def __init__(self, data_path: str):
-        self.data_path = Path(data_path).resolve()
+    def __init__(self, project_root: str, data_dir: str = None, delivery_dir: str = None):
+        self.data_path    = Path(project_root).resolve()  # project root
+        self.data_dir     = Path(data_dir).resolve()    if data_dir    else self.data_path / 'DATA'
+        self.delivery_dir = Path(delivery_dir)          if delivery_dir else self.data_path / 'DELIVERY_PACKAGES'
         self.entries: List[ShootEntry] = []
         self._load_config()
 
     def _load_config(self) -> None:
+        # Sanity-check config (separate file, intentionally kept apart)
         config_path = self.data_path / self.CONFIG_PATH
         config = {}
         if config_path.exists():
@@ -148,20 +151,21 @@ class HTMLGenerator:
             config.get('hdr_subdirs', self.DEFAULT_HDR_SUBDIRS).keys()
         )
 
-        # Delivery config (separate file)
-        delivery_cfg = {}
-        dcfg_path = self.data_path / self.DELIVERY_CONFIG_PATH
-        if dcfg_path.exists():
+        # Project config (delivery vendors + any future settings)
+        pcfg_path = self.data_path / self.PROJECT_CONFIG
+        project_cfg = {}
+        if pcfg_path.exists():
             try:
-                with open(dcfg_path, 'r', encoding='utf-8') as f:
-                    delivery_cfg = json.load(f)
+                with open(pcfg_path, 'r', encoding='utf-8') as f:
+                    project_cfg = json.load(f)
             except Exception as e:
-                print(f"⚠️  Could not load delivery config ({e}), using defaults")
-        self.vendors             = delivery_cfg.get('vendors', [])
-        self.default_output_dir  = delivery_cfg.get('default_output_dir', '')
+                print(f"⚠️  Could not load project config ({e}), using defaults")
+        delivery_cfg = project_cfg.get('delivery', {})
+        self.vendors            = delivery_cfg.get('vendors', [])
+        self.default_output_dir = str(self.delivery_dir)
 
     def default_output_path(self) -> Path:
-        return self.data_path / '__SHOOT_BROWSER' / 'vfx_shoot_browser.html'
+        return self.data_path / 'SHOOT_BROWSER' / 'vfx_shoot_browser.html'
 
     # ── Block package note ───────────────────────────────────────────────────
 
@@ -332,7 +336,7 @@ class HTMLGenerator:
 
     def parse_directories(self):
         print("📂 Parsing shoot directories...")
-        for item in sorted(self.data_path.iterdir()):
+        for item in sorted(self.data_dir.iterdir()):
             if not item.is_dir():
                 continue
             if any(skip in item.name for skip in self.skip_dirs):
@@ -405,7 +409,7 @@ class HTMLGenerator:
 
     def generate_offline_html(self, output_path: Optional[str] = None):
         print("🎨 Generating offline HTML page...")
-        pages_dir = self.data_path / '__SHOOT_BROWSER' / 'OfflineSite'
+        pages_dir = self.data_path / 'SHOOT_BROWSER' / 'OfflineSite'
         pages_dir.mkdir(parents=True, exist_ok=True)
         out = Path(output_path) if output_path else (
             pages_dir / 'vfx_shoot_browser_offline.html'
@@ -424,7 +428,7 @@ class HTMLGenerator:
     def _extract_offline_photos(self, photos_dir: Path) -> dict:
         """Decode base64 photos from JSON DB to JPEG files; return {slate_id: [rel_path,...]}."""
         import base64 as _b64
-        db_dir = self.data_path / '__DATABASE'
+        db_dir = self.data_dir / '__DATABASE'
         if not db_dir.exists():
             return {}
         jsonfiles = sorted(
@@ -460,7 +464,7 @@ class HTMLGenerator:
 
     def _load_offline_db_rows(self) -> list:
         """Load database rows from JSON for embedding in offline HTML."""
-        db_dir = self.data_path / '__DATABASE'
+        db_dir = self.data_dir / '__DATABASE'
         if not db_dir.exists():
             return []
         jsonfiles = sorted(
@@ -3875,7 +3879,7 @@ if (OFFLINE_MODE) {{
 def main():
     import sys
 
-    data_path   = "/Volumes/MACGUFF001/POSEIDON/DATA_rename"
+    data_path   = "/Volumes/MACGUFF001/POSEIDON/SHOOT_BROWSER"  # project root
     output_path = None
 
     offline = '--offline' in sys.argv
