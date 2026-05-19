@@ -14,6 +14,7 @@ Install dependency once:
 """
 
 import csv as _csv_mod
+import io
 import os
 import platform
 import re
@@ -36,7 +37,7 @@ _BLOCK_RE = re.compile(
 _LIDAR_DIR_RE = re.compile(r'^([A-Z]{4,})__(.+)$')
 
 try:
-    from flask import Flask, jsonify, request, send_from_directory
+    from flask import Flask, jsonify, request, send_file, send_from_directory
 except ImportError:
     print("\n❌ Flask is not installed.")
     print("   Run: pip install flask\n")
@@ -187,7 +188,8 @@ def api_build_package():
     if not vendor:        errors.append("vendor is required")
     if not package_name:  errors.append("package_name is required")
     if not output_dir:    errors.append("output_dir is required")
-    if not blocks:        errors.append("no blocks selected")
+    lidars = body.get("lidars") or []
+    if not blocks and not lidars:  errors.append("no blocks or lidars selected")
     if errors:
         return jsonify({"success": False, "errors": errors}), 400
 
@@ -246,6 +248,27 @@ def api_build_package():
                 "description": block.get("description", ""),
             })
 
+        # Copy lidar directories with LIDAR__ prefix
+        copied_lidars = []
+        lidar_root = Path(LIDAR_DIR).resolve()
+        for lidar in lidars:
+            src = Path(lidar.get("path", "")).resolve()
+            if not src.is_dir():
+                errors.append(f"Lidar directory not found: {lidar.get('dir_name', '?')}")
+                continue
+            if not str(src).startswith(str(lidar_root)):
+                errors.append(f"Lidar path outside LIDAR_DIR: {src}")
+                continue
+            dest_name = "LIDAR__" + lidar.get("dir_name", src.name)
+            dest = pkg_dir / dest_name
+            shutil.copytree(str(src), str(dest))
+            copied_lidars.append({
+                "dir_name":  lidar.get("dir_name", src.name),
+                "dest_name": dest_name,
+                "code":      lidar.get("code", ""),
+                "name":      lidar.get("name", ""),
+            })
+
         manifest = {
             "vendor":            vendor,
             "package_name":      package_name,
@@ -257,6 +280,7 @@ def api_build_package():
             "output_path":       str(pkg_dir),
             "package_note":      package_note,
             "blocks":            enriched_blocks,
+            "lidars":            copied_lidars,
         }
 
         # package_manifest.json inside the package dir
@@ -678,6 +702,377 @@ def api_open_folder():
     else:
         subprocess.run(["xdg-open", str(resolved)])
     return jsonify({"success": True})
+
+
+# ── PDF export ───────────────────────────────────────────────────────────────
+
+def _generate_pdf(buf, project_name: str, ordered_slates: list,
+                  slate_rows: dict, records_by_slate: dict) -> None:
+    """Render a PDF report into buf (a writable file-like object)."""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                        Table, TableStyle, Image, PageBreak)
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import mm
+        from reportlab.lib.enums import TA_CENTER
+        import base64
+    except ImportError:
+        raise RuntimeError(
+            "reportlab is not installed. Run: pip install reportlab"
+        )
+
+    PAGE_W, PAGE_H = A4
+    MARGIN = 18 * mm
+    CW     = PAGE_W - 2 * MARGIN          # usable content width ≈ 174 mm
+
+    # ── Palette ───────────────────────────────────────────────────────
+    NAVY   = colors.HexColor('#1a2942')
+    BLUE   = colors.HexColor('#2980b9')
+    BGRAY  = colors.HexColor('#f4f6f8')
+    BORDER = colors.HexColor('#c8d8e8')
+    GREEN  = colors.HexColor('#27ae60')
+    MUTED  = colors.HexColor('#5a6a7a')
+    BLACK  = colors.HexColor('#1a1a2e')
+    BLUEHI = colors.HexColor('#e8f0f8')
+
+    # ── Paragraph style factory ───────────────────────────────────────
+    def _s(name, **kw):
+        defaults = dict(fontName='Helvetica', fontSize=9, textColor=BLACK, leading=12)
+        defaults.update(kw)
+        return ParagraphStyle(name, **defaults)
+
+    sty_cover_title = _s('CT', fontSize=30, fontName='Helvetica-Bold',
+                          textColor=colors.white, leading=36)
+    sty_cover_sub   = _s('CS', fontSize=11, textColor=colors.HexColor('#8ab4d4'))
+    sty_h3          = _s('H3', fontSize=11, fontName='Helvetica-Bold', spaceAfter=3)
+    sty_label       = _s('LB', fontSize=7,  fontName='Helvetica-Bold',
+                          textColor=MUTED, leading=9)
+    sty_value       = _s('VL', fontSize=9)
+    sty_th          = _s('TH', fontSize=7.5, fontName='Helvetica-Bold',
+                          textColor=colors.white, alignment=TA_CENTER)
+    sty_tc          = _s('TC', fontSize=8)
+    sty_tc_c        = _s('TCC', fontSize=8, alignment=TA_CENTER)
+    sty_mono        = _s('MO', fontSize=7.5, fontName='Courier')
+    sty_vfx         = _s('VX', fontSize=9, alignment=TA_CENTER,
+                          textColor=GREEN, fontName='Helvetica-Bold')
+    sty_summary     = _s('SU', fontSize=9, textColor=MUTED, fontName='Helvetica-Oblique')
+    sty_note_label  = _s('NL', fontSize=7.5, fontName='Helvetica-Bold',
+                          textColor=MUTED, spaceAfter=2)
+    sty_note_val    = _s('NV', fontSize=8.5, leading=12)
+    sty_slate_idx   = _s('SI', fontSize=8, fontName='Helvetica-Bold',
+                          textColor=BLUE, alignment=TA_CENTER)
+
+    export_date   = datetime.now().strftime('%d/%m/%Y')
+    all_flat      = [r for rows in slate_rows.values() for r in rows]
+    total_takes   = len(all_flat)
+
+    # ── Document ──────────────────────────────────────────────────────
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=MARGIN, rightMargin=MARGIN,
+        topMargin=MARGIN,  bottomMargin=14 * mm,
+        title=f"{project_name} — VFX Database Export",
+    )
+    story = []
+
+    # ── Cover page ────────────────────────────────────────────────────
+    cover = Table(
+        [[Paragraph(project_name, sty_cover_title)],
+         [Paragraph('VFX DATABASE EXPORT', sty_cover_sub)]],
+        colWidths=[CW],
+    )
+    cover.setStyle(TableStyle([
+        ('BACKGROUND',    (0,0), (-1,-1), NAVY),
+        ('TOPPADDING',    (0,0), (-1,0),  20),
+        ('BOTTOMPADDING', (0,1), (-1,1),  20),
+        ('LEFTPADDING',   (0,0), (-1,-1), 20),
+        ('RIGHTPADDING',  (0,0), (-1,-1), 20),
+    ]))
+    story.append(cover)
+    story.append(Spacer(1, 10 * mm))
+
+    cameras    = sorted({r.get('Body',  '') for r in all_flat if (r.get('Body',  '') or '').strip()})
+    lenses     = sorted({r.get('Lens',  '') for r in all_flat if (r.get('Lens',  '') or '').strip()})
+    dates      = sorted({r.get('Date',  '') for r in all_flat if (r.get('Date',  '') or '').strip()})
+    date_range = (f"{dates[0]} — {dates[-1]}" if len(dates) > 1
+                  else (dates[0] if dates else '—'))
+
+    LW, VW = 38 * mm, CW - 38 * mm
+    stat_tbl = Table([
+        [Paragraph('Export date',  sty_label), Paragraph(export_date,                        sty_value)],
+        [Paragraph('Slates',       sty_label), Paragraph(str(len(ordered_slates)),            sty_value)],
+        [Paragraph('Takes',        sty_label), Paragraph(str(total_takes),                    sty_value)],
+        [Paragraph('Cameras',      sty_label), Paragraph(', '.join(cameras) or '—',           sty_value)],
+        [Paragraph('Lenses',       sty_label), Paragraph(', '.join(lenses)  or '—',           sty_value)],
+        [Paragraph('Shoot dates',  sty_label), Paragraph(date_range,                          sty_value)],
+    ], colWidths=[LW, VW])
+    stat_tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), BGRAY),
+        ('GRID',       (0,0), (-1,-1), 0.5, BORDER),
+        ('PADDING',    (0,0), (-1,-1), 5),
+        ('VALIGN',     (0,0), (-1,-1), 'TOP'),
+    ]))
+    story.append(stat_tbl)
+    story.append(Spacer(1, 10 * mm))
+
+    # Slate index grid
+    story.append(Paragraph('Slates in this export', sty_h3))
+    story.append(Spacer(1, 2 * mm))
+    NCOLS = 8
+    pad   = list(ordered_slates)
+    while len(pad) % NCOLS:
+        pad.append('')
+    idx_tbl = Table(
+        [[Paragraph(s, sty_slate_idx) for s in pad[i:i+NCOLS]]
+         for i in range(0, len(pad), NCOLS)],
+        colWidths=[CW / NCOLS] * NCOLS,
+    )
+    idx_tbl.setStyle(TableStyle([
+        ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
+        ('PADDING',    (0,0), (-1,-1), 5),
+        ('BACKGROUND', (0,0), (-1,-1), BGRAY),
+    ]))
+    story.append(idx_tbl)
+    story.append(PageBreak())
+
+    # ── Slate pages ───────────────────────────────────────────────────
+    # Take table column widths (sum = CW ≈ 174 mm)
+    TCW   = [11*mm, 14*mm, 25*mm, 50*mm, 15*mm, 18*mm, 11*mm, 12*mm, 18*mm]
+    T_HDR = ['Take', 'Camera', 'Roll', 'Lens', 'Focal', 'Shutter', 'FPS', 'f-stop', 'VFX ✓']
+
+    for slate_id in ordered_slates:
+        rows   = slate_rows.get(slate_id, [])
+        if not rows:
+            continue
+        record = records_by_slate.get(slate_id)
+        first  = rows[0]
+
+        def _v(k): return (first.get(k, '') or '').strip() or '—'
+
+        # Slate header
+        hdr = Table(
+            [[Paragraph(f'SLATE  {slate_id}',
+                        _s('SH', fontSize=18, fontName='Helvetica-Bold',
+                           textColor=colors.white, leading=22)),
+              Paragraph(_v('Scene Description'),
+                        _s('SD', fontSize=10,
+                           textColor=colors.HexColor('#b8d0ea'), leading=13))]],
+            colWidths=[45*mm, CW - 45*mm],
+        )
+        hdr.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), NAVY),
+            ('PADDING',    (0,0), (-1,-1), 10),
+            ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        story.append(hdr)
+
+        # Info grid (9 fields, 3 columns)
+        ILW = 22 * mm
+        IVW = (CW - 3 * ILW) / 3
+        info_tbl = Table([
+            [Paragraph('VFX ID',       sty_label), Paragraph(_v('VFX ID'),       sty_value),
+             Paragraph('Set Location', sty_label), Paragraph(_v('Set Location'), sty_value),
+             Paragraph('Int / Ext',    sty_label), Paragraph(_v('Int/Ext'),      sty_value)],
+            [Paragraph('Day / Night',  sty_label), Paragraph(_v('Day/Night'),    sty_value),
+             Paragraph('Unit',         sty_label), Paragraph(_v('Unit'),         sty_value),
+             Paragraph('Shoot Day',    sty_label), Paragraph(_v('Shoot Day'),    sty_value)],
+            [Paragraph('Date',         sty_label), Paragraph(_v('Date'),         sty_value),
+             Paragraph('Wrangler',     sty_label), Paragraph(_v('Wrangler'),     sty_value),
+             Paragraph('Set Refs',     sty_label), Paragraph(_v('Set Refs'),     sty_value)],
+        ], colWidths=[ILW, IVW] * 3)
+        info_tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), BGRAY),
+            ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
+            ('PADDING',    (0,0), (-1,-1), 5),
+            ('VALIGN',     (0,0), (-1,-1), 'TOP'),
+        ]))
+        story.append(Spacer(1, 1.5 * mm))
+        story.append(info_tbl)
+
+        # VFX Work and Notes (full-width, only if non-empty)
+        for lbl, key in [('VFX Work', 'VFX Work'), ('Notes', 'Notes')]:
+            text = (first.get(key, '') or '').strip()
+            if text:
+                ft = Table(
+                    [[Paragraph(lbl, sty_note_label)],
+                     [Paragraph(text, sty_note_val)]],
+                    colWidths=[CW],
+                )
+                ft.setStyle(TableStyle([
+                    ('BACKGROUND',   (0,0), (-1,-1), BGRAY),
+                    ('LEFTPADDING',  (0,0), (-1,-1), 8),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 8),
+                    ('TOPPADDING',   (0,0), (0,0),   5),
+                    ('BOTTOMPADDING',(0,-1),(-1,-1),  5),
+                    ('LINEBELOW',    (0,0), (-1,-1),  0.3, BORDER),
+                ]))
+                story.append(ft)
+
+        # Summary line
+        n_takes  = len(rows)
+        bodies   = sorted({(r.get('Body') or r.get('Camera') or '').strip() for r in rows} - {''})
+        lenses_u = sorted({(r.get('Lens') or '').strip() for r in rows} - {''})
+        fps_u    = sorted({(r.get('FPS')  or '').strip() for r in rows} - {''})
+        vfx_cnt  = sum(1 for r in rows
+                       if (r.get('VFX Pass / Ref') or '').strip().lower() == 'yes')
+        parts = [f'<b>{n_takes}</b> take{"s" if n_takes != 1 else ""}']
+        if bodies:   parts.append(', '.join(bodies))
+        if lenses_u: parts.append(', '.join(lenses_u))
+        if fps_u:    parts.append(', '.join(fps_u) + ' fps')
+        if vfx_cnt:  parts.append(f'<b>{vfx_cnt}</b> VFX pass{"es" if vfx_cnt != 1 else ""}')
+        sum_tbl = Table([[Paragraph('  ·  '.join(parts), sty_summary)]], colWidths=[CW])
+        sum_tbl.setStyle(TableStyle([
+            ('BACKGROUND',  (0,0), (-1,-1), BLUEHI),
+            ('PADDING',     (0,0), (-1,-1), 6),
+            ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ]))
+        story.append(Spacer(1, 1.5 * mm))
+        story.append(sum_tbl)
+
+        # Take table
+        def _sort_key(r):
+            m = re.match(r'(\d+)', r.get('Take', '') or '')
+            return int(m.group(1)) if m else 9999
+
+        sorted_rows = sorted(rows, key=_sort_key)
+        take_data   = [[Paragraph(h, sty_th) for h in T_HDR]]
+        for r in sorted_rows:
+            is_vfx = (r.get('VFX Pass / Ref') or '').strip().lower() == 'yes'
+            take_data.append([
+                Paragraph(r.get('Take',    '') or '—', sty_tc_c),
+                Paragraph(r.get('Camera',  '') or '—', sty_tc_c),
+                Paragraph(r.get('Roll',    '') or '—', sty_mono),
+                Paragraph(r.get('Lens',    '') or '—', sty_tc),
+                Paragraph(r.get('Focal',   '') or '—', sty_tc_c),
+                Paragraph(r.get('Shutter', '') or '—', sty_tc_c),
+                Paragraph(r.get('FPS',     '') or '—', sty_tc_c),
+                Paragraph(r.get('F-Stop',  '') or '—', sty_tc_c),
+                Paragraph('✓' if is_vfx else '',        sty_vfx),
+            ])
+
+        bg_cmds = [
+            ('BACKGROUND', (0, i+1), (-1, i+1),
+             colors.HexColor('#edfaf2')
+             if (sorted_rows[i].get('VFX Pass / Ref') or '').strip().lower() == 'yes'
+             else (colors.white if i % 2 == 0 else BGRAY))
+            for i in range(len(sorted_rows))
+        ]
+        take_tbl = Table(take_data, colWidths=TCW, repeatRows=1)
+        take_tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), BLUE),
+            ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
+            ('PADDING',    (0,0), (-1,-1), 4),
+            ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
+        ] + bg_cmds))
+        story.append(Spacer(1, 1.5 * mm))
+        story.append(take_tbl)
+
+        # Reference photos
+        if record:
+            pics     = (record.get('referencePictures') or [])[:4]
+            img_bufs = []
+            for pic in pics:
+                try:
+                    b64 = pic.split(',', 1)[1] if pic.startswith('data:') else pic
+                    img_bufs.append(io.BytesIO(base64.b64decode(b64)))
+                except Exception:
+                    pass
+
+            if img_bufs:
+                n     = len(img_bufs)
+                ncols = 2 if n > 1 else 1
+                ph_w  = (CW - (ncols - 1) * 3 * mm) / ncols
+                ph_h  = 70 * mm
+
+                ph_rows = []
+                for i in range(0, n, ncols):
+                    row_imgs = []
+                    for j in range(ncols):
+                        if i + j < n:
+                            try:
+                                row_imgs.append(
+                                    Image(img_bufs[i+j], width=ph_w, height=ph_h, kind='bound')
+                                )
+                            except Exception:
+                                row_imgs.append('')
+                        else:
+                            row_imgs.append('')
+                    ph_rows.append(row_imgs)
+
+                ph_tbl = Table(ph_rows, colWidths=[ph_w] * ncols)
+                ph_tbl.setStyle(TableStyle([
+                    ('ALIGN',   (0,0), (-1,-1), 'CENTER'),
+                    ('VALIGN',  (0,0), (-1,-1), 'MIDDLE'),
+                    ('PADDING', (0,0), (-1,-1), 3),
+                ]))
+                story.append(Spacer(1, 3 * mm))
+                story.append(Paragraph('Reference photos', sty_note_label))
+                story.append(Spacer(1, 1 * mm))
+                story.append(ph_tbl)
+
+        story.append(PageBreak())
+
+    # ── Footer on every page ──────────────────────────────────────────
+    def _footer(canvas, doc_):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 7)
+        canvas.setFillColor(MUTED)
+        canvas.drawString(MARGIN, 8 * mm, project_name)
+        canvas.drawCentredString(PAGE_W / 2, 8 * mm, export_date)
+        canvas.drawRightString(PAGE_W - MARGIN, 8 * mm, f'Page {doc_.page}')
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+
+
+@app.route("/api/export-pdf", methods=["POST"])
+def api_export_pdf():
+    """Generate and stream a PDF report for the requested slate IDs."""
+    try:
+        body         = request.json or {}
+        slate_ids    = body.get("slates") or []
+
+        data             = _load_db_json()
+        all_rows         = _denormalize_json_to_rows(data)
+        records_by_slate = {r["slateId"]: r for r in data.get("records", [])}
+        project_name     = (data.get("project") or {}).get("name", "VFX Shoot")
+
+        def _base(s):
+            return re.sub(r'/\d+$', '', (s or '').strip())
+
+        if slate_ids:
+            slate_set  = set(slate_ids)
+            slate_rows = {sid: [] for sid in slate_ids}
+            for row in all_rows:
+                base = _base(row.get("Slate", ""))
+                if base in slate_set:
+                    slate_rows[base].append(row)
+        else:
+            slate_rows = {}
+            slate_ids  = []
+            for row in all_rows:
+                base = _base(row.get("Slate", ""))
+                if base not in slate_rows:
+                    slate_rows[base] = []
+                    slate_ids.append(base)
+                slate_rows[base].append(row)
+
+        buf = io.BytesIO()
+        _generate_pdf(buf, project_name, slate_ids, slate_rows, records_by_slate)
+        buf.seek(0)
+
+        safe     = re.sub(r'[^\w\-.]', '_', project_name)
+        filename = f"{safe}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        return send_file(buf, mimetype="application/pdf",
+                         as_attachment=True, download_name=filename)
+
+    except RuntimeError as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

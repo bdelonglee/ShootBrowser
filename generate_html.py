@@ -1806,6 +1806,7 @@ class HTMLGenerator:
         <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
         <span id="db-stats-bar" class="db-stats-bar"></span>
         <button class="export-btn" onclick="exportDbCsv()" title="Export filtered rows as CSV">⬇ Export CSV</button>
+        <button class="export-btn" id="export-pdf-btn" onclick="exportDbPdf()" title="Export filtered rows as PDF report">⬇ Export PDF</button>
       </div>
       <div class="db-filter-row">
         <div class="db-filter-field">
@@ -3412,6 +3413,54 @@ function exportDbCsv() {{
     a.href = url; a.download = 'database_export.csv';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+}}
+
+async function exportDbPdf() {{
+    if (OFFLINE_MODE) {{ alert('PDF export is not available in offline mode.'); return; }}
+    const btn = document.getElementById('export-pdf-btn');
+    const origText = btn ? btn.textContent : '⬇ Export PDF';
+    if (btn) {{ btn.disabled = true; btn.textContent = '⏳ Generating…'; }}
+    try {{
+        const filtered = dbRows.filter(dbRowMatches);
+        const sorted   = [...filtered].sort((a, b) => {{
+            const av = dbSortValue(a), bv = dbSortValue(b);
+            const cmp = (typeof av === 'number' && typeof bv === 'number')
+                ? av - bv : String(av).localeCompare(String(bv));
+            return dbSortAsc ? cmp : -cmp;
+        }});
+        const seen = new Set();
+        const slateIds = [];
+        for (const row of sorted) {{
+            const s = (row['Slate'] || '').replace(/\/\d+$/, '').trim();
+            if (s && !seen.has(s)) {{ seen.add(s); slateIds.push(s); }}
+        }}
+        if (!slateIds.length) {{ alert('No slates to export.'); return; }}
+        const res = await fetch('/api/export-pdf', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ slates: slateIds }}),
+        }});
+        if (!res.ok) {{
+            const err = await res.json().catch(() => ({{}}));
+            alert('PDF export failed: ' + (err.error || res.statusText));
+            return;
+        }}
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        const cd   = res.headers.get('Content-Disposition') || '';
+        const m    = cd.match(/filename="([^"]+)"/);
+        a.download = m ? m[1] : 'export.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }} catch(e) {{
+        alert('PDF export error: ' + e.message);
+    }} finally {{
+        if (btn) {{ btn.disabled = false; btn.textContent = origText; }}
+    }}
 }}
 
 // ── Bins ──────────────────────────────────────────────────────────────────────
