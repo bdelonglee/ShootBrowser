@@ -841,6 +841,40 @@ class HTMLGenerator:
         }}
         .db-pin-clear:hover {{ color: var(--text); }}
 
+        /* ── Queries view ── */
+        .query-field-tabs {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }}
+        .query-field-tab {{
+            padding: 5px 14px; border-radius: 6px; border: 1px solid var(--border);
+            background: var(--surface-2); color: var(--text-muted);
+            cursor: pointer; font-size: 0.82em; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.15s;
+        }}
+        .query-field-tab:hover {{ border-color: var(--accent); color: var(--text); }}
+        .query-field-tab.active {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
+        .query-controls {{ display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }}
+        .query-cards {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+        }}
+        .query-card {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 14px 16px; cursor: pointer;
+            transition: border-color 0.15s, background 0.15s; position: relative; overflow: hidden;
+        }}
+        .query-card:hover {{ border-color: var(--accent); background: var(--surface-2); }}
+        .query-card-value {{ font-size: 0.95em; font-weight: 600; color: var(--text); margin-bottom: 6px; word-break: break-word; }}
+        .query-card-count {{ font-size: 0.78em; color: var(--text-muted); margin-bottom: 8px; }}
+        .query-card-bar-bg {{ height: 3px; background: var(--surface-3); border-radius: 2px; }}
+        .query-card-bar {{ height: 3px; background: var(--accent); border-radius: 2px; }}
+        .query-empty {{ color: var(--text-muted); font-size: 0.9em; padding: 32px 0; text-align: center; }}
+        .db-query-banner {{
+            display: flex; align-items: center; gap: 10px; margin-top: 8px; margin-bottom: 0;
+            padding: 6px 12px; background: var(--surface-2); border: 1px solid var(--border);
+            border-left: 3px solid #39c5cf; border-radius: 6px; font-size: 0.82em; color: var(--text-muted);
+        }}
+        .db-query-banner strong {{ color: var(--text); }}
+
         /* ── Offline / read-only mode ── */
         .offline-mode #tab-queue,
         .offline-mode #tab-delivered,
@@ -1595,6 +1629,40 @@ class HTMLGenerator:
         .lidar-card:hover .toggle-btn {{ opacity: 0.7; }}
         .lidar-card.expanded .toggle-btn {{ opacity: 0.7; }}
         .lidar-card.expanded .toggle-btn svg {{ transform: rotate(180deg); }}
+        .lidar-cb {{
+            width: 16px; height: 16px; accent-color: #39c5cf;
+            cursor: pointer; flex-shrink: 0;
+            opacity: 0; transition: opacity 0.15s;
+        }}
+        .lidar-card:hover .lidar-cb, .lidar-card.in-cart .lidar-cb, .lidar-cb:checked {{ opacity: 1; }}
+        .lidar-card.in-cart {{
+            border-left-color: #39c5cf !important;
+            background: rgba(57,197,207,0.08) !important;
+        }}
+        .cart-lidar-suggest {{
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            margin: 6px 0 2px;
+            padding: 7px 12px; border-radius: 6px;
+            background: rgba(57,197,207,0.08); border: 1px solid rgba(57,197,207,0.25);
+            font-size: 0.82em; color: #39c5cf;
+        }}
+        .cart-lidar-suggest-btn {{
+            background: rgba(57,197,207,0.15); border: 1px solid rgba(57,197,207,0.4);
+            color: #39c5cf; border-radius: 5px; padding: 2px 10px;
+            cursor: pointer; font-size: 0.9em; transition: background 0.15s;
+        }}
+        .cart-lidar-suggest-btn:hover {{ background: rgba(57,197,207,0.3); }}
+        .cart-lidar-suggest-dismiss {{
+            background: none; border: none; cursor: pointer;
+            color: #39c5cf; font-size: 0.9em; margin-left: auto; opacity: 0.6;
+        }}
+        .cart-lidar-suggest-dismiss:hover {{ opacity: 1; }}
+        .cart-section-label {{
+            font-size: 0.68em; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.07em; color: var(--text-muted);
+            padding: 6px 0 3px; margin-top: 4px;
+            border-top: 1px solid var(--border);
+        }}
         .lidar-summary {{
             display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px;
         }}
@@ -1661,6 +1729,7 @@ class HTMLGenerator:
     <nav class="tab-bar">
       <button class="tab-btn active" onclick="setView('browse')" id="tab-browse">📂 Browse</button>
       <button class="tab-btn" onclick="setView('database')" id="tab-database">🗄️ Database</button>
+      <button class="tab-btn" onclick="setView('queries')" id="tab-queries">🔎 Queries</button>
       <button class="tab-btn" onclick="setView('lidar')" id="tab-lidar">📡 Lidar</button>
       <button class="tab-btn" onclick="setView('queue')" id="tab-queue">📋 Queue</button>
       <button class="tab-btn" onclick="setView('delivered')" id="tab-delivered">✅ Delivered</button>
@@ -1803,7 +1872,24 @@ class HTMLGenerator:
         <span id="db-pin-label"></span>
         <button class="db-pin-clear" onclick="clearDbPin()" title="Clear filter">✕ Clear</button>
       </div>
+      <div id="db-query-banner" class="db-query-banner" style="display:none;margin-top:8px">
+        <span id="db-query-label"></span>
+        <button class="db-pin-clear" onclick="clearQueryFilter()" title="Clear filter">✕ Clear</button>
+      </div>
       <div id="database-content" style="margin-top:16px"></div>
+    </div>
+
+    <div id="view-queries" style="display:none">
+      <div class="query-field-tabs" id="query-field-tabs"></div>
+      <div class="query-controls">
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input id="query-search-input" type="text" placeholder="Filter values…" oninput="setQuerySearch(this.value)">
+          <button id="query-search-clear" onclick="clearQuerySearch()" title="Clear">✕</button>
+        </div>
+        <button class="db-sort-dir" id="query-sort-btn" onclick="toggleQuerySort()" title="Toggle sort">⬇ Count</button>
+      </div>
+      <div id="queries-content" class="query-cards"></div>
     </div>
 
     <div id="view-lidar" style="display:none">
@@ -1869,6 +1955,8 @@ class HTMLGenerator:
     </div>
     <div id="cart-body">
       <div id="cart-items" class="cart-items"></div>
+      <div id="cart-lidar-suggest" style="display:none" class="cart-lidar-suggest"></div>
+      <div id="cart-lidar-items"></div>
       <div id="cart-collisions"></div>
       <div class="cart-package-note-row">
         <label class="cart-package-note-label" for="package-note-input">Package note</label>
@@ -2058,7 +2146,7 @@ function _restoreUiState() {{
             if (el) {{ el.value = s.lidarQuery; document.getElementById('lidar-search-clear').style.display = 'block'; }}
         }}
         // Active tab — restore last
-        if (s.view && ['browse','database','lidar','queue','delivered'].includes(s.view)) {{
+        if (s.view && ['browse','database','queries','lidar','queue','delivered'].includes(s.view)) {{
             setView(s.view);
         }}
     }} catch(e) {{}}
@@ -2444,6 +2532,7 @@ function cartCollisions() {{
 }}
 
 function toggleCart(path) {{
+    const adding = !cart.has(path);
     if (cart.has(path)) {{
         cart.delete(path);
     }} else {{
@@ -2452,6 +2541,13 @@ function toggleCart(path) {{
     }}
     cartSave();
     syncEntryEl(path);
+    if (adding) {{
+        const entry = allEntries[path];
+        if (entry && entry.code) {{
+            const codes = entry.code.split('_').filter(Boolean);
+            _checkLidarSuggestions(codes);
+        }}
+    }}
     renderCart();
 }}
 
@@ -2470,6 +2566,79 @@ function clearCart() {{
         const cb = el.querySelector('.entry-cb');
         if (cb) cb.checked = false;
     }});
+    cartLidars.clear();
+    cartLidarsSave();
+    document.querySelectorAll('.lidar-card').forEach(el => {{
+        el.classList.remove('in-cart');
+        const cb = el.querySelector('.lidar-cb');
+        if (cb) cb.checked = false;
+    }});
+    _lidarSuggestions = [];
+    renderCart();
+}}
+
+function cartLidarsSave() {{
+    localStorage.setItem(LIDAR_CART_KEY, JSON.stringify([...cartLidars.values()]));
+}}
+
+function cartLidarsLoad() {{
+    try {{
+        const saved = JSON.parse(localStorage.getItem(LIDAR_CART_KEY) || '[]');
+        saved.forEach(l => {{ if (l.dir_name) cartLidars.set(l.dir_name, l); }});
+    }} catch(e) {{}}
+}}
+
+function toggleLidarCart(dirName) {{
+    if (cartLidars.has(dirName)) {{
+        cartLidars.delete(dirName);
+    }} else {{
+        const entry = lidarEntries.find(e => e.dir_name === dirName);
+        if (entry) cartLidars.set(dirName, {{ dir_name: entry.dir_name, code: entry.code, name: entry.name, path: entry.path }});
+    }}
+    cartLidarsSave();
+    _syncLidarCardEl(dirName);
+    renderCart();
+}}
+
+function removeLidarFromCart(dirName) {{
+    cartLidars.delete(dirName);
+    cartLidarsSave();
+    _syncLidarCardEl(dirName);
+    renderCart();
+}}
+
+function _syncLidarCardEl(dirName) {{
+    document.querySelectorAll('.lidar-card[data-dir]').forEach(el => {{
+        if (el.dataset.dir !== dirName) return;
+        const inCart = cartLidars.has(dirName);
+        el.classList.toggle('in-cart', inCart);
+        const cb = el.querySelector('.lidar-cb');
+        if (cb) cb.checked = inCart;
+    }});
+}}
+
+function _checkLidarSuggestions(codes) {{
+    if (!lidarEntries.length) return;
+    const suggestions = lidarEntries.filter(l =>
+        codes.includes(l.code) && !cartLidars.has(l.dir_name)
+    );
+    if (suggestions.length === 0) return;
+    _lidarSuggestions = suggestions;
+    renderCart();
+}}
+
+function acceptLidarSuggestion() {{
+    _lidarSuggestions.forEach(l => {{
+        cartLidars.set(l.dir_name, {{ dir_name: l.dir_name, code: l.code, name: l.name, path: l.path }});
+        _syncLidarCardEl(l.dir_name);
+    }});
+    cartLidarsSave();
+    _lidarSuggestions = [];
+    renderCart();
+}}
+
+function dismissLidarSuggestion() {{
+    _lidarSuggestions = [];
     renderCart();
 }}
 
@@ -2488,20 +2657,24 @@ function syncEntryEl(path) {{
 }}
 
 function renderCart() {{
-    const panel   = document.getElementById('cart-panel');
-    const countEl = document.getElementById('cart-count');
-    const itemsEl = document.getElementById('cart-items');
-    const colEl   = document.getElementById('cart-collisions');
+    const panel      = document.getElementById('cart-panel');
+    const countEl    = document.getElementById('cart-count');
+    const itemsEl    = document.getElementById('cart-items');
+    const colEl      = document.getElementById('cart-collisions');
+    const suggestEl  = document.getElementById('cart-lidar-suggest');
+    const lidarItems = document.getElementById('cart-lidar-items');
 
-    if (cart.size === 0) {{
+    const total = cart.size + cartLidars.size;
+    if (total === 0) {{
         panel.classList.remove('visible');
         document.body.classList.remove('cart-open', 'cart-collapsed');
+        if (suggestEl) suggestEl.style.display = 'none';
         return;
     }}
 
     panel.classList.add('visible');
     document.body.classList.add('cart-open');
-    countEl.textContent = cart.size;
+    countEl.textContent = total;
 
     itemsEl.innerHTML = [...cart.entries()].map(([path, {{ entry, note }}]) => {{
         const dn   = escHtml(deliveryName(entry));
@@ -2519,6 +2692,37 @@ function renderCart() {{
                    oninput="updateCartNote(this.closest('.cart-item').dataset.path, this.value)">
         </div>`;
     }}).join('');
+
+    // Lidar suggestion banner
+    if (suggestEl) {{
+        if (_lidarSuggestions.length > 0) {{
+            const names = _lidarSuggestions.map(l => '<strong>' + escHtml(l.code + ' ' + l.name) + '</strong>').join(', ');
+            suggestEl.innerHTML =
+                '<span>📡 Add matching lidar: ' + names + '</span>' +
+                '<button class="cart-lidar-suggest-btn" onclick="acceptLidarSuggestion()">Add</button>' +
+                '<button class="cart-lidar-suggest-dismiss" onclick="dismissLidarSuggestion()" title="Dismiss">✕</button>';
+            suggestEl.style.display = 'flex';
+        }} else {{
+            suggestEl.style.display = 'none';
+        }}
+    }}
+
+    // Lidar items section
+    if (lidarItems) {{
+        if (cartLidars.size > 0) {{
+            const label = cart.size > 0 ? '<div class="cart-section-label">Lidar</div>' : '';
+            lidarItems.innerHTML = label + [...cartLidars.values()].map(l =>
+                '<div class="cart-item">' +
+                '<div class="cart-item-top">' +
+                '<span class="cart-item-name">📡 ' + escHtml(l.code + ' ' + l.name) + '</span>' +
+                '<button class="cart-item-remove" data-dir="' + escHtml(l.dir_name) + '"' +
+                ' onclick="removeLidarFromCart(this.dataset.dir)" title="Remove">✕</button>' +
+                '</div></div>'
+            ).join('');
+        }} else {{
+            lidarItems.innerHTML = '';
+        }}
+    }}
 
     const cols = cartCollisions();
     colEl.innerHTML = cols.map(({{ dn, names }}) =>
@@ -2620,8 +2824,8 @@ function saveToQueue() {{
         showBuildStatus('error', 'Vendor, Package name and Output directory are required.');
         return;
     }}
-    if (cart.size === 0) {{
-        showBuildStatus('error', 'No blocks in cart.');
+    if (cart.size === 0 && cartLidars.size === 0) {{
+        showBuildStatus('error', 'No blocks or lidars in cart.');
         return;
     }}
 
@@ -2640,6 +2844,7 @@ function saveToQueue() {{
             description:   entry.description,
             note,
         }})),
+        lidars: [...cartLidars.values()],
     }};
 
     const queue = loadQueue();
@@ -2681,7 +2886,7 @@ function updateQueueBadge() {{
 
 function setView(view) {{
     currentView = view;
-    ['browse', 'database', 'lidar', 'queue', 'delivered'].forEach(v => {{
+    ['browse', 'database', 'queries', 'lidar', 'queue', 'delivered'].forEach(v => {{
         document.getElementById(`view-${{v}}`).style.display = v === view ? 'block' : 'none';
         document.getElementById(`tab-${{v}}`).classList.toggle('active', v === view);
     }});
@@ -2691,6 +2896,7 @@ function setView(view) {{
     container.classList.toggle('lidar-active',     view === 'lidar');
     if (view === 'delivered') loadDelivered();
     if (view === 'database')  loadDatabase();
+    if (view === 'queries')   loadQueries();
     if (view === 'lidar')     loadLidar();
     if (view === 'queue')     renderQueue();
     _saveUiState();
@@ -2701,7 +2907,11 @@ let deliveredMode      = 'vendor';
 let deliveredQuery     = '';
 let deliveredPackages  = [];
 let deliveredByBlock   = {{}}; // directory_name → [vendor, ...]
+let deliveredByLidar   = {{}}; // dir_name → [vendor, ...]
 const expandedDelBlocks = new Set();
+const cartLidars = new Map(); // dir_name → {{dir_name, code, name, path}}
+const LIDAR_CART_KEY = 'vfx_lidar_cart';
+let _lidarSuggestions = []; // pending lidar entries to suggest
 
 function _buildDeliveredByBlock() {{
     const map = {{}};
@@ -2716,6 +2926,20 @@ function _buildDeliveredByBlock() {{
     deliveredByBlock = {{}};
     for (const k of Object.keys(map)) {{
         deliveredByBlock[k] = [...map[k]].sort();
+    }}
+    // Also rebuild lidar delivery index
+    const lmap = {{}};
+    for (const pkg of deliveredPackages) {{
+        for (const lidar of (pkg.lidars || [])) {{
+            const key = lidar.dir_name;
+            if (!key) continue;
+            if (!lmap[key]) lmap[key] = new Set();
+            lmap[key].add(pkg.vendor);
+        }}
+    }}
+    deliveredByLidar = {{}};
+    for (const k of Object.keys(lmap)) {{
+        deliveredByLidar[k] = [...lmap[k]].sort();
     }}
 }}
 
@@ -2928,6 +3152,20 @@ const BINS_KEY = 'vfx_bins';
 let dbPinnedLabel  = '';
 const expandedDbRows = new Set();
 
+// ── Queries state ─────────────────────────────────────────────────────────────
+const QUERY_FIELDS = [
+    {{ field: 'Body',     label: 'Camera'   }},
+    {{ field: 'Wrangler', label: 'Wrangler' }},
+    {{ field: 'Lens',     label: 'Lens'     }},
+    {{ field: 'Shutter',  label: 'Shutter'  }},
+    {{ field: 'FPS',      label: 'FPS'      }},
+    {{ field: 'Set Refs', label: 'Set Refs', split: true }},
+];
+let queryField       = 'Body';
+let querySearch      = '';
+let querySortByCount = true;
+let dbQueryFilter    = null; // {{ field, label, value }} — set from Queries page
+
 function _slateSceneKey(slate) {{
     const s = (slate || '').trim();
     if (s.toUpperCase().startsWith('P')) {{
@@ -3030,6 +3268,124 @@ function clearDbSearch() {{
     const el = document.getElementById('db-global-search');
     if (el) el.value = '';
     setDbQuery('');
+}}
+
+// ── Queries page ──────────────────────────────────────────────────────────────
+
+function _buildQueryFieldTabs() {{
+    const el = document.getElementById('query-field-tabs');
+    if (!el) return;
+    el.innerHTML = QUERY_FIELDS.map(f =>
+        '<button class="query-field-tab' + (f.field === queryField ? ' active' : '') + '"' +
+        ' data-field="' + escHtml(f.field) + '"' +
+        ' onclick="setQueryField(this.dataset.field)">' + f.label + '</button>'
+    ).join('');
+}}
+
+function setQueryField(field) {{
+    queryField = field;
+    _buildQueryFieldTabs();
+    renderQueries();
+}}
+
+function setQuerySearch(val) {{
+    querySearch = val.trim().toLowerCase();
+    const clr = document.getElementById('query-search-clear');
+    if (clr) clr.style.display = querySearch ? 'flex' : 'none';
+    renderQueries();
+}}
+
+function clearQuerySearch() {{
+    querySearch = '';
+    const el = document.getElementById('query-search-input');
+    if (el) el.value = '';
+    const clr = document.getElementById('query-search-clear');
+    if (clr) clr.style.display = 'none';
+    renderQueries();
+}}
+
+function toggleQuerySort() {{
+    querySortByCount = !querySortByCount;
+    const btn = document.getElementById('query-sort-btn');
+    if (btn) btn.textContent = querySortByCount ? '⬇ Count' : '↕ A–Z';
+    renderQueries();
+}}
+
+function applyQueryFilter(field, label, value) {{
+    dbQuery = '';
+    const searchEl = document.getElementById('db-global-search');
+    if (searchEl) searchEl.value = '';
+    const clrEl = document.getElementById('db-search-clear');
+    if (clrEl) clrEl.style.display = 'none';
+    dbQueryFilter = {{ field, label, value }};
+    setView('database');
+}}
+
+function clearQueryFilter() {{
+    dbQueryFilter = null;
+    renderDatabase();
+}}
+
+async function loadQueries() {{
+    _buildQueryFieldTabs();
+    if (dbRows.length > 0) {{ renderQueries(); return; }}
+    if (OFFLINE_MODE) {{ dbRows = offlineDbRows; renderQueries(); return; }}
+    const el = document.getElementById('queries-content');
+    if (el) el.innerHTML = '<div class="query-empty">Loading…</div>';
+    try {{
+        const res  = await fetch('/api/database');
+        const data = await res.json();
+        dbRows     = data.rows || [];
+        renderQueries();
+    }} catch(e) {{
+        if (el) el.innerHTML = '<div class="query-empty">Could not load database.</div>';
+    }}
+}}
+
+function renderQueries() {{
+    const el = document.getElementById('queries-content');
+    if (!el) return;
+
+    const fieldDef = QUERY_FIELDS.find(f => f.field === queryField) || QUERY_FIELDS[0];
+    const counts = {{}};
+    for (const row of dbRows) {{
+        let vals;
+        if (fieldDef.split) {{
+            vals = (row[fieldDef.field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        }} else {{
+            const v = (row[fieldDef.field] || '').trim();
+            vals = v ? [v] : [];
+        }}
+        for (const v of vals) counts[v] = (counts[v] || 0) + 1;
+    }}
+
+    let entries = Object.entries(counts);
+    if (querySearch) entries = entries.filter(([v]) => v.toLowerCase().includes(querySearch));
+    if (entries.length === 0) {{
+        el.innerHTML = '<div class="query-empty">No values found.</div>';
+        return;
+    }}
+
+    if (querySortByCount) {{
+        entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    }} else {{
+        entries.sort((a, b) => a[0].localeCompare(b[0]));
+    }}
+
+    const maxCount = Math.max(...entries.map(([, c]) => c), 1);
+    el.innerHTML = entries.map(([value, count]) => {{
+        const pct  = Math.round((count / maxCount) * 100);
+        const take = count === 1 ? 'take' : 'takes';
+        return '<div class="query-card"' +
+            ' data-field="' + escHtml(fieldDef.field) + '"' +
+            ' data-label="' + escHtml(fieldDef.label) + '"' +
+            ' data-value="' + escHtml(value) + '"' +
+            ' onclick="applyQueryFilter(this.dataset.field,this.dataset.label,this.dataset.value)">' +
+            '<div class="query-card-value">' + escHtml(value) + '</div>' +
+            '<div class="query-card-count">' + count + ' ' + take + '</div>' +
+            '<div class="query-card-bar-bg"><div class="query-card-bar" style="width:' + pct + '%"></div></div>' +
+            '</div>';
+    }}).join('');
 }}
 
 function exportDbCsv() {{
@@ -3305,6 +3661,15 @@ function dbRowMatches(row) {{
         if (dbVfxFilter === 'yes' && !isPass) return false;
         if (dbVfxFilter === 'no'  &&  isPass) return false;
     }}
+    if (dbQueryFilter) {{
+        const fd = QUERY_FIELDS.find(f => f.field === dbQueryFilter.field);
+        if (fd && fd.split) {{
+            const tags = (row[dbQueryFilter.field] || '').split(',').map(s => s.trim());
+            if (!tags.includes(dbQueryFilter.value)) return false;
+        }} else {{
+            if ((row[dbQueryFilter.field] || '').trim() !== dbQueryFilter.value) return false;
+        }}
+    }}
     if (dbQuery) {{
         const others = Object.entries(row)
             .filter(([ k ]) => !DB_KEY_FIELDS.includes(k))
@@ -3392,6 +3757,16 @@ function renderDatabase() {{
             banner.style.display = 'flex';
         }} else {{
             banner.style.display = 'none';
+        }}
+    }}
+    const qBanner = document.getElementById('db-query-banner');
+    const qLabel  = document.getElementById('db-query-label');
+    if (qBanner && qLabel) {{
+        if (dbQueryFilter) {{
+            qLabel.innerHTML = `Filtered by <strong>${{escHtml(dbQueryFilter.label)}}</strong> = <strong>${{escHtml(dbQueryFilter.value)}}</strong>`;
+            qBanner.style.display = 'flex';
+        }} else {{
+            qBanner.style.display = 'none';
         }}
     }}
 
@@ -3637,7 +4012,11 @@ function renderQueue() {{
     }}
 
     listEl.innerHTML = queue.map(pkg => {{
-        const bc = pkg.blocks.length;
+        const bc = (pkg.blocks || []).length;
+        const lc = (pkg.lidars || []).length;
+        const metaParts = [];
+        if (bc > 0) metaParts.push(bc + ' block' + (bc === 1 ? '' : 's'));
+        if (lc > 0) metaParts.push(lc + ' lidar' + (lc === 1 ? '' : 's'));
         return `<div class="queue-item" data-id="${{pkg.id}}">
             <input type="checkbox" class="queue-cb"
                 onchange="this.closest('.queue-item').classList.toggle('selected',this.checked)">
@@ -3645,7 +4024,7 @@ function renderQueue() {{
                 <span class="queue-vendor">${{escHtml(pkg.vendor)}}</span>
                 <span class="queue-name">${{escHtml(pkg.package_name)}}</span>
                 <span class="queue-date">${{escHtml(pkg.date)}}</span>
-                <span class="queue-meta">${{bc}} block${{bc === 1 ? '' : 's'}}</span>
+                <span class="queue-meta">${{metaParts.join(', ')}}</span>
                 ${{pkg.package_note ? `<span class="queue-meta" title="${{escHtml(pkg.package_note)}}">📝 note</span>` : ''}}
             </div>
             <div class="queue-item-actions">
@@ -3693,6 +4072,11 @@ function editPending(id) {{
         }}
     }}
     cartSave();
+
+    for (const l of (pkg.lidars || [])) {{
+        if (l.dir_name) cartLidars.set(l.dir_name, l);
+    }}
+    cartLidarsSave();
 
     restoreVendorToForm(pkg.vendor);
     document.getElementById('pkg-name').value           = pkg.package_name;
@@ -3776,6 +4160,7 @@ async function buildSelected() {{
                     output_dir:   pkg.output_dir,
                     package_note: pkg.package_note,
                     blocks:       pkg.blocks,
+                    lidars:       pkg.lidars || [],
                 }}),
             }});
             const data = await res.json();
@@ -3803,6 +4188,7 @@ async function buildSelected() {{
 }}
 
 cartLoad();
+cartLidarsLoad();
 loadPackageNote();
 loadBuildForm();
 renderCart();
@@ -4043,12 +4429,20 @@ function renderLidarCard(entry) {{
             ).join('') +
             '</div>';
     }}
+    const inCart      = cartLidars.has(entry.dir_name);
     const expandedClass = expandedLidarDirs.has(entry.dir_name) ? ' expanded' : '';
+    const inCartClass   = inCart ? ' in-cart' : '';
     const chevron = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
-    return '<div class="lidar-card' + expandedClass + '" data-dir="' + entry.dir_name + '">' +
+    const vendors = deliveredByLidar[entry.dir_name] || [];
+    const vendorBadges = vendors.map(v => '<span class="vendor-badge">' + escHtml(v) + '</span>').join('');
+    return '<div class="lidar-card' + expandedClass + inCartClass + '" data-dir="' + entry.dir_name + '">' +
         '<div class="lidar-card-header" data-dir="' + entry.dir_name + '" onclick="toggleLidarCard(this.dataset.dir)">' +
+        '<input type="checkbox" class="lidar-cb" data-dir="' + entry.dir_name + '"' +
+        ' onclick="event.stopPropagation();toggleLidarCart(this.dataset.dir)"' +
+        (inCart ? ' checked' : '') + '>' +
         '<span class="lidar-code">' + entry.code + '</span>' +
         '<span class="lidar-name">' + entry.name + '</span>' +
+        vendorBadges +
         '<button class="finder-btn" data-path="' + entry.path + '"' +
         ' onclick="event.stopPropagation();openInFinder(this.dataset.path)" title="Open in Finder">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
