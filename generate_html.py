@@ -3159,6 +3159,7 @@ const QUERY_FIELDS = [
     {{ field: 'Lens',     label: 'Lens'     }},
     {{ field: 'Shutter',  label: 'Shutter'  }},
     {{ field: 'FPS',      label: 'FPS'      }},
+    {{ field: 'Unit',     label: 'Unit'     }},
     {{ field: 'Set Refs', label: 'Set Refs', split: true }},
 ];
 let queryField       = 'Body';
