@@ -840,7 +840,7 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
     # ── Slate pages ───────────────────────────────────────────────────
     # Take table column widths (sum = CW ≈ 174 mm)
     TCW   = [11*mm, 14*mm, 25*mm, 50*mm, 15*mm, 18*mm, 11*mm, 12*mm, 18*mm]
-    T_HDR = ['Take', 'Camera', 'Roll', 'Lens', 'Focal', 'Shutter', 'FPS', 'f-stop', 'VFX ✓']
+    T_HDR = ['Take', 'Camera', 'Roll', 'Lens', 'Focal', 'Shutter', 'FPS', 'f-stop', 'VFX']
 
     for slate_id in ordered_slates:
         rows   = slate_rows.get(slate_id, [])
@@ -949,7 +949,7 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
                 Paragraph(r.get('Shutter', '') or '—', sty_tc_c),
                 Paragraph(r.get('FPS',     '') or '—', sty_tc_c),
                 Paragraph(r.get('F-Stop',  '') or '—', sty_tc_c),
-                Paragraph('✓' if is_vfx else '',        sty_vfx),
+                Paragraph('YES' if is_vfx else '',       sty_vfx),
             ])
 
         bg_cmds = [
