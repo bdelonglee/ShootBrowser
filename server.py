@@ -322,15 +322,191 @@ def api_delivered_packages():
     return jsonify({"success": True, "packages": packages})
 
 
+# ── Override helpers ──────────────────────────────────────────────────────────
+
+def _overrides_path() -> Path:
+    return Path(DATA_DIR) / "__DATABASE" / "overrides.json"
+
+
+def _load_overrides() -> dict:
+    p = _overrides_path()
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {"version": 1, "overrides": {}}
+
+
+def _save_overrides(ov: dict) -> None:
+    p = _overrides_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(ov, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _apply_overrides(rows: list, ov: dict) -> list:
+    """Merge override values into rows; annotate each row with edit metadata."""
+    ov_map = ov.get("overrides", {})
+    for row in rows:
+        key = row.get("_record_id", "") + "::" + row.get("_take_id", "")
+        row["_override_key"] = key
+        if key in ov_map:
+            edited, originals = [], {}
+            for field, val in ov_map[key].get("fields", {}).items():
+                originals[field] = row.get(field, "")
+                row[field] = val
+                edited.append(field)
+            row["_edited_fields"] = edited
+            row["_originals"]     = originals
+            row["_edited_at"]     = ov_map[key].get("edited_at", "")
+        else:
+            row["_edited_fields"] = []
+            row["_originals"]     = {}
+            row["_edited_at"]     = ""
+    return rows
+
+
 @app.route("/api/database")
 def api_database():
-    """Return database rows from __DATABASE/*.json (most recent file by mtime)."""
+    """Return database rows (with overrides applied) from __DATABASE/*.json."""
     try:
         data = _load_db_json()
         rows = _denormalize_json_to_rows(data)
+        rows = _apply_overrides(rows, _load_overrides())
+        rows = _apply_omissions(rows, _load_omissions())
         return jsonify({"success": True, "rows": rows})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/overrides/save", methods=["POST"])
+def api_save_override():
+    """Save field overrides for one take; optionally propagate record-level fields
+    to all takes of the same record (apply_to_record=True)."""
+    try:
+        body             = request.json or {}
+        key              = body.get("key", "")
+        label            = body.get("label", "")
+        fields           = body.get("fields", {})
+        record_id        = body.get("record_id", "")
+        apply_to_record  = body.get("apply_to_record", False)
+        record_level_fields = body.get("record_level_fields", {})
+
+        if not key:
+            return jsonify({"success": False, "error": "key required"}), 400
+
+        ov  = _load_overrides()
+        ovm = ov.setdefault("overrides", {})
+        now = datetime.now().isoformat(timespec="seconds")
+
+        def _set(k, flds):
+            if k not in ovm:
+                ovm[k] = {"label": label, "edited_at": now, "fields": {}}
+            ovm[k]["edited_at"] = now
+            ovm[k]["fields"].update(flds)
+            # Remove any field explicitly set to None (full revert of that field)
+            ovm[k]["fields"] = {f: v for f, v in ovm[k]["fields"].items()
+                                 if v is not None}
+            if not ovm[k]["fields"]:
+                del ovm[k]
+
+        _set(key, fields)
+
+        if apply_to_record and record_id and record_level_fields:
+            data  = _load_db_json()
+            rec_by_id = {r["id"]: r for r in data.get("records", [])
+                         if r.get("id")}
+            for take in data.get("takes", []):
+                rec = rec_by_id.get(take.get("recordId", ""))
+                if rec and rec.get("id") == record_id:
+                    tkey = record_id + "::" + take.get("id", "")
+                    if tkey != key:          # already handled above
+                        _set(tkey, record_level_fields)
+
+        _save_overrides(ov)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/overrides/revert", methods=["POST"])
+def api_revert_override():
+    """Remove all overrides for a specific take key."""
+    try:
+        key = (request.json or {}).get("key", "")
+        ov  = _load_overrides()
+        ov.get("overrides", {}).pop(key, None)
+        _save_overrides(ov)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+def _omissions_path() -> Path:
+    return Path(DATA_DIR) / "__DATABASE" / "omissions.json"
+
+
+def _load_omissions() -> dict:
+    p = _omissions_path()
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {"version": 1, "takes": [], "slates": []}
+
+
+def _save_omissions(om: dict) -> None:
+    p = _omissions_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(om, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _apply_omissions(rows: list, om: dict) -> list:
+    """Mark each row with _omitted=True if its take or slate is omitted."""
+    omit_takes  = set(om.get("takes",  []))
+    omit_slates = set(om.get("slates", []))
+    for row in rows:
+        key = row.get("_override_key", "")
+        rid = row.get("_record_id", "")
+        row["_omitted"] = (key in omit_takes) or (rid in omit_slates)
+    return rows
+
+
+@app.route("/api/omissions/set", methods=["POST"])
+def api_set_omission():
+    try:
+        body      = request.json or {}
+        key       = body.get("key", "")
+        record_id = body.get("record_id", "")
+        scope     = body.get("scope", "take")   # 'take' | 'slate'
+        if not key:
+            return jsonify({"success": False, "error": "key required"}), 400
+        om = _load_omissions()
+        if scope == "slate":
+            if record_id and record_id not in om["slates"]:
+                om["slates"].append(record_id)
+        else:
+            if key not in om["takes"]:
+                om["takes"].append(key)
+        _save_omissions(om)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/omissions/restore", methods=["POST"])
+def api_restore_omission():
+    try:
+        body      = request.json or {}
+        key       = body.get("key", "")
+        record_id = body.get("record_id", "")
+        om = _load_omissions()
+        om["takes"]  = [k for k in om["takes"]  if k  != key]
+        om["slates"] = [k for k in om["slates"] if k  != record_id]
+        _save_omissions(om)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+_DB_JSON_EXCLUDED = {"extraction_meta.json", "overrides.json", "omissions.json"}
 
 
 def _load_db_json() -> dict:
@@ -340,7 +516,7 @@ def _load_db_json() -> dict:
         return {}
     jsonfiles = sorted(
         (f for f in db_dir.glob("*.json")
-         if not f.name.startswith(".") and f.name != "extraction_meta.json"),
+         if not f.name.startswith(".") and f.name not in _DB_JSON_EXCLUDED),
         key=lambda f: f.stat().st_mtime, reverse=True,
     )
     if not jsonfiles:
@@ -387,7 +563,7 @@ def _find_db_json_file() -> tuple:
         return None, None
     jsonfiles = sorted(
         (f for f in db_dir.glob("*.json")
-         if not f.name.startswith(".") and f.name != "extraction_meta.json"),
+         if not f.name.startswith(".") and f.name not in _DB_JSON_EXCLUDED),
         key=lambda f: f.stat().st_mtime, reverse=True,
     )
     if not jsonfiles:

@@ -76,6 +76,8 @@ def _denormalize_json_to_rows(data: dict) -> list:
             'Height':            cd.get('height', ''),
             'Filter':            cd.get('filter', ''),
             'Timestamp':         ts,
+            '_record_id':        rec.get('id', ''),
+            '_take_id':          take.get('id', ''),
         })
     return rows
 
@@ -840,6 +842,200 @@ class HTMLGenerator:
             padding: 0 4px;
         }}
         .db-pin-clear:hover {{ color: var(--text); }}
+
+        /* ── Database field overrides ── */
+        .edited-val, .entry-title-line .edited-val {{ color: #39c5cf !important; font-weight: 500; }}
+        .db-has-edits {{ border-left-color: #39c5cf !important; }}
+        .db-has-edits .entry-title-line::after {{
+            content: '✎';
+            font-size: 0.7em;
+            color: #39c5cf;
+            margin-left: 4px;
+            opacity: 0.8;
+        }}
+        /* Tooltip for original values */
+        .has-orig {{ position: relative; cursor: help; }}
+        .has-orig::after {{
+            content: attr(data-orig-tip);
+            position: absolute;
+            bottom: calc(100% + 5px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a2942;
+            color: #b8d0ea;
+            font-size: 0.75em;
+            white-space: nowrap;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(57,197,207,0.35);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 100;
+        }}
+        .has-orig:hover::after {{ opacity: 1; }}
+        /* Edit / Revert buttons inside expanded row */
+        .db-edit-actions {{
+            display: flex; gap: 8px; margin-top: 10px;
+            padding-top: 10px; border-top: 1px solid var(--border);
+        }}
+        .db-edit-btn, .db-revert-btn {{
+            font-size: 0.78em; padding: 4px 12px; border-radius: 5px;
+            cursor: pointer; border: 1px solid var(--border);
+            background: var(--surface-2); color: var(--text-muted);
+            transition: all 0.15s;
+        }}
+        .db-edit-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .db-revert-btn {{ border-color: rgba(57,197,207,0.4); color: #39c5cf; }}
+        .db-revert-btn:hover {{ background: rgba(57,197,207,0.12); }}
+        /* Edit panel */
+        .edit-panel {{
+            position: fixed; right: 0; top: 0; height: 100vh;
+            width: 400px; max-width: 95vw;
+            background: var(--surface); border-left: 1px solid var(--border);
+            display: flex; flex-direction: column; z-index: 300;
+            transform: translateX(100%); transition: transform 0.25s ease;
+        }}
+        .edit-panel.open {{ transform: translateX(0); }}
+        .edit-panel-header {{
+            display: flex; align-items: center; gap: 8px;
+            padding: 14px 16px; border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }}
+        .edit-panel-title {{ font-weight: 700; font-size: 0.9em; flex: 1; color: var(--text); }}
+        .edit-panel-subtitle {{ font-size: 0.75em; color: var(--text-muted); margin-top: 2px; }}
+        .edit-panel-close {{
+            background: none; border: none; color: var(--text-muted);
+            cursor: pointer; font-size: 1.1em; padding: 4px; line-height: 1;
+        }}
+        .edit-panel-close:hover {{ color: var(--text); }}
+        .edit-panel-body {{ flex: 1; overflow-y: auto; padding: 16px; }}
+        .edit-section-head {{
+            font-size: 0.68em; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.08em; color: var(--text-muted);
+            padding: 8px 0 6px; margin-top: 6px;
+            border-bottom: 1px solid var(--border); margin-bottom: 10px;
+        }}
+        .edit-section-head:first-child {{ margin-top: 0; }}
+        .edit-field-row {{
+            display: grid; grid-template-columns: 110px 1fr;
+            gap: 6px; align-items: start; margin-bottom: 8px;
+        }}
+        .edit-field-label {{
+            font-size: 0.78em; color: var(--text-muted);
+            padding-top: 6px; font-weight: 500;
+        }}
+        .edit-field-input {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 5px; color: var(--text); font-size: 0.85em;
+            padding: 5px 8px; width: 100%; box-sizing: border-box;
+            font-family: inherit; resize: vertical;
+        }}
+        .edit-field-input:focus {{
+            outline: none; border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent-glow);
+        }}
+        .edit-field-input.is-edited {{
+            border-color: #39c5cf; color: #39c5cf;
+        }}
+        .edit-field-orig {{
+            grid-column: 2; font-size: 0.72em; color: var(--text-muted);
+            margin-top: -4px; margin-bottom: 4px;
+            font-style: italic;
+        }}
+        .edit-apply-all {{
+            display: flex; align-items: center; gap: 8px;
+            margin: 12px 0 6px; font-size: 0.8em; color: var(--text-muted);
+            cursor: pointer;
+        }}
+        .edit-apply-all input {{ accent-color: #39c5cf; cursor: pointer; }}
+        .edit-panel-footer {{
+            padding: 12px 16px; border-top: 1px solid var(--border);
+            display: flex; gap: 8px; flex-shrink: 0;
+        }}
+        .edit-save-btn {{
+            flex: 1; background: var(--accent); border: none;
+            color: #fff; border-radius: 6px; padding: 8px;
+            font-weight: 600; font-size: 0.85em; cursor: pointer;
+            transition: opacity 0.15s;
+        }}
+        .edit-save-btn:hover {{ opacity: 0.85; }}
+        .edit-cancel-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: 6px; padding: 8px 16px;
+            font-size: 0.85em; cursor: pointer; transition: all 0.15s;
+        }}
+        .edit-cancel-btn:hover {{ color: var(--text); }}
+
+        /* ── Omit feature ── */
+        .db-omitted {{ opacity: 0.45; }}
+        .db-omitted .entry-title-line {{ text-decoration: line-through; text-decoration-color: var(--text-muted); }}
+        .db-omit-badge {{
+            font-size: 0.68em; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.05em; color: #e05c5c; border: 1px solid #e05c5c;
+            border-radius: 4px; padding: 1px 5px; margin-left: 4px; opacity: 0.8;
+        }}
+        .db-omit-btn {{
+            font-size: 0.78em; padding: 4px 12px; border-radius: 5px;
+            cursor: pointer; border: 1px solid var(--border);
+            background: var(--surface-2); color: var(--text-muted);
+            transition: all 0.15s;
+        }}
+        .db-omit-btn:hover {{ border-color: #e05c5c; color: #e05c5c; }}
+        .db-restore-btn {{
+            font-size: 0.78em; padding: 4px 12px; border-radius: 5px;
+            cursor: pointer; border: 1px solid rgba(224,92,92,0.4); color: #e05c5c;
+            background: var(--surface-2); transition: all 0.15s;
+        }}
+        .db-restore-btn:hover {{ background: rgba(224,92,92,0.1); }}
+        .show-omitted-toggle {{
+            display: flex; align-items: center; gap: 5px;
+            font-size: 0.7em; font-weight: 600; letter-spacing: 0.05em;
+            text-transform: uppercase; opacity: 0.5;
+            color: var(--text-muted); cursor: pointer;
+            user-select: none;
+        }}
+        .show-omitted-toggle:hover {{ opacity: 0.9; }}
+        .show-omitted-toggle input {{ accent-color: #e05c5c; cursor: pointer; }}
+        /* Omit modal */
+        .omit-modal-overlay {{
+            position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            z-index: 500; display: flex; align-items: center; justify-content: center;
+        }}
+        .omit-modal {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 24px; width: 340px; max-width: 92vw;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }}
+        .omit-modal-title {{
+            font-weight: 700; font-size: 0.95em; margin-bottom: 6px; color: var(--text);
+        }}
+        .omit-modal-sub {{
+            font-size: 0.8em; color: var(--text-muted); margin-bottom: 18px;
+        }}
+        .omit-modal-opts {{ display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }}
+        .omit-modal-opt {{
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 10px 12px; border-radius: 7px; border: 1px solid var(--border);
+            cursor: pointer; transition: all 0.15s;
+        }}
+        .omit-modal-opt:hover {{ border-color: #e05c5c; background: rgba(224,92,92,0.07); }}
+        .omit-modal-opt input {{ accent-color: #e05c5c; margin-top: 2px; flex-shrink: 0; }}
+        .omit-modal-opt-label {{ font-size: 0.85em; font-weight: 600; color: var(--text); }}
+        .omit-modal-opt-desc {{ font-size: 0.76em; color: var(--text-muted); margin-top: 2px; }}
+        .omit-modal-footer {{ display: flex; gap: 8px; }}
+        .omit-confirm-btn {{
+            flex: 1; background: #e05c5c; border: none; color: #fff;
+            border-radius: 6px; padding: 8px; font-weight: 600;
+            font-size: 0.85em; cursor: pointer; transition: opacity 0.15s;
+        }}
+        .omit-confirm-btn:hover {{ opacity: 0.85; }}
+        .omit-cancel-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: 6px; padding: 8px 16px;
+            font-size: 0.85em; cursor: pointer; transition: all 0.15s;
+        }}
+        .omit-cancel-btn:hover {{ color: var(--text); }}
 
         /* ── Queries view ── */
         .query-field-tabs {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }}
@@ -1868,6 +2064,12 @@ class HTMLGenerator:
             <option value="__edit__">── Edit Bins…</option>
           </select>
         </div>
+        <div class="db-filter-field" style="justify-content:flex-end">
+          <label class="show-omitted-toggle" title="Show entries marked as omitted">
+            <input type="checkbox" class="show-omitted-cb" onchange="setShowOmitted(this.checked)">
+            <span style="line-height:1.2;text-align:left">SHOW<br>OMITTED</span>
+          </label>
+        </div>
       </div>
       <div id="db-pin-banner" class="db-pin-banner" style="display:none;margin-top:12px">
         <span id="db-pin-label"></span>
@@ -1883,12 +2085,20 @@ class HTMLGenerator:
     <div id="view-queries" style="display:none">
       <div class="query-field-tabs" id="query-field-tabs"></div>
       <div class="query-controls">
-        <div class="search-wrapper">
-          <span class="search-icon">🔍</span>
-          <input id="query-search-input" type="text" placeholder="Filter values…" oninput="setQuerySearch(this.value)">
-          <button id="query-search-clear" onclick="clearQuerySearch()" title="Clear">✕</button>
+        <div style="position:relative;display:flex">
+          <input id="query-search-input" class="db-filter-input" type="text"
+                 style="width:180px;padding-right:24px"
+                 placeholder="Filter values…" oninput="setQuerySearch(this.value)">
+          <button id="query-search-clear" onclick="clearQuerySearch()" title="Clear"
+                  style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);
+                         background:none;border:none;color:var(--text-muted);cursor:pointer;
+                         font-size:0.8em;padding:0;line-height:1">✕</button>
         </div>
         <button class="db-sort-dir" id="query-sort-btn" onclick="toggleQuerySort()" title="Toggle sort">⬇ Count</button>
+        <label class="show-omitted-toggle" title="Show omitted entries in counts">
+          <input type="checkbox" class="show-omitted-cb" onchange="setShowOmitted(this.checked)">
+          <span style="line-height:1.2;text-align:left">SHOW<br>OMITTED</span>
+        </label>
       </div>
       <div id="queries-content" class="query-cards"></div>
     </div>
@@ -2043,6 +2253,7 @@ function _saveUiState() {{
             lidarSort:      lidarSortKey,
             lidarSortAsc:   lidarSortAsc,
             lidarQuery:     lidarQuery,
+            showOmitted:    showOmitted,
         }}));
     }} catch(e) {{}}
 }}
@@ -2145,6 +2356,10 @@ function _restoreUiState() {{
             lidarQuery = s.lidarQuery.toLowerCase();
             const el = document.getElementById('lidar-search-input');
             if (el) {{ el.value = s.lidarQuery; document.getElementById('lidar-search-clear').style.display = 'block'; }}
+        }}
+        if (s.showOmitted) {{
+            showOmitted = true;
+            document.querySelectorAll('.show-omitted-cb').forEach(cb => {{ cb.checked = true; }});
         }}
         // Active tab — restore last
         if (s.view && ['browse','database','queries','lidar','queue','delivered'].includes(s.view)) {{
@@ -3167,6 +3382,7 @@ let queryField       = 'Body';
 let querySearch      = '';
 let querySortByCount = true;
 let dbQueryFilter    = null; // {{ field, label, value }} — set from Queries page
+let showOmitted      = false;
 
 function _slateSceneKey(slate) {{
     const s = (slate || '').trim();
@@ -3351,6 +3567,7 @@ function renderQueries() {{
     const fieldDef = QUERY_FIELDS.find(f => f.field === queryField) || QUERY_FIELDS[0];
     const counts = {{}};
     for (const row of dbRows) {{
+        if (!showOmitted && row['_omitted']) continue;
         let vals;
         if (fieldDef.split) {{
             vals = (row[fieldDef.field] || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -3400,7 +3617,7 @@ function exportDbCsv() {{
         'Shoot Day','Date','Set Location','Script Location','Int/Ext','Day/Night',
         'Unit','Timestamp','Set Refs',
     ];
-    const allCols  = Object.keys(rows[0]);
+    const allCols  = Object.keys(rows[0]).filter(c => !c.startsWith('_'));
     const ordered  = ORDERED.filter(c => allCols.includes(c));
     const rest     = allCols.filter(c => !ORDERED.includes(c));
     const cols     = [...ordered, ...rest];
@@ -3693,6 +3910,7 @@ function cycleVfxFilter() {{
 }}
 
 function dbRowMatches(row) {{
+    if (!showOmitted && row['_omitted']) return false;
     if (dbPinnedKeys && !dbPinnedKeys.has(_slateSceneKey(row['Slate'] || ''))) return false;
     if (activeBinId) {{
         const bin = bins[activeBinId];
@@ -3930,17 +4148,24 @@ function renderDbCard(row, idx) {{
     const addBinBtn = `<button class="bin-add-btn" onclick="openBinMenu(event,this)"
         data-slate="${{escHtml(slate)}}" data-take="${{escHtml(row['Take'] || '')}}" data-cam="${{escHtml(row['Camera'] || '')}}"
         title="Add to bin">+</button>`;
-    const vfxPass = _isVfxPass(row);
-    return `<div class="entry${{isExpanded ? ' expanded' : ''}}${{vfxPass ? ' vfx-pass' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}">
+    const vfxPass     = _isVfxPass(row);
+    const hasEdits    = (row['_edited_fields'] || []).length > 0;
+    const isOmitted   = !!row['_omitted'];
+    const overrideKey = row['_override_key'] || '';
+    const edited      = new Set(row['_edited_fields'] || []);
+    const ec          = f => edited.has(f) ? ' edited-val' : '';
+    const omitBadge   = isOmitted ? '<span class="db-omit-badge">omitted</span>' : '';
+    return `<div class="entry${{isExpanded ? ' expanded' : ''}}${{vfxPass ? ' vfx-pass' : ''}}${{hasEdits ? ' db-has-edits' : ''}}${{isOmitted ? ' db-omitted' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}" data-override-key="${{escHtml(overrideKey)}}">
         <div class="entry-title-line">
-            <span class="db-slate">${{escHtml(slate)}}</span>
-            ${{vfxId  ? `<span class="db-vfxid">${{escHtml(vfxId)}}</span>` : ''}}
+            <span class="db-slate${{ec('Slate')}}">${{escHtml(slate)}}</span>
+            ${{vfxId  ? `<span class="db-vfxid${{ec('VFX ID')}}">${{escHtml(vfxId)}}</span>` : ''}}
             <span class="db-date">${{escHtml(date)}}</span>
-            <span class="db-day">${{escHtml(day)}}</span>
-            ${{roll   ? `<span class="db-roll">${{escHtml(roll)}}</span>` : ''}}
-            <span class="db-lens">${{escHtml(lens)}}</span>
-            <span class="db-focal">${{escHtml(focal)}}</span>
-            ${{tilt   ? `<span class="db-tilt">${{escHtml(tilt)}}</span>` : ''}}
+            <span class="db-day${{ec('Shoot Day')}}">${{escHtml(day)}}</span>
+            ${{roll   ? `<span class="db-roll${{ec('Roll')}}">${{escHtml(roll)}}</span>` : ''}}
+            <span class="db-lens${{ec('Lens')}}">${{escHtml(lens)}}</span>
+            <span class="db-focal${{ec('Focal')}}">${{escHtml(focal)}}</span>
+            ${{tilt   ? `<span class="db-tilt${{ec('Tilt')}}">${{escHtml(tilt)}}</span>` : ''}}
+            ${{omitBadge}}
             ${{photoBadge}}
             ${{binBadge}}
             ${{addBinBtn}}
@@ -3950,10 +4175,20 @@ function renderDbCard(row, idx) {{
     </div>`;
 }}
 
-function renderDbField(f, v) {{
+function renderDbField(f, v, row) {{
+    const editedFields = (row && row['_edited_fields']) || [];
+    const isEdited = editedFields.includes(f);
+    const originals  = (row && row['_originals']) || {{}};
+    const origVal    = (row && f in originals) ? originals[f] : null;
+    const valClass = 'db-field-value' +
+        (v ? '' : ' empty') +
+        (isEdited ? ' edited-val' : '') +
+        (isEdited && origVal !== null ? ' has-orig' : '');
+    const origTip = (isEdited && origVal !== null)
+        ? ` data-orig-tip="${{escHtml('Was: ' + (origVal || '(empty)'))}}"` : '';
     return `<span class="db-field">
         <span class="db-field-label">${{escHtml(f)}}</span>
-        <span class="db-field-value${{v ? '' : ' empty'}}">${{escHtml(v || '—')}}</span>
+        <span class="${{valClass}}"${{origTip}}>${{escHtml(v || '—')}}</span>
     </span>`;
 }}
 
@@ -3961,7 +4196,7 @@ function renderDbDetails(row) {{
     const coveredFields = new Set(DB_SECTIONS.flatMap(s =>
         s.tagsField ? [s.tagsField] : s.rows.flat()
     ));
-    const otherFields = Object.keys(row).filter(k => !coveredFields.has(k));
+    const otherFields = Object.keys(row).filter(k => !coveredFields.has(k) && !k.startsWith('_'));
 
     const sections = DB_SECTIONS.map(sec => {{
         let rowsHtml;
@@ -3976,12 +4211,12 @@ function renderDbDetails(row) {{
             }}</div>`;
         }} else {{
             rowsHtml = sec.rows.map(fields => {{
-                const cells = fields.map(f => renderDbField(f, (row[f] || '').trim())).join('');
+                const cells = fields.map(f => renderDbField(f, (row[f] || '').trim(), row)).join('');
                 return `<div class="db-row">${{cells}}</div>`;
             }}).join('');
 
             if (sec.includeOthers && otherFields.length) {{
-                const cells = otherFields.map(f => renderDbField(f, (row[f] || '').trim())).join('');
+                const cells = otherFields.map(f => renderDbField(f, (row[f] || '').trim(), row)).join('');
                 rowsHtml += `<div class="db-row">${{cells}}</div>`;
             }}
         }}
@@ -4000,7 +4235,20 @@ function renderDbDetails(row) {{
         ).join('')
     }}</div>` : '';
 
-    return `<div class="db-details">${{photoStrip}}${{sections}}</div>`;
+    const overrideKey = row['_override_key'] || '';
+    const recordId    = row['_record_id']    || '';
+    const hasEdits    = (row['_edited_fields'] || []).length > 0;
+    const isOmitted   = !!row['_omitted'];
+    const editActions = OFFLINE_MODE ? '' : `
+        <div class="db-edit-actions">
+            <button class="db-edit-btn" onclick="openEditPanel('${{escHtml(overrideKey)}}')" title="Edit fields for this take">&#9998; Edit</button>
+            ${{hasEdits ? `<button class="db-revert-btn" onclick="revertTake('${{escHtml(overrideKey)}}')" title="Revert all edits for this take">&#8635; Revert</button>` : ''}}
+            ${{isOmitted
+                ? `<button class="db-restore-btn" onclick="restoreOmit('${{escHtml(overrideKey)}}','${{escHtml(recordId)}}')" title="Remove omission">&#8635; Restore</button>`
+                : `<button class="db-omit-btn" onclick="openOmitModal('${{escHtml(overrideKey)}}','${{escHtml(recordId)}}')" title="Omit this take from results">&#8856; Omit</button>`
+            }}
+        </div>`;
+    return `<div class="db-details">${{photoStrip}}${{sections}}${{editActions}}</div>`;
 }}
 
 function _injectPhotoStrip(entry, photos) {{
@@ -4510,6 +4758,294 @@ function renderLidarCard(entry) {{
         '<div class="lidar-summary">' + summaryHtml + '</div>' +
         '<div class="lidar-details">' + filesHtml + previewHtml + '</div>' +
         '</div>';
+}}
+
+// ── DB Field-override edit panel ─────────────────────────────────────────────
+
+const EDIT_SLATE_FIELDS = [
+    ['Slate',            'Slate'],
+    ['Scene Description','Scene Description'],
+    ['VFX ID',           'VFX ID'],
+    ['Set Location',     'Set Location'],
+    ['Script Location',  'Script Location'],
+    ['Int / Ext',        'Int/Ext'],
+    ['Day / Night',      'Day/Night'],
+    ['Unit',             'Unit'],
+    ['Shoot Day',        'Shoot Day'],
+    ['Wrangler',         'Wrangler'],
+    ['VFX Work',         'VFX Work'],
+    ['Set Refs',         'Set Refs'],
+    ['Notes',            'Notes'],
+];
+const EDIT_TAKE_FIELDS = [
+    ['Camera Body',  'Body'],
+    ['Roll',         'Roll'],
+    ['Take Notes',   'Take Notes'],
+    ['Lens',         'Lens'],
+    ['Focal',        'Focal'],
+    ['F-Stop',       'F-Stop'],
+    ['Focus',        'Focus'],
+    ['Tilt',         'Tilt'],
+    ['Height',       'Height'],
+    ['Shutter',      'Shutter'],
+    ['FPS',          'FPS'],
+    ['WB',           'WB'],
+    ['ISO',          'ISO'],
+    ['Filter',       'Filter'],
+];
+
+let _editRow = null; // row currently being edited
+
+(function () {{
+    const p = document.createElement('div');
+    p.id = 'edit-panel';
+    p.className = 'edit-panel';
+    p.innerHTML =
+        '<div class="edit-panel-header">' +
+        '<div><div class="edit-panel-title" id="edit-panel-title">Edit</div>' +
+        '<div class="edit-panel-subtitle" id="edit-panel-subtitle"></div></div>' +
+        '<button class="edit-panel-close" onclick="closeEditPanel()" title="Close">&#x2715;</button>' +
+        '</div>' +
+        '<div class="edit-panel-body" id="edit-panel-body"></div>' +
+        '<div class="edit-panel-footer">' +
+        '<button class="edit-save-btn" onclick="saveEdit()">Save changes</button>' +
+        '<button class="edit-cancel-btn" onclick="closeEditPanel()">Cancel</button>' +
+        '</div>';
+    document.body.appendChild(p);
+}})();
+
+function openEditPanel(overrideKey) {{
+    const row = dbRows.find(r => r['_override_key'] === overrideKey);
+    if (!row) return;
+    _editRow = row;
+    OFFLINE_MODE && console.warn('Edit panel opened in offline mode — saves will fail.');
+
+    document.getElementById('edit-panel-title').textContent =
+        'Edit — ' + (row['Slate'] || '?') + ' / Take ' + (row['Take'] || '?');
+    document.getElementById('edit-panel-subtitle').textContent =
+        'Camera ' + (row['Camera'] || '?') +
+        (row['_edited_at'] ? '  ·  Last edited ' + row['_edited_at'].replace('T',' ') : '');
+
+    const edited    = new Set(row['_edited_fields'] || []);
+    const originals = row['_originals'] || {{}};
+
+    function makeField([label, key]) {{
+        const cur  = row[key] !== undefined ? String(row[key]) : '';
+        const isEd = edited.has(key);
+        const orig = isEd ? String(originals[key] ?? '') : cur;
+        const useTextarea = ['Scene Description','VFX Work','Notes','Set Refs','Take Notes'].includes(key);
+        const cls  = 'edit-field-input' + (isEd ? ' is-edited' : '');
+        const attrs = ' class="' + cls + '" id="ef_' + escHtml(key) + '"' +
+            ' data-key="' + escHtml(key) + '" oninput="_editFieldChanged(this)"';
+        const fieldHtml = useTextarea
+            ? '<textarea rows="2"' + attrs + '>' + escHtml(cur) + '</textarea>'
+            : '<input type="text"' + attrs + ' value="' + escHtml(cur) + '">';
+        return '<div class="edit-field-row">' +
+            '<label class="edit-field-label">' + escHtml(label) + '</label>' +
+            fieldHtml +
+            '<div class="edit-field-orig" style="' + (isEd ? '' : 'display:none') + '">' +
+            'Was: ' + escHtml(orig || '(empty)') + '</div>' +
+            '</div>';
+    }}
+
+    document.getElementById('edit-panel-body').innerHTML =
+        '<div class="edit-section-head">SLATE</div>' +
+        EDIT_SLATE_FIELDS.map(makeField).join('') +
+        '<label class="edit-apply-all">' +
+        '<input type="checkbox" id="edit-apply-all-cb">Apply record-level changes to all takes of this slate</label>' +
+        '<div class="edit-section-head" style="margin-top:14px">TAKE</div>' +
+        EDIT_TAKE_FIELDS.map(makeField).join('');
+
+    document.getElementById('edit-panel').classList.add('open');
+}}
+
+function _editFieldChanged(el) {{
+    const key       = el.dataset.key;
+    const originals = (_editRow && _editRow['_originals']) || {{}};
+    const origVal   = key in originals ? originals[key] : (_editRow ? (_editRow[key] ?? '') : '');
+    const isEdited  = el.value !== String(origVal);
+    el.classList.toggle('is-edited', isEdited);
+    const hintEl = el.nextElementSibling;
+    if (hintEl && hintEl.classList.contains('edit-field-orig')) {{
+        if (isEdited) {{
+            hintEl.textContent = 'Was: ' + (String(origVal) || '(empty)');
+            hintEl.style.display = '';
+        }} else {{
+            hintEl.style.display = 'none';
+        }}
+    }}
+}}
+
+function closeEditPanel() {{
+    document.getElementById('edit-panel').classList.remove('open');
+    _editRow = null;
+}}
+
+async function saveEdit() {{
+    if (!_editRow) return;
+    if (OFFLINE_MODE) {{ alert('Editing is not available in offline mode.'); return; }}
+
+    const overrideKey = _editRow['_override_key'];
+    const recordId    = _editRow['_record_id'] || '';
+    const allFields   = [...EDIT_SLATE_FIELDS, ...EDIT_TAKE_FIELDS];
+    const slateKeys   = new Set(EDIT_SLATE_FIELDS.map(([,k]) => k));
+    const originals   = _editRow['_originals'] || {{}};
+
+    // Collect changed fields
+    const fields = {{}};
+    const recordLevelFields = {{}};
+    for (const [, key] of allFields) {{
+        const el = document.getElementById('ef_' + key);
+        if (!el) continue;
+        const newVal  = el.value;
+        const origVal = key in originals ? originals[key] : (_editRow[key] ?? '');
+        if (newVal !== String(origVal)) {{
+            fields[key] = newVal;
+            if (slateKeys.has(key)) recordLevelFields[key] = newVal;
+        }}
+    }}
+
+    // Also persist existing overrides that weren't changed in this session
+    for (const key of (_editRow['_edited_fields'] || [])) {{
+        if (!(key in fields)) fields[key] = _editRow[key];
+    }}
+
+    if (Object.keys(fields).length === 0) {{ closeEditPanel(); return; }}
+
+    const applyToRecord = document.getElementById('edit-apply-all-cb')?.checked && Object.keys(recordLevelFields).length > 0;
+
+    const label = (_editRow['Slate'] || '') + ' / Take ' + (_editRow['Take'] || '');
+    try {{
+        const res = await fetch('/api/overrides/save', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{
+                key: overrideKey, label,
+                fields,
+                record_id: recordId,
+                apply_to_record: applyToRecord,
+                record_level_fields: recordLevelFields,
+            }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Save failed: ' + (data.error || 'unknown')); return; }}
+        closeEditPanel();
+        dbRows = [];        // force reload
+        loadDatabase();
+    }} catch(e) {{
+        alert('Save error: ' + e.message);
+    }}
+}}
+
+async function revertTake(overrideKey) {{
+    if (!confirm('Revert all edits for this take?')) return;
+    try {{
+        const res  = await fetch('/api/overrides/revert', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ key: overrideKey }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Revert failed: ' + (data.error || '')); return; }}
+        dbRows = [];
+        loadDatabase();
+    }} catch(e) {{
+        alert('Revert error: ' + e.message);
+    }}
+}}
+
+// ── Omit feature ─────────────────────────────────────────────────────────────
+function setShowOmitted(val) {{
+    showOmitted = val;
+    document.querySelectorAll('.show-omitted-cb').forEach(cb => {{ cb.checked = val; }});
+    _saveUiState();
+    renderDatabase();
+    renderQueries();
+}}
+
+let _omitKey = null;
+let _omitRecordId = null;
+
+(function () {{
+    const ov = document.createElement('div');
+    ov.id = 'omit-modal-overlay';
+    ov.className = 'omit-modal-overlay';
+    ov.style.display = 'none';
+    ov.innerHTML =
+        '<div class="omit-modal">' +
+        '<div class="omit-modal-title">Omit from results</div>' +
+        '<div class="omit-modal-sub" id="omit-modal-sub"></div>' +
+        '<div class="omit-modal-opts">' +
+        '<label class="omit-modal-opt">' +
+        '<input type="radio" name="omit-scope" value="take" checked>' +
+        '<div><div class="omit-modal-opt-label">Just this take</div>' +
+        '<div class="omit-modal-opt-desc">Hide only this specific take from the results</div></div>' +
+        '</label>' +
+        '<label class="omit-modal-opt">' +
+        '<input type="radio" name="omit-scope" value="slate">' +
+        '<div><div class="omit-modal-opt-label">All takes of this slate</div>' +
+        '<div class="omit-modal-opt-desc">Hide all takes sharing the same slate</div></div>' +
+        '</label>' +
+        '</div>' +
+        '<div class="omit-modal-footer">' +
+        '<button class="omit-confirm-btn" onclick="confirmOmit()">Omit</button>' +
+        '<button class="omit-cancel-btn" onclick="closeOmitModal()">Cancel</button>' +
+        '</div>' +
+        '</div>';
+    ov.addEventListener('click', e => {{ if (e.target === ov) closeOmitModal(); }});
+    document.body.appendChild(ov);
+}})();
+
+function openOmitModal(overrideKey, recordId) {{
+    _omitKey = overrideKey;
+    _omitRecordId = recordId;
+    const row = dbRows.find(r => r['_override_key'] === overrideKey);
+    const label = row ? (row['Slate'] || '?') + ' / Take ' + (row['Take'] || '?') : overrideKey;
+    document.getElementById('omit-modal-sub').textContent = label;
+    const radios = document.querySelectorAll('input[name="omit-scope"]');
+    radios.forEach(r => {{ r.checked = r.value === 'take'; }});
+    document.getElementById('omit-modal-overlay').style.display = 'flex';
+}}
+
+function closeOmitModal() {{
+    document.getElementById('omit-modal-overlay').style.display = 'none';
+    _omitKey = null;
+    _omitRecordId = null;
+}}
+
+async function confirmOmit() {{
+    if (!_omitKey) return;
+    const scope = document.querySelector('input[name="omit-scope"]:checked')?.value || 'take';
+    try {{
+        const res = await fetch('/api/omissions/set', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ key: _omitKey, record_id: _omitRecordId, scope }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Omit failed: ' + (data.error || '')); return; }}
+        closeOmitModal();
+        dbRows = [];
+        loadDatabase();
+    }} catch(e) {{
+        alert('Omit error: ' + e.message);
+    }}
+}}
+
+async function restoreOmit(overrideKey, recordId) {{
+    try {{
+        const res = await fetch('/api/omissions/restore', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ key: overrideKey, record_id: recordId }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Restore failed: ' + (data.error || '')); return; }}
+        dbRows = [];
+        loadDatabase();
+    }} catch(e) {{
+        alert('Restore error: ' + e.message);
+    }}
 }}
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
