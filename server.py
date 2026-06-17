@@ -372,6 +372,7 @@ def api_database():
         rows = _denormalize_json_to_rows(data)
         rows = _apply_overrides(rows, _load_overrides())
         rows = _apply_omissions(rows, _load_omissions())
+        rows = _apply_notes(rows, _load_notes())
         return jsonify({"success": True, "rows": rows})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -506,7 +507,57 @@ def api_restore_omission():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-_DB_JSON_EXCLUDED = {"extraction_meta.json", "overrides.json", "omissions.json"}
+# ── Notes helpers ─────────────────────────────────────────────────────────────
+
+def _notes_path() -> Path:
+    return Path(DATA_DIR) / "__DATABASE" / "notes.json"
+
+
+def _load_notes() -> dict:
+    p = _notes_path()
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {"version": 1, "takes": {}}
+
+
+def _save_notes(n: dict) -> None:
+    p = _notes_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(n, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _apply_notes(rows: list, notes: dict) -> list:
+    """Attach user note text to each row from notes.json."""
+    take_notes = notes.get("takes", {})
+    for row in rows:
+        key = row.get("_override_key", "")
+        row["_note"] = take_notes.get(key, "")
+    return rows
+
+
+@app.route("/api/notes/save", methods=["POST"])
+def api_save_note():
+    """Save or delete a note for a specific take."""
+    try:
+        body = request.json or {}
+        key  = body.get("key", "")
+        text = (body.get("text") or "").strip()
+        if not key:
+            return jsonify({"success": False, "error": "key required"}), 400
+        n     = _load_notes()
+        takes = n.setdefault("takes", {})
+        if text:
+            takes[key] = text
+        else:
+            takes.pop(key, None)
+        _save_notes(n)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+_DB_JSON_EXCLUDED = {"extraction_meta.json", "overrides.json", "omissions.json", "notes.json"}
 
 
 def _load_db_json() -> dict:

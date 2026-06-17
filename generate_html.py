@@ -675,6 +675,7 @@ class HTMLGenerator:
             justify-content: space-between;
             align-items: center;
             letter-spacing: 0.01em;
+            position: sticky; top: 0; z-index: 5;
         }}
         .group-count {{
             background: var(--surface-2);
@@ -1036,6 +1037,94 @@ class HTMLGenerator:
             font-size: 0.85em; cursor: pointer; transition: all 0.15s;
         }}
         .omit-cancel-btn:hover {{ color: var(--text); }}
+
+        /* ── Take notes ── */
+        .db-note-flag {{
+            color: #f0a500; font-size: 0.88em; flex-shrink: 0; display: inline-block;
+        }}
+        .db-note-box {{
+            background: rgba(240,165,0,0.08);
+            border: 1px solid rgba(240,165,0,0.28);
+            border-left: 3px solid #f0a500;
+            border-radius: 6px; padding: 8px 12px; margin-bottom: 12px;
+            display: flex; align-items: flex-start; gap: 8px;
+        }}
+        .db-note-box.empty {{
+            background: none; border: 1px dashed rgba(240,165,0,0.2);
+            border-left: 1px dashed rgba(240,165,0,0.2); padding: 5px 12px;
+        }}
+        .db-note-box-icon {{ color: #f0a500; font-size: 0.9em; flex-shrink: 0; margin-top: 2px; }}
+        .db-note-text {{
+            flex: 1; font-size: 0.85em; color: var(--text);
+            white-space: pre-wrap; word-break: break-word;
+        }}
+        .db-note-textarea {{
+            flex: 1; background: var(--surface-2); border: 1px solid rgba(240,165,0,0.4);
+            border-radius: 5px; color: var(--text); font-size: 0.85em;
+            padding: 5px 8px; resize: vertical; min-height: 52px;
+            outline: none; font-family: inherit;
+        }}
+        .db-note-textarea:focus {{ border-color: #f0a500; }}
+        .db-note-actions {{ display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }}
+        .db-note-save-btn {{
+            background: #f0a500; border: none; color: #1a1a2e;
+            border-radius: 5px; padding: 3px 10px; font-size: 0.78em;
+            font-weight: 700; cursor: pointer; transition: opacity 0.15s;
+        }}
+        .db-note-save-btn:hover {{ opacity: 0.85; }}
+        .db-note-cancel-btn, .db-note-clear-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: 5px; padding: 3px 10px;
+            font-size: 0.78em; cursor: pointer; transition: all 0.15s;
+        }}
+        .db-note-cancel-btn:hover, .db-note-clear-btn:hover {{ color: var(--text); }}
+        .db-note-edit-btn {{
+            background: none; border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: 5px; padding: 3px 8px;
+            font-size: 0.78em; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+        }}
+        .db-note-edit-btn:hover {{ border-color: #f0a500; color: #f0a500; }}
+        .db-note-add-btn {{
+            background: none; border: none; color: rgba(240,165,0,0.45);
+            font-size: 0.78em; cursor: pointer; padding: 0; transition: color 0.15s;
+        }}
+        .db-note-add-btn:hover {{ color: #f0a500; }}
+        /* ── Bin note banner ── */
+        .db-bin-note-banner {{
+            margin-top: 8px; padding: 8px 14px;
+            background: rgba(163,113,247,0.07);
+            border: 1px solid rgba(163,113,247,0.2);
+            border-left: 3px solid #a371f7;
+            border-radius: 6px;
+            display: flex; align-items: flex-start; gap: 10px;
+            font-size: 0.83em;
+        }}
+        .db-bin-note-banner-name {{
+            color: #a371f7; font-size: 0.85em; font-weight: 600;
+            flex-shrink: 0; margin-top: 1px;
+        }}
+        .db-bin-note-banner-text {{
+            flex: 1; color: var(--text-muted); white-space: pre-wrap; word-break: break-word;
+        }}
+        .db-bin-note-edit-btn {{
+            background: none; border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: 5px; padding: 2px 8px;
+            font-size: 0.75em; cursor: pointer; flex-shrink: 0;
+            transition: border-color 0.15s, color 0.15s;
+        }}
+        .db-bin-note-edit-btn:hover {{ border-color: #a371f7; color: #a371f7; }}
+        .db-bin-note-save-btn {{
+            background: #a371f7; border: none; color: #fff;
+            border-radius: 5px; padding: 3px 10px; font-size: 0.78em;
+            font-weight: 600; cursor: pointer; flex-shrink: 0;
+        }}
+        .db-bin-note-textarea {{
+            flex: 1; background: var(--surface-2); border: 1px solid rgba(163,113,247,0.4);
+            border-radius: 5px; color: var(--text); font-size: 0.85em;
+            padding: 5px 8px; resize: vertical; min-height: 48px;
+            outline: none; font-family: inherit;
+        }}
+        .db-bin-note-textarea:focus {{ border-color: #a371f7; }}
 
         /* ── Queries view ── */
         .query-field-tabs {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }}
@@ -1703,6 +1792,50 @@ class HTMLGenerator:
             background: rgba(247,129,102,0.10);
             border: 1px solid rgba(247,129,102,0.2); padding: 2px 8px; border-radius: 6px;
         }}
+        .db-take {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.75em;
+            color: var(--text-muted); background: var(--surface-2);
+            border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px;
+        }}
+        /* Clickable title-line tags */
+        .db-tag-clickable {{ cursor: pointer; transition: opacity 0.15s; }}
+        .db-tag-clickable:hover {{ opacity: 0.65; }}
+        /* Filter field flash when set by tag click */
+        @keyframes filterFlash {{
+            0%, 100% {{ border-color: var(--border); }}
+            40% {{ border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }}
+        }}
+        .filter-flashing {{ animation: filterFlash 0.55s ease; }}
+        /* Quick-copy button on title line */
+        .db-copy-btn {{
+            background: none; border: none; color: var(--text-muted);
+            cursor: pointer; font-size: 0.85em; padding: 2px 5px;
+            border-radius: 4px; line-height: 1; opacity: 0;
+            transition: opacity 0.15s;
+        }}
+        .entry:hover .db-copy-btn, .entry.expanded .db-copy-btn {{ opacity: 0.5; }}
+        .db-copy-btn:hover {{ opacity: 1 !important; color: var(--text); }}
+        /* "Copied!" flash tooltip */
+        @keyframes copyFlashAnim {{
+            0%   {{ opacity: 0; transform: translateX(-50%) translateY(4px); }}
+            20%  {{ opacity: 1; transform: translateX(-50%) translateY(0); }}
+            80%  {{ opacity: 1; }}
+            100% {{ opacity: 0; }}
+        }}
+        .copy-flash {{
+            position: absolute; bottom: calc(100% + 5px); left: 50%;
+            transform: translateX(-50%);
+            background: var(--accent); color: #fff;
+            font-size: 0.7em; font-weight: 700; padding: 3px 8px;
+            border-radius: 4px; white-space: nowrap; pointer-events: none;
+            animation: copyFlashAnim 1.1s ease forwards; z-index: 200;
+        }}
+        /* Field value: click to copy */
+        .db-field-value:not(.empty) {{
+            cursor: pointer; border-radius: 3px; transition: background 0.12s;
+            position: relative;
+        }}
+        .db-field-value:not(.empty):hover {{ background: var(--surface-2); }}
         .db-details {{ display: flex; flex-direction: column; gap: 16px; }}
         .db-photo-strip {{
             display: flex; flex-wrap: wrap; gap: 8px;
@@ -2070,6 +2203,12 @@ class HTMLGenerator:
             <span style="line-height:1.2;text-align:left">SHOW<br>OMITTED</span>
           </label>
         </div>
+        <div class="db-filter-field" style="justify-content:flex-end">
+          <label class="show-omitted-toggle" title="Show only takes with edited fields">
+            <input type="checkbox" id="show-edited-cb" onchange="setShowEditedOnly(this.checked)">
+            <span style="line-height:1.2;text-align:left">EDITED<br>ONLY</span>
+          </label>
+        </div>
       </div>
       <div id="db-pin-banner" class="db-pin-banner" style="display:none;margin-top:12px">
         <span id="db-pin-label"></span>
@@ -2079,6 +2218,7 @@ class HTMLGenerator:
         <span id="db-query-label"></span>
         <button class="db-pin-clear" onclick="clearQueryFilter()" title="Clear filter">✕ Clear</button>
       </div>
+      <div id="db-bin-note-banner" class="db-bin-note-banner" style="display:none"></div>
       <div id="database-content" style="margin-top:16px"></div>
     </div>
 
@@ -2254,6 +2394,7 @@ function _saveUiState() {{
             lidarSortAsc:   lidarSortAsc,
             lidarQuery:     lidarQuery,
             showOmitted:    showOmitted,
+            showEditedOnly: showEditedOnly,
         }}));
     }} catch(e) {{}}
 }}
@@ -2360,6 +2501,11 @@ function _restoreUiState() {{
         if (s.showOmitted) {{
             showOmitted = true;
             document.querySelectorAll('.show-omitted-cb').forEach(cb => {{ cb.checked = true; }});
+        }}
+        if (s.showEditedOnly) {{
+            showEditedOnly = true;
+            const cb = document.getElementById('show-edited-cb');
+            if (cb) cb.checked = true;
         }}
         // Active tab — restore last
         if (s.view && ['browse','database','queries','lidar','queue','delivered'].includes(s.view)) {{
@@ -3383,6 +3529,7 @@ let querySearch      = '';
 let querySortByCount = true;
 let dbQueryFilter    = null; // {{ field, label, value }} — set from Queries page
 let showOmitted      = false;
+let showEditedOnly   = false;
 
 function _slateSceneKey(slate) {{
     const s = (slate || '').trim();
@@ -3910,7 +4057,8 @@ function cycleVfxFilter() {{
 }}
 
 function dbRowMatches(row) {{
-    if (!showOmitted && row['_omitted']) return false;
+    if (!showOmitted   && row['_omitted']) return false;
+    if (showEditedOnly && !(row['_edited_fields'] || []).length) return false;
     if (dbPinnedKeys && !dbPinnedKeys.has(_slateSceneKey(row['Slate'] || ''))) return false;
     if (activeBinId) {{
         const bin = bins[activeBinId];
@@ -4037,6 +4185,14 @@ function renderDatabase() {{
             qBanner.style.display = 'none';
         }}
     }}
+    const binNoteEl = document.getElementById('db-bin-note-banner');
+    if (binNoteEl) {{
+        if (activeBinId && bins[activeBinId]) {{
+            _renderBinNoteBanner(binNoteEl);
+        }} else {{
+            binNoteEl.style.display = 'none';
+        }}
+    }}
 
     const filtered = dbRows.filter(dbRowMatches);
 
@@ -4148,6 +4304,7 @@ function renderDbCard(row, idx) {{
     const addBinBtn = `<button class="bin-add-btn" onclick="openBinMenu(event,this)"
         data-slate="${{escHtml(slate)}}" data-take="${{escHtml(row['Take'] || '')}}" data-cam="${{escHtml(row['Camera'] || '')}}"
         title="Add to bin">+</button>`;
+    const takeNum     = row['Take'] || '';
     const vfxPass     = _isVfxPass(row);
     const hasEdits    = (row['_edited_fields'] || []).length > 0;
     const isOmitted   = !!row['_omitted'];
@@ -4155,20 +4312,40 @@ function renderDbCard(row, idx) {{
     const edited      = new Set(row['_edited_fields'] || []);
     const ec          = f => edited.has(f) ? ' edited-val' : '';
     const omitBadge   = isOmitted ? '<span class="db-omit-badge">omitted</span>' : '';
+    const hasNote     = !!(row['_note'] || '').trim();
+    const noteFlagSlot = '<span class="db-note-flag-slot">' + (hasNote ? '<span class="db-note-flag" title="Has note">⚑</span>' : '') + '</span>';
+    // Quick-copy text (title line)
+    const quickParts  = [
+        slate  !== '—' ? 'Slate: ' + slate : '',
+        vfxId          ? 'VFX ID: ' + vfxId : '',
+        takeNum        ? 'Take: '  + takeNum : '',
+        roll           ? 'Roll: '  + roll    : '',
+    ].filter(Boolean);
+    const quickCopy   = quickParts.join(', ');
+    const copyBtn     = `<button class="db-copy-btn" data-copy="${{escHtml(quickCopy)}}"
+        onclick="_copyText(this.dataset.copy,this);event.stopPropagation()" title="Copy key fields">⎘</button>`;
+    // Tag helper: make a tag span clickable to set a filter
+    const tag = (cls, filterKey, val, extra='') =>
+        `<span class="${{cls}}${{extra}} db-tag-clickable" data-v="${{escHtml(val)}}"
+            onclick="setTagFilter('${{filterKey}}',this.dataset.v,event)"
+            title="Filter by ${{filterKey.replace('_',' ')}}">${{escHtml(val)}}</span>`;
     return `<div class="entry${{isExpanded ? ' expanded' : ''}}${{vfxPass ? ' vfx-pass' : ''}}${{hasEdits ? ' db-has-edits' : ''}}${{isOmitted ? ' db-omitted' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}" data-override-key="${{escHtml(overrideKey)}}">
         <div class="entry-title-line">
-            <span class="db-slate${{ec('Slate')}}">${{escHtml(slate)}}</span>
-            ${{vfxId  ? `<span class="db-vfxid${{ec('VFX ID')}}">${{escHtml(vfxId)}}</span>` : ''}}
-            <span class="db-date">${{escHtml(date)}}</span>
-            <span class="db-day${{ec('Shoot Day')}}">${{escHtml(day)}}</span>
-            ${{roll   ? `<span class="db-roll${{ec('Roll')}}">${{escHtml(roll)}}</span>` : ''}}
-            <span class="db-lens${{ec('Lens')}}">${{escHtml(lens)}}</span>
-            <span class="db-focal${{ec('Focal')}}">${{escHtml(focal)}}</span>
-            ${{tilt   ? `<span class="db-tilt${{ec('Tilt')}}">${{escHtml(tilt)}}</span>` : ''}}
+            ${{tag('db-slate', 'slate', slate, ec('Slate'))}}
+            <span class="db-take">T${{escHtml(takeNum)}}</span>
+            ${{vfxId  ? tag('db-vfxid', 'vfx_id', vfxId, ec('VFX ID')) : ''}}
+            ${{tag('db-date', 'date', date)}}
+            ${{tag('db-day', 'shoot_day', day, ec('Shoot Day'))}}
+            ${{roll   ? tag('db-roll', 'roll', roll, ec('Roll')) : ''}}
+            ${{tag('db-lens', 'lens', lens, ec('Lens'))}}
+            ${{tag('db-focal', 'focal', focal, ec('Focal'))}}
+            ${{tilt   ? `<span class="db-tilt">${{escHtml(tilt)}}</span>` : ''}}
+            ${{noteFlagSlot}}
             ${{omitBadge}}
             ${{photoBadge}}
             ${{binBadge}}
             ${{addBinBtn}}
+            ${{copyBtn}}
             ${{chevron}}
         </div>
         <div class="entry-details">${{renderDbDetails(row)}}</div>
@@ -4186,9 +4363,10 @@ function renderDbField(f, v, row) {{
         (isEdited && origVal !== null ? ' has-orig' : '');
     const origTip = (isEdited && origVal !== null)
         ? ` data-orig-tip="${{escHtml('Was: ' + (origVal || '(empty)'))}}"` : '';
+    const copyAttr = v ? ` data-copy="${{escHtml(v)}}" onclick="_copyText(this.dataset.copy,this)" title="Click to copy"` : '';
     return `<span class="db-field">
         <span class="db-field-label">${{escHtml(f)}}</span>
-        <span class="${{valClass}}"${{origTip}}>${{escHtml(v || '—')}}</span>
+        <span class="${{valClass}}"${{origTip}}${{copyAttr}}>${{escHtml(v || '—')}}</span>
     </span>`;
 }}
 
@@ -4239,6 +4417,8 @@ function renderDbDetails(row) {{
     const recordId    = row['_record_id']    || '';
     const hasEdits    = (row['_edited_fields'] || []).length > 0;
     const isOmitted   = !!row['_omitted'];
+    const noteText    = (row['_note'] || '').trim();
+    const noteBox     = OFFLINE_MODE ? '' : _noteBoxHtml(overrideKey, noteText, false);
     const editActions = OFFLINE_MODE ? '' : `
         <div class="db-edit-actions">
             <button class="db-edit-btn" onclick="openEditPanel('${{escHtml(overrideKey)}}')" title="Edit fields for this take">&#9998; Edit</button>
@@ -4247,8 +4427,10 @@ function renderDbDetails(row) {{
                 ? `<button class="db-restore-btn" onclick="restoreOmit('${{escHtml(overrideKey)}}','${{escHtml(recordId)}}')" title="Remove omission">&#8635; Restore</button>`
                 : `<button class="db-omit-btn" onclick="openOmitModal('${{escHtml(overrideKey)}}','${{escHtml(recordId)}}')" title="Omit this take from results">&#8856; Omit</button>`
             }}
+            <button class="db-edit-btn" style="margin-left:auto"
+                onclick="copyCardFull('${{escHtml(overrideKey)}}',event)" title="Copy all fields">&#9112; Copy all</button>
         </div>`;
-    return `<div class="db-details">${{photoStrip}}${{sections}}${{editActions}}</div>`;
+    return `<div class="db-details">${{noteBox}}${{photoStrip}}${{sections}}${{editActions}}</div>`;
 }}
 
 function _injectPhotoStrip(entry, photos) {{
@@ -4954,6 +5136,72 @@ async function revertTake(overrideKey) {{
     }}
 }}
 
+// ── Tag filter (click tag → set filter) ──────────────────────────────────────
+function setTagFilter(filterKey, val, event) {{
+    event.stopPropagation();
+    dbFilters[filterKey] = val.trim().toLowerCase();
+    const inp = document.getElementById('dbf-' + filterKey);
+    if (inp) {{
+        inp.value = val.trim();
+        inp.classList.remove('filter-flashing');
+        void inp.offsetWidth; // reflow to restart animation
+        inp.classList.add('filter-flashing');
+        inp.addEventListener('animationend', () => inp.classList.remove('filter-flashing'), {{ once: true }});
+    }}
+    renderDatabase();
+    _saveUiState();
+}}
+
+// ── Show Edited Only ──────────────────────────────────────────────────────────
+function setShowEditedOnly(val) {{
+    showEditedOnly = val;
+    _saveUiState();
+    renderDatabase();
+}}
+
+// ── Copy helpers ──────────────────────────────────────────────────────────────
+function _copyText(text, el) {{
+    const done = () => {{
+        if (!el) return;
+        const tip = document.createElement('span');
+        tip.className = 'copy-flash';
+        tip.textContent = 'Copied!';
+        el.style.position = 'relative';
+        el.appendChild(tip);
+        setTimeout(() => tip.remove(), 1200);
+    }};
+    if (navigator.clipboard) {{
+        navigator.clipboard.writeText(text).then(done).catch(done);
+    }} else {{
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove(); done();
+    }}
+}}
+
+function copyCardFull(overrideKey, event) {{
+    event.stopPropagation();
+    const row = dbRows.find(r => r['_override_key'] === overrideKey);
+    if (!row) return;
+    const pad = 22;
+    const lines = [];
+    for (const sec of DB_SECTIONS) {{
+        if (sec.tagsField) {{
+            const v = (row[sec.tagsField] || '').trim();
+            if (v) lines.push(sec.tagsField.padEnd(pad) + v);
+        }} else {{
+            for (const fields of sec.rows) {{
+                for (const f of fields) {{
+                    const v = (row[f] || '').trim();
+                    if (v) lines.push(f.padEnd(pad) + v);
+                }}
+            }}
+        }}
+    }}
+    _copyText(lines.join('\\n'), event.currentTarget);
+}}
+
 // ── Omit feature ─────────────────────────────────────────────────────────────
 function setShowOmitted(val) {{
     showOmitted = val;
@@ -5046,6 +5294,169 @@ async function restoreOmit(overrideKey, recordId) {{
     }} catch(e) {{
         alert('Restore error: ' + e.message);
     }}
+}}
+
+// ── Take notes ───────────────────────────────────────────────────────────────
+function _noteBoxHtml(overrideKey, note, editing) {{
+    const dk = 'data-note-key="' + escHtml(overrideKey) + '"';
+    if (editing) {{
+        return '<div class="db-note-box" ' + dk + '>' +
+            '<span class="db-note-box-icon">⚑</span>' +
+            '<textarea class="db-note-textarea" rows="2">' + escHtml(note) + '</textarea>' +
+            '<div class="db-note-actions">' +
+            '<button class="db-note-save-btn" ' + dk + ' onclick="_doSaveNote(this);event.stopPropagation()">Save</button>' +
+            '<button class="db-note-cancel-btn" ' + dk + ' onclick="_doCancelNote(this);event.stopPropagation()">Cancel</button>' +
+            '</div></div>';
+    }}
+    if (note) {{
+        return '<div class="db-note-box" ' + dk + '>' +
+            '<span class="db-note-box-icon">⚑</span>' +
+            '<span class="db-note-text">' + escHtml(note) + '</span>' +
+            '<div class="db-note-actions">' +
+            '<button class="db-note-edit-btn" ' + dk + ' onclick="_doEditNote(this);event.stopPropagation()">Edit</button>' +
+            '<button class="db-note-clear-btn" ' + dk + ' onclick="_doClearNote(this);event.stopPropagation()">×</button>' +
+            '</div></div>';
+    }}
+    return '<div class="db-note-box empty" ' + dk + '>' +
+        '<button class="db-note-add-btn" ' + dk + ' onclick="_doEditNote(this);event.stopPropagation()">⚑ Add note…</button>' +
+        '</div>';
+}}
+
+function _entryByNoteKey(key) {{
+    for (const el of document.querySelectorAll('[data-override-key]')) {{
+        if (el.dataset.overrideKey === key) return el;
+    }}
+    return null;
+}}
+
+function _doEditNote(btn) {{
+    const key  = btn.dataset.noteKey;
+    const row  = dbRows.find(r => r['_override_key'] === key);
+    const note = row ? (row['_note'] || '') : '';
+    const box  = btn.closest('.db-note-box');
+    if (box) {{
+        box.outerHTML = _noteBoxHtml(key, note, true);
+        const entry = _entryByNoteKey(key);
+        if (entry) {{
+            const ta = entry.querySelector('.db-note-textarea');
+            if (ta) {{ ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }}
+        }}
+    }}
+}}
+
+function _doCancelNote(btn) {{
+    const key  = btn.dataset.noteKey;
+    const row  = dbRows.find(r => r['_override_key'] === key);
+    const note = row ? (row['_note'] || '') : '';
+    const box  = btn.closest('.db-note-box');
+    if (box) box.outerHTML = _noteBoxHtml(key, note, false);
+}}
+
+async function _doSaveNote(btn) {{
+    if (OFFLINE_MODE) return;
+    const key  = btn.dataset.noteKey;
+    const box  = btn.closest('.db-note-box');
+    const ta   = box ? box.querySelector('.db-note-textarea') : null;
+    const text = ta ? ta.value.trim() : '';
+    btn.disabled    = true;
+    btn.textContent = '…';
+    try {{
+        const res  = await fetch('/api/notes/save', {{
+            method:  'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body:    JSON.stringify({{ key, text }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{
+            alert('Note save failed: ' + (data.error || ''));
+            btn.disabled = false; btn.textContent = 'Save'; return;
+        }}
+        const row = dbRows.find(r => r['_override_key'] === key);
+        if (row) row['_note'] = text;
+        if (box) box.outerHTML = _noteBoxHtml(key, text, false);
+        const entry = _entryByNoteKey(key);
+        if (entry) {{
+            const slot = entry.querySelector('.entry-title-line .db-note-flag-slot');
+            if (slot) slot.innerHTML = text ? '<span class="db-note-flag" title="Has note">⚑</span>' : '';
+        }}
+    }} catch(e) {{
+        alert('Note save error: ' + e.message);
+        btn.disabled = false; btn.textContent = 'Save';
+    }}
+}}
+
+async function _doClearNote(btn) {{
+    if (OFFLINE_MODE) return;
+    const key = btn.dataset.noteKey;
+    if (!confirm('Delete this note?')) return;
+    btn.disabled = true;
+    try {{
+        const res  = await fetch('/api/notes/save', {{
+            method:  'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body:    JSON.stringify({{ key, text: '' }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Note delete failed: ' + (data.error || '')); btn.disabled = false; return; }}
+        const row = dbRows.find(r => r['_override_key'] === key);
+        if (row) row['_note'] = '';
+        const box = btn.closest('.db-note-box');
+        if (box) box.outerHTML = _noteBoxHtml(key, '', false);
+        const entry = _entryByNoteKey(key);
+        if (entry) {{
+            const slot = entry.querySelector('.entry-title-line .db-note-flag-slot');
+            if (slot) slot.innerHTML = '';
+        }}
+    }} catch(e) {{
+        alert('Note clear error: ' + e.message);
+        btn.disabled = false;
+    }}
+}}
+
+// ── Bin note banner ───────────────────────────────────────────────────────────
+function _renderBinNoteBanner(el) {{
+    const bin = activeBinId ? bins[activeBinId] : null;
+    if (!bin) {{ if (el) el.style.display = 'none'; return; }}
+    const note = (bin.note || '').trim();
+    el.innerHTML =
+        '<span class="db-bin-note-banner-name">' + escHtml(bin.name) + '</span>' +
+        '<span class="db-bin-note-banner-text">' +
+        (note ? escHtml(note) : '<em style="opacity:0.35;font-style:italic">Add a note to this bin…</em>') +
+        '</span>' +
+        '<button class="db-bin-note-edit-btn" onclick="_openBinNoteEdit()">Edit note</button>';
+    el.style.display = 'flex';
+}}
+
+function _cancelBinNoteEdit() {{
+    const el = document.getElementById('db-bin-note-banner');
+    if (el) _renderBinNoteBanner(el);
+}}
+
+function _openBinNoteEdit() {{
+    const bin = activeBinId ? bins[activeBinId] : null;
+    if (!bin) return;
+    const el   = document.getElementById('db-bin-note-banner');
+    if (!el) return;
+    const note = (bin.note || '').trim();
+    el.innerHTML =
+        '<span class="db-bin-note-banner-name">' + escHtml(bin.name) + '</span>' +
+        '<textarea class="db-bin-note-textarea" id="bin-note-ta">' + escHtml(note) + '</textarea>' +
+        '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">' +
+        '<button class="db-bin-note-save-btn" onclick="_saveBinNote()">Save</button>' +
+        '<button class="db-note-cancel-btn" onclick="_cancelBinNoteEdit()">Cancel</button>' +
+        '</div>';
+    const ta = document.getElementById('bin-note-ta');
+    if (ta) {{ ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }}
+}}
+
+function _saveBinNote() {{
+    const bin = activeBinId ? bins[activeBinId] : null;
+    if (!bin) return;
+    const ta  = document.getElementById('bin-note-ta');
+    bin.note  = ta ? ta.value.trim() : '';
+    _saveBins();
+    const el = document.getElementById('db-bin-note-banner');
+    if (el) _renderBinNoteBanner(el);
 }}
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
