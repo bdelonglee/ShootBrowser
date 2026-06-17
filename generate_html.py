@@ -1125,6 +1125,65 @@ class HTMLGenerator:
             outline: none; font-family: inherit;
         }}
         .db-bin-note-textarea:focus {{ border-color: #a371f7; }}
+        .db-bin-note-export-btn {{
+            background: none; border: 1px solid rgba(88,166,255,0.3); border-radius: 5px;
+            color: #58a6ff; font-size: 0.78em; padding: 3px 9px; cursor: pointer;
+            transition: border-color 0.15s, background 0.15s; flex-shrink: 0;
+        }}
+        .db-bin-note-export-btn:hover {{ background: rgba(88,166,255,0.1); border-color: #58a6ff; }}
+
+        /* ── Bin export/import conflict modal ── */
+        #bin-conflict-overlay {{
+            display: none; position: fixed; inset: 0; z-index: 3000;
+            background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+        }}
+        #bin-conflict-modal {{
+            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 20px; max-width: 560px; width: 90%; max-height: 80vh;
+            display: flex; flex-direction: column; gap: 12px;
+        }}
+        .bin-conflict-title {{ font-size: 0.95em; font-weight: 700; color: var(--text); }}
+        .bin-conflict-batch {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+        .bin-conflict-batch-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 5px; color: var(--text-muted); font-size: 0.78em;
+            padding: 4px 12px; cursor: pointer; transition: all 0.15s;
+        }}
+        .bin-conflict-batch-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .bin-conflict-list {{
+            overflow-y: auto; display: flex; flex-direction: column; gap: 8px; flex: 1;
+            min-height: 0;
+        }}
+        .bin-conflict-row {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 7px; padding: 10px 12px;
+        }}
+        .bin-conflict-label {{ font-size: 0.82em; font-weight: 600; color: var(--text); margin-bottom: 6px; }}
+        .bin-conflict-notes {{ display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }}
+        .bin-conflict-note {{ font-size: 0.78em; color: var(--text-muted); }}
+        .bin-conflict-note strong {{ display: block; margin-bottom: 2px; color: var(--text); }}
+        .bin-conflict-note span {{ font-style: italic; white-space: pre-wrap; word-break: break-word; }}
+        .bin-conflict-radios {{ display: flex; gap: 14px; }}
+        .bin-conflict-radios label {{
+            font-size: 0.8em; color: var(--text-muted); cursor: pointer;
+            display: flex; align-items: center; gap: 4px;
+        }}
+        .bin-conflict-radios label:hover {{ color: var(--text); }}
+        .bin-conflict-footer {{ display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }}
+        .bin-conflict-confirm-btn {{
+            background: var(--accent); border: none; border-radius: 6px;
+            color: #fff; font-size: 0.85em; padding: 8px 20px; cursor: pointer;
+        }}
+        .bin-conflict-confirm-btn:hover {{ opacity: 0.85; }}
+        .bin-conflict-cancel-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.85em;
+            padding: 8px 16px; cursor: pointer;
+        }}
+        .bin-modal-btn.export {{ color: #58a6ff; }}
+        .bin-modal-btn.export:hover {{ border-color: #58a6ff; color: #58a6ff; }}
+        .bin-modal-btn.import {{ color: #3fb950; }}
+        .bin-modal-btn.import:hover {{ border-color: #3fb950; color: #3fb950; }}
 
         /* ── Queries view ── */
         .query-field-tabs {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }}
@@ -3990,9 +4049,13 @@ function _renderBinModal() {{
         <div class="bin-modal-row">
             <span class="bin-modal-name" title="${{escHtml(b.name)}}">${{escHtml(b.name)}}</span>
             <span class="bin-modal-count">${{b.items.length}} item${{b.items.length !== 1 ? 's' : ''}}</span>
+            <button class="bin-modal-btn export" onclick="_exportBin('${{b.id}}')">Export</button>
             <button class="bin-modal-btn" onclick="renameBin('${{b.id}}')">Rename</button>
             <button class="bin-modal-btn danger" onclick="deleteBin('${{b.id}}')">Delete</button>
-        </div>`).join('');
+        </div>`).join('') +
+        '<div style="margin-top:12px">' +
+        '<button class="bin-modal-btn import" style="width:100%;padding:7px" onclick="_importBinFile()">⬆ Import Bin…</button>' +
+        '</div>';
 }}
 function renameBin(binId) {{
     const bin = bins[binId];
@@ -4027,6 +4090,36 @@ function deleteBin(binId) {{
         '<button class="bin-modal-close" onclick="closeBinModal()">Close</button>' +
         '</div>';
     document.body.appendChild(overlay);
+
+    // Hidden file input for bin import
+    const imp = document.createElement('input');
+    imp.type    = 'file';
+    imp.id      = 'bin-import-input';
+    imp.accept  = '.json';
+    imp.style.display = 'none';
+    imp.addEventListener('change', function() {{ _handleBinImport(this); }});
+    document.body.appendChild(imp);
+
+    // Conflict modal overlay
+    const confOv = document.createElement('div');
+    confOv.id = 'bin-conflict-overlay';
+    confOv.innerHTML =
+        '<div id="bin-conflict-modal">' +
+        '<div id="bin-conflict-title" class="bin-conflict-title"></div>' +
+        '<div class="bin-conflict-batch">' +
+        '<span style="font-size:0.8em;color:var(--text-muted);align-self:center">All:</span>' +
+        '<button class="bin-conflict-batch-btn" onclick="_setBcAll(&#39;replace&#39;)">Replace All</button>' +
+        '<button class="bin-conflict-batch-btn" onclick="_setBcAll(&#39;merge&#39;)">Merge All</button>' +
+        '<button class="bin-conflict-batch-btn" onclick="_setBcAll(&#39;skip&#39;)">Skip All</button>' +
+        '</div>' +
+        '<div id="bin-conflict-list" class="bin-conflict-list"></div>' +
+        '<div class="bin-conflict-footer">' +
+        '<button class="bin-conflict-cancel-btn" onclick="_cancelBinImport()">Cancel</button>' +
+        '<button class="bin-conflict-confirm-btn" onclick="_confirmBinImport()">Import</button>' +
+        '</div>' +
+        '</div>';
+    document.body.appendChild(confOv);
+
     const menu = document.createElement('div');
     menu.id = 'bin-menu';
     menu.style.display = 'none';
@@ -5423,7 +5516,8 @@ function _renderBinNoteBanner(el) {{
         '<span class="db-bin-note-banner-text">' +
         (note ? escHtml(note) : '<em style="opacity:0.35;font-style:italic">Add a note to this bin…</em>') +
         '</span>' +
-        '<button class="db-bin-note-edit-btn" onclick="_openBinNoteEdit()">Edit note</button>';
+        '<button class="db-bin-note-edit-btn" onclick="_openBinNoteEdit()">Edit note</button>' +
+        '<button class="db-bin-note-export-btn" onclick="_exportBin(&#39;' + bin.id + '&#39;)" title="Export bin to JSON">Export ↓</button>';
     el.style.display = 'flex';
 }}
 
@@ -5457,6 +5551,186 @@ function _saveBinNote() {{
     _saveBins();
     const el = document.getElementById('db-bin-note-banner');
     if (el) _renderBinNoteBanner(el);
+}}
+
+// ── Bin export / import ──────────────────────────────────────────────────────
+
+function _exportBin(binId) {{
+    const bin = bins[binId];
+    if (!bin) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const takeNotes = [];
+    for (const row of dbRows) {{
+        if (!_rowInBin(row, bin)) continue;
+        const note = (row['_note'] || '').trim();
+        if (note) takeNotes.push({{
+            slate:  row['Slate']  || '',
+            take:   row['Take']   || '',
+            camera: row['Camera'] || '',
+            note
+        }});
+    }}
+    const payload = {{
+        version: 1, format: 'vfx_bin',
+        name: bin.name, note: bin.note || '',
+        exported_at: today,
+        items: bin.items,
+        take_notes: takeNotes
+    }};
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {{type: 'application/json'}});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = bin.name.replace(/[^a-zA-Z0-9_\-]/g, '_') + '_' + today + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+}}
+
+function _importBinFile() {{
+    const inp = document.getElementById('bin-import-input');
+    if (inp) {{ inp.value = ''; inp.click(); }}
+}}
+
+function _handleBinImport(inp) {{
+    const file = inp.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => _parseBinImport(e.target.result);
+    reader.readAsText(file);
+}}
+
+function _parseBinImport(text) {{
+    let data;
+    try {{ data = JSON.parse(text); }} catch(e) {{
+        alert('Invalid JSON file: ' + e.message); return;
+    }}
+    if (data.format !== 'vfx_bin') {{
+        alert('Not a valid bin export file.'); return;
+    }}
+    const rowByKey = {{}};
+    for (const row of dbRows) {{
+        const k = (row['Slate'] || '') + '|' + (row['Take'] || '') + '|' + (row['Camera'] || '');
+        rowByKey[k] = row;
+    }}
+    const importDate = new Date().toISOString().slice(0, 10);
+    const conflicts  = [];
+    const cleanNotes = [];
+    for (const tn of (data.take_notes || [])) {{
+        const k   = (tn.slate || '') + '|' + (tn.take || '') + '|' + (tn.camera || '');
+        const row = rowByKey[k];
+        if (!row) continue;
+        const existing = (row['_note'] || '').trim();
+        const incoming = (tn.note || '').trim();
+        if (!incoming) continue;
+        if (existing && existing !== incoming) {{
+            conflicts.push({{
+                overrideKey: row['_override_key'],
+                slate: tn.slate, take: tn.take, camera: tn.camera,
+                existing, incoming, decision: 'merge'
+            }});
+        }} else {{
+            cleanNotes.push({{overrideKey: row['_override_key'], note: incoming}});
+        }}
+    }}
+    const pending = {{data, importDate, conflicts, cleanNotes}};
+    if (conflicts.length) {{
+        _showConflictModal(pending);
+    }} else {{
+        _applyBinImport(pending);
+    }}
+}}
+
+function _showConflictModal(pending) {{
+    const overlay = document.getElementById('bin-conflict-overlay');
+    if (!overlay) return;
+    const title = document.getElementById('bin-conflict-title');
+    const list  = document.getElementById('bin-conflict-list');
+    if (title) title.textContent = 'Import "' + pending.data.name + '" — ' +
+        pending.conflicts.length + ' note conflict' + (pending.conflicts.length !== 1 ? 's' : '');
+    list.innerHTML = pending.conflicts.map((c, i) => `
+        <div class="bin-conflict-row">
+            <div class="bin-conflict-label">${{escHtml(c.slate)}} T${{escHtml(c.take)}} Cam ${{escHtml(c.camera)}}</div>
+            <div class="bin-conflict-notes">
+                <div class="bin-conflict-note"><strong>Existing</strong><span>${{escHtml(c.existing)}}</span></div>
+                <div class="bin-conflict-note"><strong>Incoming</strong><span>${{escHtml(c.incoming)}}</span></div>
+            </div>
+            <div class="bin-conflict-radios">
+                <label><input type="radio" name="bc${{i}}" value="replace" onchange="_setBcDecision(${{i}},'replace')"> Replace</label>
+                <label><input type="radio" name="bc${{i}}" value="merge" checked onchange="_setBcDecision(${{i}},'merge')"> Merge</label>
+                <label><input type="radio" name="bc${{i}}" value="skip" onchange="_setBcDecision(${{i}},'skip')"> Skip</label>
+            </div>
+        </div>`).join('');
+    window._pendingBinImport = pending;
+    overlay.style.display = 'flex';
+}}
+
+function _setBcDecision(idx, val) {{
+    if (window._pendingBinImport) window._pendingBinImport.conflicts[idx].decision = val;
+}}
+
+function _setBcAll(val) {{
+    const p = window._pendingBinImport;
+    if (!p) return;
+    p.conflicts.forEach((c, i) => {{
+        c.decision = val;
+        const radio = document.querySelector('input[name="bc' + i + '"][value="' + val + '"]');
+        if (radio) radio.checked = true;
+    }});
+}}
+
+function _cancelBinImport() {{
+    const overlay = document.getElementById('bin-conflict-overlay');
+    if (overlay) overlay.style.display = 'none';
+    window._pendingBinImport = null;
+}}
+
+async function _confirmBinImport() {{
+    const p = window._pendingBinImport;
+    if (!p) return;
+    _cancelBinImport();
+    await _applyBinImport(p);
+}}
+
+async function _applyBinImport(pending) {{
+    const {{data, importDate, cleanNotes, conflicts = []}} = pending;
+
+    // Create the new bin in localStorage
+    const newId  = 'bin_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    bins[newId] = {{id: newId, name: data.name, note: data.note || '', items: data.items || []}};
+    _saveBins();
+    _updateBinSelect();
+    _renderBinModal();
+
+    // Resolve notes
+    const toSave = [...cleanNotes];
+    for (const c of conflicts) {{
+        if (c.decision === 'skip') continue;
+        const note = c.decision === 'replace'
+            ? c.incoming
+            : c.existing + '\\n---\\n[' + importDate + '] ' + c.incoming;
+        toSave.push({{overrideKey: c.overrideKey, note}});
+    }}
+
+    // Persist notes to server
+    for (const {{overrideKey, note}} of toSave) {{
+        try {{
+            await fetch('/api/notes/save', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{key: overrideKey, text: note}})
+            }});
+        }} catch(e) {{ console.warn('Note save failed:', e); }}
+    }}
+
+    // Reload rows to pick up new notes, then re-render
+    if (toSave.length) {{
+        try {{
+            const r = await fetch('/api/database');
+            const j = await r.json();
+            if (j.success) dbRows = j.rows;
+        }} catch(e) {{ console.warn('Reload failed:', e); }}
+    }}
+    renderDatabase();
 }}
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
