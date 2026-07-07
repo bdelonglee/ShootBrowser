@@ -1751,6 +1751,14 @@ class HTMLGenerator:
             transition: border-color 0.15s, color 0.15s;
         }}
         .bin-add-btn:hover {{ border-color: #a371f7; color: #a371f7; }}
+        .bin-remove-btn {{
+            background: none; border: 1px solid var(--border);
+            border-radius: 5px; color: var(--text-muted);
+            font-size: 1em; font-weight: 700; line-height: 1;
+            padding: 1px 6px; cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+        }}
+        .bin-remove-btn:hover {{ border-color: #f47067; color: #f47067; }}
         #bin-menu {{
             position: fixed; z-index: 3000;
             background: var(--surface-2); border: 1px solid var(--border);
@@ -1976,6 +1984,84 @@ class HTMLGenerator:
             transition: border-color 0.15s, color 0.15s; white-space: nowrap;
         }}
         .export-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+
+        /* ── CSV export modal ── */
+        #csv-modal-overlay {{
+            display: none; position: fixed; inset: 0; z-index: 3000;
+            background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+        }}
+        #csv-modal {{
+            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 20px; width: 480px; max-width: 95vw; max-height: 85vh;
+            display: flex; flex-direction: column; gap: 14px; overflow: hidden;
+        }}
+        .csv-modal-title {{ font-size: 1em; font-weight: 700; color: var(--text); flex-shrink: 0; }}
+        .csv-modal-section-label {{
+            font-size: 0.72em; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+        }}
+        .csv-preset-row {{ display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }}
+        .csv-preset-select {{
+            flex: 1; min-width: 120px; background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.82em; padding: 5px 8px;
+        }}
+        .csv-preset-btn {{
+            background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px;
+            color: var(--text-muted); font-size: 0.78em; padding: 4px 10px; cursor: pointer;
+            transition: all 0.15s; white-space: nowrap;
+        }}
+        .csv-preset-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .csv-preset-btn.danger:hover {{ border-color: #f47067; color: #f47067; }}
+        .csv-preset-save-row {{ display: flex; gap: 6px; margin-top: 6px; }}
+        .csv-preset-name-input {{
+            flex: 1; background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.82em; padding: 5px 8px;
+        }}
+        .csv-preset-name-input:focus {{ outline: none; border-color: var(--accent); }}
+        .csv-col-list {{
+            overflow-y: auto; max-height: 260px; display: flex; flex-direction: column;
+            gap: 3px; flex-shrink: 1;
+        }}
+        .csv-col-row {{
+            display: flex; align-items: center; gap: 6px;
+            background: var(--surface-2); border-radius: 5px; padding: 4px 8px;
+        }}
+        .csv-col-row label {{ flex: 1; font-size: 0.83em; cursor: pointer; }}
+        .csv-col-arrow {{
+            background: none; border: none; color: var(--text-muted); cursor: pointer;
+            font-size: 0.85em; padding: 0 3px; line-height: 1;
+        }}
+        .csv-col-arrow:hover {{ color: var(--text); }}
+        .csv-col-arrow:disabled {{ opacity: 0.25; cursor: default; }}
+        .csv-col-check-row {{ display: flex; gap: 8px; margin-top: 4px; flex-shrink: 0; }}
+        .csv-col-check-btn {{
+            background: none; border: 1px solid var(--border); border-radius: 4px;
+            color: var(--text-muted); font-size: 0.75em; padding: 2px 8px; cursor: pointer;
+            transition: all 0.15s;
+        }}
+        .csv-col-check-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .csv-sort-row {{ display: flex; gap: 8px; align-items: center; flex-shrink: 0; }}
+        .csv-sort-select {{
+            flex: 1; background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.82em; padding: 5px 8px;
+        }}
+        .csv-sort-dir-btn {{
+            background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px;
+            color: var(--text-muted); font-size: 0.82em; padding: 5px 12px; cursor: pointer;
+            transition: all 0.15s; white-space: nowrap;
+        }}
+        .csv-sort-dir-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .csv-modal-footer {{ display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0; }}
+        .csv-export-btn {{
+            background: var(--accent); border: none; border-radius: 6px;
+            color: #fff; font-size: 0.85em; padding: 8px 20px; cursor: pointer;
+        }}
+        .csv-export-btn:hover {{ opacity: 0.85; }}
+        .csv-cancel-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.85em;
+            padding: 8px 16px; cursor: pointer;
+        }}
         .extract-status {{ font-size: 0.78em; color: var(--text-muted); }}
         .extract-status.ok  {{ color: #56d364; }}
         .extract-status.err {{ color: #f85149; }}
@@ -2193,7 +2279,7 @@ class HTMLGenerator:
         </select>
         <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
         <span id="db-stats-bar" class="db-stats-bar"></span>
-        <button class="export-btn" onclick="exportDbCsv()" title="Export filtered rows as CSV">⬇ Export CSV</button>
+        <button class="export-btn" onclick="openCsvExportModal()" title="Export filtered rows as CSV">⬇ Export CSV</button>
         <button class="export-btn" id="export-pdf-btn" onclick="exportDbPdf()" title="Export filtered rows as PDF report">⬇ Export PDF</button>
       </div>
       <div class="db-filter-row">
@@ -3813,29 +3899,231 @@ function renderQueries() {{
     }}).join('');
 }}
 
-function exportDbCsv() {{
-    const rows = dbRows.filter(dbRowMatches);
-    if (!rows.length) return;
-    const ORDERED = [
-        'Slate','VFX ID','Take','Roll','Take Notes','Scene Description','Notes',
-        'VFX Work','Camera','Body','Camera Move','Resolution','Lens','Focal',
-        'F-Stop','Focus','Tilt','Height','Shutter','FPS','WB','ISO','Filter',
-        'Shoot Day','Date','Set Location','Script Location','Int/Ext','Day/Night',
-        'Unit','Timestamp','Set Refs',
-    ];
-    const allCols  = Object.keys(rows[0]).filter(c => !c.startsWith('_'));
-    const ordered  = ORDERED.filter(c => allCols.includes(c));
-    const rest     = allCols.filter(c => !ORDERED.includes(c));
-    const cols     = [...ordered, ...rest];
-    const esc      = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-    const lines    = [cols.map(esc).join(',')];
-    for (const row of rows) lines.push(cols.map(c => esc(row[c])).join(','));
+// ── CSV export modal ──────────────────────────────────────────────────────────
+
+const CSV_PRESETS_KEY = 'vfx_csv_presets';
+const CSV_ORDERED = [
+    'Slate','VFX ID','Take','Roll','Take Notes','Scene Description','Notes',
+    'VFX Work','Camera','Body','Camera Move','Resolution','Lens','Focal',
+    'F-Stop','Focus','Tilt','Height','Shutter','FPS','WB','ISO','Filter',
+    'Shoot Day','Date','Set Location','Script Location','Int/Ext','Day/Night',
+    'Unit','Timestamp','Set Refs','Wrangler',
+];
+
+let csvPresets     = {{}};
+let csvModalCols   = [];   // [{{field, on}}]
+let csvModalSort   = {{ key: 'Slate', asc: true }};
+
+function _loadCsvPresets() {{
+    try {{ csvPresets = JSON.parse(localStorage.getItem(CSV_PRESETS_KEY) || '{{}}'); }}
+    catch(e) {{ csvPresets = {{}}; }}
+}}
+function _saveCsvPresets() {{
+    localStorage.setItem(CSV_PRESETS_KEY, JSON.stringify(csvPresets));
+}}
+
+function _csvDefaultCols() {{
+    if (!dbRows.length) return [];
+    const all  = Object.keys(dbRows[0]).filter(c => !c.startsWith('_'));
+    const ord  = CSV_ORDERED.filter(c => all.includes(c));
+    const rest = all.filter(c => !CSV_ORDERED.includes(c));
+    return [...ord, ...rest].map(f => ({{ field: f, on: true }}));
+}}
+
+function openCsvExportModal() {{
+    _loadCsvPresets();
+    if (!csvModalCols.length) csvModalCols = _csvDefaultCols();
+    const ov = document.getElementById('csv-modal-overlay');
+    if (ov) {{ _renderCsvModal(); ov.style.display = 'flex'; }}
+}}
+function closeCsvExportModal() {{
+    const ov = document.getElementById('csv-modal-overlay');
+    if (ov) ov.style.display = 'none';
+}}
+
+function _renderCsvModal() {{
+    const modal = document.getElementById('csv-modal');
+    if (!modal) return;
+
+    // Presets section
+    const pArr = Object.values(csvPresets);
+    const presetSelect = '<select id="csv-preset-sel" class="csv-preset-select" onchange="_onCsvPresetChange()">' +
+        '<option value="">— select preset —</option>' +
+        pArr.map(p => '<option value="' + escHtml(p.id) + '">' + escHtml(p.name) + '</option>').join('') +
+        '</select>';
+
+    // Columns section
+    const colRows = csvModalCols.map((c, i) =>
+        '<div class="csv-col-row">' +
+        '<input type="checkbox" id="csv-c-' + i + '"' + (c.on ? ' checked' : '') +
+            ' onchange="_csvToggleCol(' + i + ',this.checked)">' +
+        '<label for="csv-c-' + i + '">' + escHtml(c.field) + '</label>' +
+        '<button class="csv-col-arrow" onclick="_csvColUp(' + i + ')" ' + (i === 0 ? 'disabled' : '') + '>↑</button>' +
+        '<button class="csv-col-arrow" onclick="_csvColDown(' + i + ')" ' + (i === csvModalCols.length - 1 ? 'disabled' : '') + '>↓</button>' +
+        '</div>'
+    ).join('');
+
+    // Sort section
+    const enabledCols = csvModalCols.filter(c => c.on);
+    const sortOptions = enabledCols.map(c =>
+        '<option value="' + escHtml(c.field) + '"' + (c.field === csvModalSort.key ? ' selected' : '') + '>' +
+        escHtml(c.field) + '</option>'
+    ).join('');
+
+    modal.innerHTML =
+        '<div class="csv-modal-title">Export CSV</div>' +
+
+        '<div>' +
+        '<div class="csv-modal-section-label">Presets</div>' +
+        '<div class="csv-preset-row">' +
+        presetSelect +
+        '<button class="csv-preset-btn" onclick="_csvLoadPreset()">Load</button>' +
+        '<button class="csv-preset-btn" onclick="_csvRenamePreset()">Rename</button>' +
+        '<button class="csv-preset-btn danger" onclick="_csvDeletePreset()">Delete</button>' +
+        '</div>' +
+        '<div class="csv-preset-save-row">' +
+        '<input class="csv-preset-name-input" id="csv-preset-name" type="text" placeholder="Preset name…">' +
+        '<button class="csv-preset-btn" onclick="_csvSavePreset()">Save as preset</button>' +
+        '</div>' +
+        '</div>' +
+
+        '<div style="flex:1;min-height:0;display:flex;flex-direction:column">' +
+        '<div class="csv-modal-section-label">Columns</div>' +
+        '<div class="csv-col-check-row">' +
+        '<button class="csv-col-check-btn" onclick="_csvCheckAll(true)">All</button>' +
+        '<button class="csv-col-check-btn" onclick="_csvCheckAll(false)">None</button>' +
+        '</div>' +
+        '<div class="csv-col-list" style="margin-top:6px">' + colRows + '</div>' +
+        '</div>' +
+
+        '<div>' +
+        '<div class="csv-modal-section-label">Sort</div>' +
+        '<div class="csv-sort-row">' +
+        '<select class="csv-sort-select" id="csv-sort-key" onchange="_csvSortKeyChange(this.value)">' +
+        sortOptions +
+        '</select>' +
+        '<button class="csv-sort-dir-btn" id="csv-sort-dir" onclick="_csvToggleSortDir()">' +
+        (csvModalSort.asc ? '↑ Asc' : '↓ Desc') + '</button>' +
+        '</div>' +
+        '</div>' +
+
+        '<div class="csv-modal-footer">' +
+        '<button class="csv-cancel-btn" onclick="closeCsvExportModal()">Cancel</button>' +
+        '<button class="csv-export-btn" onclick="_doExportCsv()">Export CSV</button>' +
+        '</div>';
+}}
+
+function _csvToggleCol(i, on) {{
+    csvModalCols[i].on = on;
+    // Refresh sort dropdown only
+    const sel = document.getElementById('csv-sort-key');
+    if (sel) {{
+        const enabled = csvModalCols.filter(c => c.on);
+        sel.innerHTML = enabled.map(c =>
+            '<option value="' + escHtml(c.field) + '"' + (c.field === csvModalSort.key ? ' selected' : '') + '>' +
+            escHtml(c.field) + '</option>'
+        ).join('');
+    }}
+}}
+function _csvColUp(i) {{
+    if (i < 1) return;
+    [csvModalCols[i-1], csvModalCols[i]] = [csvModalCols[i], csvModalCols[i-1]];
+    _renderCsvModal();
+}}
+function _csvColDown(i) {{
+    if (i >= csvModalCols.length - 1) return;
+    [csvModalCols[i], csvModalCols[i+1]] = [csvModalCols[i+1], csvModalCols[i]];
+    _renderCsvModal();
+}}
+function _csvCheckAll(on) {{
+    csvModalCols.forEach(c => c.on = on);
+    _renderCsvModal();
+}}
+function _csvSortKeyChange(val) {{ csvModalSort.key = val; }}
+function _csvToggleSortDir() {{
+    csvModalSort.asc = !csvModalSort.asc;
+    const btn = document.getElementById('csv-sort-dir');
+    if (btn) btn.textContent = csvModalSort.asc ? '↑ Asc' : '↓ Desc';
+}}
+
+function _csvCurrentConfig() {{
+    return {{ cols: csvModalCols.map(c => ({{...c}})), sortKey: csvModalSort.key, sortAsc: csvModalSort.asc }};
+}}
+function _csvApplyConfig(cfg) {{
+    csvModalCols  = (cfg.cols || []).map(c => ({{...c}}));
+    csvModalSort  = {{ key: cfg.sortKey || 'Slate', asc: cfg.sortAsc !== false }};
+}}
+
+function _onCsvPresetChange() {{}}   // selection only — user must click Load
+
+function _csvLoadPreset() {{
+    const sel = document.getElementById('csv-preset-sel');
+    const id  = sel ? sel.value : '';
+    if (!id || !csvPresets[id]) return;
+    _csvApplyConfig(csvPresets[id]);
+    _renderCsvModal();
+}}
+function _csvSavePreset() {{
+    const inp  = document.getElementById('csv-preset-name');
+    const name = inp ? inp.value.trim() : '';
+    if (!name) {{ alert('Enter a preset name.'); return; }}
+    const id   = 'csvp_' + Date.now();
+    csvPresets[id] = {{ id, name, ..._csvCurrentConfig() }};
+    _saveCsvPresets();
+    if (inp) inp.value = '';
+    _renderCsvModal();
+}}
+function _csvRenamePreset() {{
+    const sel = document.getElementById('csv-preset-sel');
+    const id  = sel ? sel.value : '';
+    if (!id || !csvPresets[id]) {{ alert('Select a preset to rename.'); return; }}
+    const name = prompt('Rename preset:', csvPresets[id].name);
+    if (!name || !name.trim()) return;
+    csvPresets[id].name = name.trim();
+    _saveCsvPresets();
+    _renderCsvModal();
+}}
+function _csvDeletePreset() {{
+    const sel = document.getElementById('csv-preset-sel');
+    const id  = sel ? sel.value : '';
+    if (!id || !csvPresets[id]) {{ alert('Select a preset to delete.'); return; }}
+    if (!confirm('Delete preset "' + csvPresets[id].name + '"?')) return;
+    delete csvPresets[id];
+    _saveCsvPresets();
+    _renderCsvModal();
+}}
+
+function _doExportCsv() {{
+    // Read sort key from DOM in case user changed it without triggering onchange
+    const sortSel = document.getElementById('csv-sort-key');
+    if (sortSel) csvModalSort.key = sortSel.value;
+
+    const cols = csvModalCols.filter(c => c.on).map(c => c.field);
+    if (!cols.length) {{ alert('Select at least one column.'); return; }}
+
+    const filtered = dbRows.filter(dbRowMatches);
+    if (!filtered.length) return;
+
+    const sortKey = csvModalSort.key;
+    const sortAsc = csvModalSort.asc;
+    const sorted  = [...filtered].sort((a, b) => {{
+        const av = (a[sortKey] ?? ''), bv = (b[sortKey] ?? '');
+        const cmp = (typeof av === 'number' && typeof bv === 'number')
+            ? av - bv : String(av).localeCompare(String(bv));
+        return sortAsc ? cmp : -cmp;
+    }});
+
+    const esc   = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const lines = [cols.map(esc).join(',')];
+    for (const row of sorted) lines.push(cols.map(c => esc(row[c])).join(','));
+
     const blob = new Blob([lines.join('\\r\\n')], {{ type: 'text/csv' }});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url; a.download = 'database_export.csv';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+    closeCsvExportModal();
 }}
 
 async function exportDbPdf() {{
@@ -3953,6 +4241,57 @@ function _removeItemFromBin(binId, item) {{
     renderDatabase();
     _updateBinSelect();
     closeBinMenu();
+}}
+function _confirmRemoveFromBin(e, btn) {{
+    e.stopPropagation();
+    const slate = btn.dataset.slate || '';
+    const take  = btn.dataset.take  || '';
+    const cam   = btn.dataset.cam   || '';
+    const item  = {{type:'take', slate, take, camera: cam}};
+    if (activeBinId && bins[activeBinId]) {{
+        // Inside a bin — confirm then remove directly
+        const bin   = bins[activeBinId];
+        const label = 'T' + take + (cam ? '  Cam ' + cam : '') + '  Slate ' + slate;
+        if (!confirm('Remove ' + label + ' from bin "' + bin.name + '"?')) return;
+        _removeItemFromBin(activeBinId, item);
+    }} else {{
+        // Outside any bin — show menu of bins containing this take
+        _openRemoveMenu(e, btn, item);
+    }}
+}}
+function _openRemoveMenu(e, btn, item) {{
+    const containing = Object.values(bins).filter(b => _rowInBin({{
+        'Slate': item.slate, 'Take': item.take, 'Camera': item.camera
+    }}, b));
+    if (!containing.length) return;
+    const menu = document.getElementById('bin-menu');
+    const label = 'T' + item.take + (item.camera ? '  Cam ' + item.camera : '') + '  Slate ' + item.slate;
+    menu.innerHTML =
+        '<div class="bin-menu-section-label">REMOVE ' + escHtml(label) + ' FROM</div>' +
+        containing.map(b =>
+            '<div class="bin-menu-item" onclick="_doRemoveFromBin(' +
+            '&#39;' + b.id + '&#39;,' +
+            '&#39;' + escHtml(item.slate)  + '&#39;,' +
+            '&#39;' + escHtml(item.take)   + '&#39;,' +
+            '&#39;' + escHtml(item.camera) + '&#39;' +
+            ')">' +
+            '<span class="bin-menu-icon">−</span>' + escHtml(b.name) +
+            '</div>'
+        ).join('');
+    menu.style.display = 'block';
+    const rect = btn.getBoundingClientRect();
+    const mw   = menu.offsetWidth  || 220;
+    const mh   = menu.offsetHeight || 120;
+    let top  = rect.bottom + 6;
+    let left = rect.left;
+    if (left + mw > window.innerWidth  - 8) left = window.innerWidth  - mw - 8;
+    if (top  + mh > window.innerHeight - 8) top  = rect.top - mh - 6;
+    menu.style.top  = top  + 'px';
+    menu.style.left = left + 'px';
+}}
+function _doRemoveFromBin(binId, slate, take, camera) {{
+    closeBinMenu();
+    _removeItemFromBin(binId, {{type:'take', slate, take, camera}});
 }}
 function _createBinAndAdd(item) {{
     closeBinMenu();
@@ -4394,9 +4733,16 @@ function renderDbCard(row, idx) {{
     const binBadge = rowBinsList.length
         ? `<span class="bin-badge"><span class="bin-badge-tooltip">${{rowBinsList.map(b => escHtml(b.name)).join('\\n')}}</span>${{rowBinsList.length}} bin${{rowBinsList.length > 1 ? 's' : ''}}</span>`
         : '';
-    const addBinBtn = `<button class="bin-add-btn" onclick="openBinMenu(event,this)"
-        data-slate="${{escHtml(slate)}}" data-take="${{escHtml(row['Take'] || '')}}" data-cam="${{escHtml(row['Camera'] || '')}}"
-        title="Add to bin">+</button>`;
+    const _inAnyBin = rowBinsList.length > 0;
+    const addBinBtn =
+        `<button class="bin-add-btn" onclick="openBinMenu(event,this)"
+            data-slate="${{escHtml(slate)}}" data-take="${{escHtml(row['Take'] || '')}}" data-cam="${{escHtml(row['Camera'] || '')}}"
+            title="Add to bin">+</button>` +
+        (_inAnyBin
+            ? `<button class="bin-remove-btn"
+                data-slate="${{escHtml(slate)}}" data-take="${{escHtml(row['Take']||'')}}" data-cam="${{escHtml(row['Camera']||'')}}"
+                onclick="_confirmRemoveFromBin(event,this)" title="Remove from bin">−</button>`
+            : '');
     const takeNum     = row['Take'] || '';
     const vfxPass     = _isVfxPass(row);
     const hasEdits    = (row['_edited_fields'] || []).length > 0;
@@ -5732,6 +6078,14 @@ async function _applyBinImport(pending) {{
     }}
     renderDatabase();
 }}
+
+;(function() {{
+    const ov = document.createElement('div');
+    ov.id = 'csv-modal-overlay';
+    ov.addEventListener('click', e => {{ if (e.target === ov) closeCsvExportModal(); }});
+    ov.innerHTML = '<div id="csv-modal"></div>';
+    document.body.appendChild(ov);
+}})();
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 let _lbSlate = '';

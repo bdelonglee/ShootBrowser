@@ -1341,8 +1341,11 @@ def main() -> None:
     print("\n" + "=" * 60)
     print("🎬  VFX SHOOT BROWSER — Local Server")
     print("=" * 60)
+    _db_file, _ = _find_db_json_file()
+    _db_label   = str(_db_file) if _db_file else "— not found —"
     print(f"  Root     : {PROJECT_ROOT}")
     print(f"  Data     : {DATA_DIR}")
+    print(f"  Database : {_db_label}")
     print(f"  Delivery : {DELIVERY_DIR}")
     print(f"  Lidar    : {LIDAR_DIR}")
     print(f"  Assets   : {ASSETS_DIR}")
