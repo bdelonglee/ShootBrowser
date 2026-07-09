@@ -127,6 +127,28 @@ def api_generate_offline_html():
     return jsonify({"success": True, "path": out})
 
 
+@app.route("/api/export-db-html", methods=["POST"])
+def api_export_db_html():
+    """Build a self-contained offline HTML page containing only the supplied rows."""
+    try:
+        body = request.json or {}
+        rows = body.get("rows") or []
+        g    = make_generator()
+        html = g._build_html(
+            g.build_data(),
+            offline_data={"db_rows": rows, "delivered": [], "photos": {}},
+            db_only=True,
+        )
+        from io import BytesIO
+        buf = BytesIO(html.encode("utf-8"))
+        buf.seek(0)
+        return send_file(buf, mimetype="text/html",
+                         as_attachment=True, download_name="database_export.html")
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/offline-site/<path:filename>")
 def offline_site_file(filename):
     """Serve the generated OfflineSite directory (HTML + photos)."""

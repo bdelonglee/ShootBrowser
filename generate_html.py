@@ -497,14 +497,15 @@ class HTMLGenerator:
                 pass
         return packages
 
-    def _build_html(self, data: dict, offline_data: Optional[dict] = None) -> str:
+    def _build_html(self, data: dict, offline_data: Optional[dict] = None, db_only: bool = False) -> str:
         data_json         = json.dumps(data, indent=2)
         delivery_cfg_json = json.dumps({
             'vendors':            self.vendors,
             'default_output_dir': self.default_output_dir,
         })
         generated_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        offline_mode         = offline_data is not None
+        offline_mode         = offline_data is not None or db_only
+        db_only_mode         = db_only
         offline_db_json      = json.dumps(offline_data['db_rows']   if offline_data else [])
         offline_del_json     = json.dumps(offline_data['delivered']  if offline_data else [])
         offline_photos_json  = json.dumps(offline_data['photos']    if offline_data else {})
@@ -1984,6 +1985,11 @@ class HTMLGenerator:
             transition: border-color 0.15s, color 0.15s; white-space: nowrap;
         }}
         .export-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .export-btn:disabled {{ opacity: 0.5; cursor: default; }}
+        .db-export-btns {{ display: flex; gap: 4px; align-items: center; flex-shrink: 0; }}
+        .db-only-mode .tab-bar,
+        .db-only-mode #offline-html-btn,
+        .db-only-mode #offline-html-status {{ display: none !important; }}
 
         /* ── CSV export modal ── */
         #csv-modal-overlay {{
@@ -2348,8 +2354,6 @@ class HTMLGenerator:
         </select>
         <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
         <span id="db-stats-bar" class="db-stats-bar"></span>
-        <button class="export-btn" onclick="openCsvExportModal()" title="Export filtered rows as CSV">⬇ Export CSV</button>
-        <button class="export-btn" id="export-pdf-btn" onclick="openPdfExportModal()" title="Export filtered rows as PDF report">⬇ Export PDF</button>
       </div>
       <div class="db-filter-row">
         <div class="db-filter-field">
@@ -2422,6 +2426,11 @@ class HTMLGenerator:
             <input type="checkbox" id="show-edited-cb" onchange="setShowEditedOnly(this.checked)">
             <span style="line-height:1.2;text-align:left">EDITED<br>ONLY</span>
           </label>
+        </div>
+        <div class="db-filter-field db-export-btns">
+          <button class="export-btn" onclick="openCsvExportModal()" title="Export filtered rows as CSV">⬇ CSV</button>
+          <button class="export-btn" id="export-pdf-btn" onclick="openPdfExportModal()" title="Export filtered rows as PDF report">⬇ PDF</button>
+          <button class="export-btn" id="export-html-btn" onclick="_doExportDbHtml()" title="Export filtered takes as offline HTML">⬇ HTML</button>
         </div>
       </div>
       <div id="db-pin-banner" class="db-pin-banner" style="display:none;margin-top:12px">
@@ -2564,6 +2573,7 @@ class HTMLGenerator:
 const data           = {data_json};
 const deliveryCfg    = {delivery_cfg_json};
 const OFFLINE_MODE   = {'true' if offline_mode else 'false'};
+const DB_ONLY_MODE   = {'true' if db_only_mode else 'false'};
 const offlineDbRows    = {offline_db_json};
 const offlineDelivered = {offline_del_json};
 const offlinePhotos    = {offline_photos_json};
@@ -2721,8 +2731,8 @@ function _restoreUiState() {{
             const cb = document.getElementById('show-edited-cb');
             if (cb) cb.checked = true;
         }}
-        // Active tab — restore last
-        if (s.view && ['browse','database','queries','lidar','queue','delivered'].includes(s.view)) {{
+        // Active tab — restore last (skip in db-only exports)
+        if (!DB_ONLY_MODE && s.view && ['browse','database','queries','lidar','queue','delivered'].includes(s.view)) {{
             setView(s.view);
         }}
     }} catch(e) {{}}
@@ -4195,6 +4205,39 @@ function _doExportCsv() {{
     closeCsvExportModal();
 }}
 
+// ── Offline DB HTML export ────────────────────────────────────────────────────
+
+async function _doExportDbHtml() {{
+    if (OFFLINE_MODE) return;
+    const rows = dbRows.filter(dbRowMatches);
+    if (!rows.length) {{ alert('No rows to export.'); return; }}
+
+    const btn = document.getElementById('export-html-btn');
+    if (btn) {{ btn.disabled = true; btn.textContent = '⏳'; }}
+
+    try {{
+        const res = await fetch('/api/export-db-html', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ rows }}),
+        }});
+        if (!res.ok) {{
+            const err = await res.json().catch(() => ({{}}));
+            alert('HTML export failed: ' + (err.error || res.statusText));
+            return;
+        }}
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url;
+        a.download = 'database_export.html';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }} finally {{
+        if (btn) {{ btn.disabled = false; btn.textContent = '⬇ HTML'; }}
+    }}
+}}
+
 // ── PDF export modal ──────────────────────────────────────────────────────────
 
 const PDF_PRESETS_KEY = 'vfx_pdf_presets';
@@ -5462,6 +5505,10 @@ updateQueueBadge();
 _loadBins();
 _updateBinSelect();
 _restoreUiState();
+if (DB_ONLY_MODE) {{
+    document.body.classList.add('db-only-mode');
+    setView('database');
+}}
 render();
 
 // ── Slate extraction ──────────────────────────────────────────────────────────
