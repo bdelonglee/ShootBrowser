@@ -933,11 +933,44 @@ def api_open_folder():
 
 # ── PDF export ───────────────────────────────────────────────────────────────
 
+PDF_INFO_FIELD_DEFAULTS = [
+    'VFX ID', 'Set Location', 'Int/Ext', 'Day/Night',
+    'Unit', 'Shoot Day', 'Date', 'Wrangler', 'Set Refs',
+]
+PDF_TAKE_COL_DEFAULTS = [
+    {'field': 'Take',           'label': 'Take'},
+    {'field': 'Camera',         'label': 'Camera'},
+    {'field': 'Roll',           'label': 'Roll'},
+    {'field': 'Lens',           'label': 'Lens'},
+    {'field': 'Focal',          'label': 'Focal'},
+    {'field': 'Shutter',        'label': 'Shutter'},
+    {'field': 'FPS',            'label': 'FPS'},
+    {'field': 'F-Stop',         'label': 'f-stop'},
+    {'field': 'VFX Pass / Ref', 'label': 'VFX'},
+]
+PDF_TAKE_COL_WEIGHTS = {
+    'Take': 1.0, 'Camera': 1.2, 'Roll': 2.2, 'Lens': 3.5, 'Focal': 1.2,
+    'Shutter': 1.5, 'FPS': 1.0, 'F-Stop': 1.0, 'VFX Pass / Ref': 1.5,
+    'Body': 1.5, 'Camera Move': 2.0, 'Resolution': 1.3, 'Focus': 1.1,
+    'Tilt': 1.1, 'Height': 1.1, 'WB': 1.1, 'ISO': 1.1, 'Filter': 1.3,
+    'Take Notes': 3.0, '_note': 3.0,
+}
+PDF_TAKE_COL_STYLES = {
+    'Take': 'center', 'Camera': 'center', 'Focal': 'center',
+    'Shutter': 'center', 'FPS': 'center', 'F-Stop': 'center',
+    'Roll': 'mono', 'VFX Pass / Ref': 'vfx', 'Resolution': 'center',
+    'Focus': 'center', 'Tilt': 'center', 'Height': 'center',
+    'WB': 'center', 'ISO': 'center',
+}
+
 def _generate_pdf(buf, project_name: str, ordered_slates: list,
-                  slate_rows: dict, records_by_slate: dict) -> None:
+                  slate_rows: dict, records_by_slate: dict,
+                  info_fields=None, take_cols=None,
+                  show_vfx_work=True, show_notes=True,
+                  landscape=True) -> None:
     """Render a PDF report into buf (a writable file-like object)."""
     try:
-        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.pagesizes import A4, landscape as _landscape
         from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
                                         Table, TableStyle, Image, PageBreak)
         from reportlab.lib.styles import ParagraphStyle
@@ -950,9 +983,14 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
             "reportlab is not installed. Run: pip install reportlab"
         )
 
-    PAGE_W, PAGE_H = A4
+    if info_fields is None:
+        info_fields = PDF_INFO_FIELD_DEFAULTS
+    if take_cols is None:
+        take_cols = PDF_TAKE_COL_DEFAULTS
+
+    PAGE_W, PAGE_H = _landscape(A4) if landscape else A4
     MARGIN = 18 * mm
-    CW     = PAGE_W - 2 * MARGIN          # usable content width ≈ 174 mm
+    CW     = PAGE_W - 2 * MARGIN
 
     # ── Palette ───────────────────────────────────────────────────────
     NAVY   = colors.HexColor('#1a2942')
@@ -997,7 +1035,7 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
 
     # ── Document ──────────────────────────────────────────────────────
     doc = SimpleDocTemplate(
-        buf, pagesize=A4,
+        buf, pagesize=(_landscape(A4) if landscape else A4),
         leftMargin=MARGIN, rightMargin=MARGIN,
         topMargin=MARGIN,  bottomMargin=14 * mm,
         title=f"{project_name} — VFX Database Export",
@@ -1065,10 +1103,6 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
     story.append(PageBreak())
 
     # ── Slate pages ───────────────────────────────────────────────────
-    # Take table column widths (sum = CW ≈ 174 mm)
-    TCW   = [11*mm, 14*mm, 25*mm, 50*mm, 15*mm, 18*mm, 11*mm, 12*mm, 18*mm]
-    T_HDR = ['Take', 'Camera', 'Roll', 'Lens', 'Focal', 'Shutter', 'FPS', 'f-stop', 'VFX']
-
     for slate_id in ordered_slates:
         rows   = slate_rows.get(slate_id, [])
         if not rows:
@@ -1095,31 +1129,67 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
         ]))
         story.append(hdr)
 
-        # Info grid (9 fields, 3 columns)
-        ILW = 22 * mm
-        IVW = (CW - 3 * ILW) / 3
-        info_tbl = Table([
-            [Paragraph('VFX ID',       sty_label), Paragraph(_v('VFX ID'),       sty_value),
-             Paragraph('Set Location', sty_label), Paragraph(_v('Set Location'), sty_value),
-             Paragraph('Int / Ext',    sty_label), Paragraph(_v('Int/Ext'),      sty_value)],
-            [Paragraph('Day / Night',  sty_label), Paragraph(_v('Day/Night'),    sty_value),
-             Paragraph('Unit',         sty_label), Paragraph(_v('Unit'),         sty_value),
-             Paragraph('Shoot Day',    sty_label), Paragraph(_v('Shoot Day'),    sty_value)],
-            [Paragraph('Date',         sty_label), Paragraph(_v('Date'),         sty_value),
-             Paragraph('Wrangler',     sty_label), Paragraph(_v('Wrangler'),     sty_value),
-             Paragraph('Set Refs',     sty_label), Paragraph(_v('Set Refs'),     sty_value)],
-        ], colWidths=[ILW, IVW] * 3)
-        info_tbl.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,-1), BGRAY),
-            ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
-            ('PADDING',    (0,0), (-1,-1), 5),
-            ('VALIGN',     (0,0), (-1,-1), 'TOP'),
-        ]))
-        story.append(Spacer(1, 1.5 * mm))
-        story.append(info_tbl)
+        # Reference photos — right after header
+        if record:
+            pics     = (record.get('referencePictures') or [])[:4]
+            img_bufs = []
+            for pic in pics:
+                try:
+                    b64 = pic.split(',', 1)[1] if pic.startswith('data:') else pic
+                    img_bufs.append(io.BytesIO(base64.b64decode(b64)))
+                except Exception:
+                    pass
 
-        # VFX Work and Notes (full-width, only if non-empty)
-        for lbl, key in [('VFX Work', 'VFX Work'), ('Notes', 'Notes')]:
+            if img_bufs:
+                n     = len(img_bufs)
+                ncols = min(n, 4)
+                ph_w  = (CW - (ncols - 1) * 3 * mm) / ncols
+                ph_h  = 60 * mm
+
+                ph_row = []
+                for j in range(ncols):
+                    try:
+                        ph_row.append(Image(img_bufs[j], width=ph_w, height=ph_h, kind='bound'))
+                    except Exception:
+                        ph_row.append('')
+
+                ph_tbl = Table([ph_row], colWidths=[ph_w] * ncols)
+                ph_tbl.setStyle(TableStyle([
+                    ('ALIGN',   (0,0), (-1,-1), 'CENTER'),
+                    ('VALIGN',  (0,0), (-1,-1), 'MIDDLE'),
+                    ('PADDING', (0,0), (-1,-1), 3),
+                ]))
+                story.append(Spacer(1, 1.5 * mm))
+                story.append(ph_tbl)
+
+        # Info grid (dynamic fields, 3 columns)
+        if info_fields:
+            ILW = 22 * mm
+            IVW = (CW - 3 * ILW) / 3
+            cells = [(f, _v(f)) for f in info_fields]
+            while len(cells) % 3:
+                cells.append(('', ''))
+            info_rows = []
+            for i in range(0, len(cells), 3):
+                row = []
+                for lbl, val in cells[i:i+3]:
+                    row += [Paragraph(lbl, sty_label), Paragraph(val, sty_value)]
+                info_rows.append(row)
+            info_tbl = Table(info_rows, colWidths=[ILW, IVW] * 3)
+            info_tbl.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), BGRAY),
+                ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
+                ('PADDING',    (0,0), (-1,-1), 5),
+                ('VALIGN',     (0,0), (-1,-1), 'TOP'),
+            ]))
+            story.append(Spacer(1, 1.5 * mm))
+            story.append(info_tbl)
+
+        # VFX Work and Notes (full-width, optional)
+        text_sections = []
+        if show_vfx_work: text_sections.append(('VFX Work', 'VFX Work'))
+        if show_notes:    text_sections.append(('Notes', 'Notes'))
+        for lbl, key in text_sections:
             text = (first.get(key, '') or '').strip()
             if text:
                 ft = Table(
@@ -1158,86 +1228,61 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
         story.append(Spacer(1, 1.5 * mm))
         story.append(sum_tbl)
 
-        # Take table
+        # Take table (dynamic columns)
         def _sort_key(r):
             m = re.match(r'(\d+)', r.get('Take', '') or '')
             return int(m.group(1)) if m else 9999
 
         sorted_rows = sorted(rows, key=_sort_key)
-        take_data   = [[Paragraph(h, sty_th) for h in T_HDR]]
-        for r in sorted_rows:
-            is_vfx = (r.get('VFX Pass / Ref') or '').strip().lower() == 'yes'
-            take_data.append([
-                Paragraph(r.get('Take',    '') or '—', sty_tc_c),
-                Paragraph(r.get('Camera',  '') or '—', sty_tc_c),
-                Paragraph(r.get('Roll',    '') or '—', sty_mono),
-                Paragraph(r.get('Lens',    '') or '—', sty_tc),
-                Paragraph(r.get('Focal',   '') or '—', sty_tc_c),
-                Paragraph(r.get('Shutter', '') or '—', sty_tc_c),
-                Paragraph(r.get('FPS',     '') or '—', sty_tc_c),
-                Paragraph(r.get('F-Stop',  '') or '—', sty_tc_c),
-                Paragraph('YES' if is_vfx else '',       sty_vfx),
-            ])
 
-        bg_cmds = [
-            ('BACKGROUND', (0, i+1), (-1, i+1),
-             colors.HexColor('#edfaf2')
-             if (sorted_rows[i].get('VFX Pass / Ref') or '').strip().lower() == 'yes'
-             else (colors.white if i % 2 == 0 else BGRAY))
-            for i in range(len(sorted_rows))
-        ]
-        take_tbl = Table(take_data, colWidths=TCW, repeatRows=1)
-        take_tbl.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), BLUE),
-            ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
-            ('PADDING',    (0,0), (-1,-1), 4),
-            ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
-        ] + bg_cmds))
-        story.append(Spacer(1, 1.5 * mm))
-        story.append(take_tbl)
+        if take_cols:
+            total_w = sum(PDF_TAKE_COL_WEIGHTS.get(c['field'], 1.5) for c in take_cols)
+            tcw     = [CW * PDF_TAKE_COL_WEIGHTS.get(c['field'], 1.5) / total_w
+                       for c in take_cols]
 
-        # Reference photos
-        if record:
-            pics     = (record.get('referencePictures') or [])[:4]
-            img_bufs = []
-            for pic in pics:
-                try:
-                    b64 = pic.split(',', 1)[1] if pic.startswith('data:') else pic
-                    img_bufs.append(io.BytesIO(base64.b64decode(b64)))
-                except Exception:
-                    pass
+            # Row 0: slate continuation label (spans all cols); Row 1: column headers
+            slate_label = Paragraph(f'SLATE  {slate_id}', _s('SRL',
+                fontSize=8, fontName='Helvetica-Bold',
+                textColor=colors.white, leading=11))
+            take_data = [
+                [slate_label] + [Paragraph('', sty_th)] * (len(take_cols) - 1),
+                [Paragraph(c['label'], sty_th) for c in take_cols],
+            ]
+            for r in sorted_rows:
+                is_vfx = (r.get('VFX Pass / Ref') or '').strip().lower() == 'yes'
+                row_cells = []
+                for c in take_cols:
+                    f   = c['field']
+                    sty = PDF_TAKE_COL_STYLES.get(f, 'normal')
+                    if f == 'VFX Pass / Ref':
+                        row_cells.append(Paragraph('YES' if is_vfx else '', sty_vfx))
+                    elif sty == 'mono':
+                        row_cells.append(Paragraph(r.get(f, '') or '—', sty_mono))
+                    elif sty == 'center':
+                        row_cells.append(Paragraph(r.get(f, '') or '—', sty_tc_c))
+                    else:
+                        row_cells.append(Paragraph(r.get(f, '') or '—', sty_tc))
+                take_data.append(row_cells)
 
-            if img_bufs:
-                n     = len(img_bufs)
-                ncols = 2 if n > 1 else 1
-                ph_w  = (CW - (ncols - 1) * 3 * mm) / ncols
-                ph_h  = 70 * mm
-
-                ph_rows = []
-                for i in range(0, n, ncols):
-                    row_imgs = []
-                    for j in range(ncols):
-                        if i + j < n:
-                            try:
-                                row_imgs.append(
-                                    Image(img_bufs[i+j], width=ph_w, height=ph_h, kind='bound')
-                                )
-                            except Exception:
-                                row_imgs.append('')
-                        else:
-                            row_imgs.append('')
-                    ph_rows.append(row_imgs)
-
-                ph_tbl = Table(ph_rows, colWidths=[ph_w] * ncols)
-                ph_tbl.setStyle(TableStyle([
-                    ('ALIGN',   (0,0), (-1,-1), 'CENTER'),
-                    ('VALIGN',  (0,0), (-1,-1), 'MIDDLE'),
-                    ('PADDING', (0,0), (-1,-1), 3),
-                ]))
-                story.append(Spacer(1, 3 * mm))
-                story.append(Paragraph('Reference photos', sty_note_label))
-                story.append(Spacer(1, 1 * mm))
-                story.append(ph_tbl)
+            # data rows start at index 2 (row 0 = slate label, row 1 = col headers)
+            bg_cmds = [
+                ('BACKGROUND', (0, i+2), (-1, i+2),
+                 colors.HexColor('#edfaf2')
+                 if (sorted_rows[i].get('VFX Pass / Ref') or '').strip().lower() == 'yes'
+                 else (colors.white if i % 2 == 0 else BGRAY))
+                for i in range(len(sorted_rows))
+            ]
+            take_tbl = Table(take_data, colWidths=tcw, repeatRows=2)
+            take_tbl.setStyle(TableStyle([
+                ('SPAN',       (0,0), (-1,0)),           # slate label spans full width
+                ('BACKGROUND', (0,0), (-1,0), NAVY),     # slate label row: navy
+                ('BACKGROUND', (0,1), (-1,1), BLUE),     # column header row: blue
+                ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
+                ('PADDING',    (0,0), (-1,-1), 4),
+                ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
+            ] + bg_cmds))
+            story.append(Spacer(1, 1.5 * mm))
+            story.append(take_tbl)
 
         story.append(PageBreak())
 
@@ -1258,36 +1303,46 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
 def api_export_pdf():
     """Generate and stream a PDF report for the requested slate IDs."""
     try:
-        body         = request.json or {}
-        slate_ids    = body.get("slates") or []
+        body          = request.json or {}
+        slate_ids     = body.get("slates") or []
+        take_ids      = body.get("take_ids")       # None = all takes; list = filtered
+        info_fields   = body.get("info_fields") or PDF_INFO_FIELD_DEFAULTS
+        take_cols     = body.get("take_cols")   or PDF_TAKE_COL_DEFAULTS
+        show_vfx_work = body.get("show_vfx_work", True)
+        show_notes    = body.get("show_notes",    True)
+        pdf_landscape = body.get("landscape",     True)
 
         data             = _load_db_json()
         all_rows         = _denormalize_json_to_rows(data)
+        all_rows         = _apply_overrides(all_rows, _load_overrides())
+        all_rows         = _apply_notes(all_rows, _load_notes())
         records_by_slate = {r["slateId"]: r for r in data.get("records", [])}
         project_name     = (data.get("project") or {}).get("name", "VFX Shoot")
 
         def _base(s):
             return re.sub(r'/\d+$', '', (s or '').strip())
 
-        if slate_ids:
-            slate_set  = set(slate_ids)
-            slate_rows = {sid: [] for sid in slate_ids}
-            for row in all_rows:
-                base = _base(row.get("Slate", ""))
-                if base in slate_set:
-                    slate_rows[base].append(row)
-        else:
-            slate_rows = {}
-            slate_ids  = []
-            for row in all_rows:
-                base = _base(row.get("Slate", ""))
-                if base not in slate_rows:
-                    slate_rows[base] = []
-                    slate_ids.append(base)
-                slate_rows[base].append(row)
+        # Build take filter set when scope = filtered
+        take_set = None
+        if take_ids is not None:
+            take_set = {(t["slate"], t["take"], t["camera"]) for t in take_ids}
+
+        slate_rows = {sid: [] for sid in slate_ids}
+        for row in all_rows:
+            base = _base(row.get("Slate", ""))
+            if base not in slate_rows:
+                continue
+            if take_set is not None:
+                key = (row.get("Slate",""), row.get("Take",""), row.get("Camera",""))
+                if key not in take_set:
+                    continue
+            slate_rows[base].append(row)
 
         buf = io.BytesIO()
-        _generate_pdf(buf, project_name, slate_ids, slate_rows, records_by_slate)
+        _generate_pdf(buf, project_name, slate_ids, slate_rows, records_by_slate,
+                      info_fields=info_fields, take_cols=take_cols,
+                      show_vfx_work=show_vfx_work, show_notes=show_notes,
+                      landscape=pdf_landscape)
         buf.seek(0)
 
         safe     = re.sub(r'[^\w\-.]', '_', project_name)

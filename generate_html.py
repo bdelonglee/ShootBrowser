@@ -2062,6 +2062,75 @@ class HTMLGenerator:
             border-radius: 6px; color: var(--text); font-size: 0.85em;
             padding: 8px 16px; cursor: pointer;
         }}
+
+        /* ── PDF export modal ── */
+        #pdf-modal-overlay {{
+            display: none; position: fixed; inset: 0; z-index: 3000;
+            background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+        }}
+        #pdf-modal {{
+            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 20px; width: 520px; max-width: 95vw; max-height: 88vh;
+            display: flex; flex-direction: column; gap: 0; overflow: hidden;
+        }}
+        #pdf-modal-body {{
+            overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+            flex: 1; min-height: 0; padding-right: 4px;
+        }}
+        .pdf-modal-title {{ font-size: 1em; font-weight: 700; color: var(--text); margin-bottom: 14px; flex-shrink: 0; }}
+        .pdf-section-label {{
+            font-size: 0.72em; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+        }}
+        .pdf-scope-row {{ display: flex; gap: 16px; }}
+        .pdf-scope-row label {{ font-size: 0.83em; cursor: pointer; display: flex; align-items: center; gap: 5px; }}
+        .pdf-col-list {{
+            display: flex; flex-direction: column; gap: 3px; max-height: 180px;
+            overflow-y: auto;
+        }}
+        .pdf-col-row {{
+            display: flex; align-items: center; gap: 6px;
+            background: var(--surface-2); border-radius: 5px; padding: 4px 8px;
+        }}
+        .pdf-col-row label {{ flex: 1; font-size: 0.83em; cursor: pointer; }}
+        .pdf-col-arrow {{
+            background: none; border: none; color: var(--text-muted);
+            cursor: pointer; font-size: 0.85em; padding: 0 3px; line-height: 1;
+        }}
+        .pdf-col-arrow:hover {{ color: var(--text); }}
+        .pdf-col-arrow:disabled {{ opacity: 0.25; cursor: default; }}
+        .pdf-check-row {{ display: flex; gap: 8px; margin-top: 4px; }}
+        .pdf-check-btn {{
+            background: none; border: 1px solid var(--border); border-radius: 4px;
+            color: var(--text-muted); font-size: 0.75em; padding: 2px 8px; cursor: pointer;
+            transition: all 0.15s;
+        }}
+        .pdf-check-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .pdf-toggle-row {{ display: flex; gap: 12px; flex-wrap: wrap; }}
+        .pdf-toggle-row label {{ font-size: 0.83em; cursor: pointer; display: flex; align-items: center; gap: 5px; }}
+        .pdf-sort-row {{ display: flex; gap: 8px; align-items: center; }}
+        .pdf-sort-select {{
+            flex: 1; background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.82em; padding: 5px 8px;
+        }}
+        .pdf-sort-dir-btn {{
+            background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px;
+            color: var(--text-muted); font-size: 0.82em; padding: 5px 12px; cursor: pointer;
+            transition: all 0.15s; white-space: nowrap;
+        }}
+        .pdf-sort-dir-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .pdf-modal-footer {{ display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-shrink: 0; }}
+        .pdf-export-btn {{
+            background: var(--accent); border: none; border-radius: 6px;
+            color: #fff; font-size: 0.85em; padding: 8px 20px; cursor: pointer;
+        }}
+        .pdf-export-btn:hover {{ opacity: 0.85; }}
+        .pdf-export-btn:disabled {{ opacity: 0.5; cursor: default; }}
+        .pdf-cancel-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.85em;
+            padding: 8px 16px; cursor: pointer;
+        }}
         .extract-status {{ font-size: 0.78em; color: var(--text-muted); }}
         .extract-status.ok  {{ color: #56d364; }}
         .extract-status.err {{ color: #f85149; }}
@@ -2280,7 +2349,7 @@ class HTMLGenerator:
         <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
         <span id="db-stats-bar" class="db-stats-bar"></span>
         <button class="export-btn" onclick="openCsvExportModal()" title="Export filtered rows as CSV">⬇ Export CSV</button>
-        <button class="export-btn" id="export-pdf-btn" onclick="exportDbPdf()" title="Export filtered rows as PDF report">⬇ Export PDF</button>
+        <button class="export-btn" id="export-pdf-btn" onclick="openPdfExportModal()" title="Export filtered rows as PDF report">⬇ Export PDF</button>
       </div>
       <div class="db-filter-row">
         <div class="db-filter-field">
@@ -4126,30 +4195,308 @@ function _doExportCsv() {{
     closeCsvExportModal();
 }}
 
-async function exportDbPdf() {{
+// ── PDF export modal ──────────────────────────────────────────────────────────
+
+const PDF_PRESETS_KEY = 'vfx_pdf_presets';
+
+const PDF_INFO_AVAIL = [
+    'VFX ID','Set Location','Int/Ext','Day/Night','Unit',
+    'Shoot Day','Date','Wrangler','Set Refs',
+];
+const PDF_TAKE_AVAIL = [
+    {{field:'Take',           label:'Take'}},
+    {{field:'Camera',         label:'Camera'}},
+    {{field:'Roll',           label:'Roll'}},
+    {{field:'Lens',           label:'Lens'}},
+    {{field:'Focal',          label:'Focal'}},
+    {{field:'Shutter',        label:'Shutter'}},
+    {{field:'FPS',            label:'FPS'}},
+    {{field:'F-Stop',         label:'f-stop'}},
+    {{field:'VFX Pass / Ref', label:'VFX'}},
+    {{field:'Body',           label:'Body'}},
+    {{field:'Camera Move',    label:'Move'}},
+    {{field:'Resolution',     label:'Res.'}},
+    {{field:'Focus',          label:'Focus'}},
+    {{field:'Tilt',           label:'Tilt'}},
+    {{field:'Height',         label:'Height'}},
+    {{field:'WB',             label:'WB'}},
+    {{field:'ISO',            label:'ISO'}},
+    {{field:'Filter',         label:'Filter'}},
+    {{field:'Take Notes',     label:'Take Notes'}},
+    {{field:'_note',          label:'My Note'}},
+];
+
+let pdfPresets      = {{}};
+let pdfScope        = 'all';
+let pdfSortKey      = 'Slate';
+let pdfSortAsc      = true;
+let pdfLandscape    = true;
+let pdfInfoCols     = [];   // [{{field, on}}]
+let pdfTakeCols     = [];   // [{{field, label, on}}]
+let pdfShowVfxWork  = true;
+let pdfShowNotes    = true;
+
+function _loadPdfPresets() {{
+    try {{ pdfPresets = JSON.parse(localStorage.getItem(PDF_PRESETS_KEY) || '{{}}'); }}
+    catch(e) {{ pdfPresets = {{}}; }}
+}}
+function _savePdfPresets() {{
+    localStorage.setItem(PDF_PRESETS_KEY, JSON.stringify(pdfPresets));
+}}
+function _pdfDefaultInfoCols() {{
+    return PDF_INFO_AVAIL.map(f => ({{field: f, on: true}}));
+}}
+function _pdfDefaultTakeCols() {{
+    return PDF_TAKE_AVAIL.slice(0, 9).map(c => ({{...c, on: true}}))
+        .concat(PDF_TAKE_AVAIL.slice(9).map(c => ({{...c, on: false}})));
+}}
+
+function openPdfExportModal() {{
     if (OFFLINE_MODE) {{ alert('PDF export is not available in offline mode.'); return; }}
+    _loadPdfPresets();
+    if (!pdfInfoCols.length) pdfInfoCols = _pdfDefaultInfoCols();
+    if (!pdfTakeCols.length) pdfTakeCols = _pdfDefaultTakeCols();
+    const ov = document.getElementById('pdf-modal-overlay');
+    if (ov) {{ _renderPdfModal(); ov.style.display = 'flex'; }}
+}}
+function closePdfExportModal() {{
+    const ov = document.getElementById('pdf-modal-overlay');
+    if (ov) ov.style.display = 'none';
+}}
+
+function _renderPdfModal() {{
+    const body = document.getElementById('pdf-modal-body');
+    if (!body) return;
+
+    const pArr = Object.values(pdfPresets);
+    const presetHtml =
+        '<div>' +
+        '<div class="pdf-section-label">Presets</div>' +
+        '<div class="csv-preset-row">' +
+        '<select id="pdf-preset-sel" class="csv-preset-select" onchange="">' +
+        '<option value="">— select preset —</option>' +
+        pArr.map(p => '<option value="' + escHtml(p.id) + '">' + escHtml(p.name) + '</option>').join('') +
+        '</select>' +
+        '<button class="csv-preset-btn" onclick="_pdfLoadPreset()">Load</button>' +
+        '<button class="csv-preset-btn" onclick="_pdfRenamePreset()">Rename</button>' +
+        '<button class="csv-preset-btn danger" onclick="_pdfDeletePreset()">Delete</button>' +
+        '</div>' +
+        '<div class="csv-preset-save-row">' +
+        '<input class="csv-preset-name-input" id="pdf-preset-name" type="text" placeholder="Preset name…">' +
+        '<button class="csv-preset-btn" onclick="_pdfSavePreset()">Save as preset</button>' +
+        '</div>' +
+        '</div>';
+
+    const scopeHtml =
+        '<div>' +
+        '<div class="pdf-section-label">Scope</div>' +
+        '<div class="pdf-scope-row">' +
+        '<label><input type="radio" name="pdf-scope" value="all"' + (pdfScope==='all' ? ' checked' : '') +
+            ' onchange="pdfScope=&#39;all&#39;"> All takes per slate</label>' +
+        '<label><input type="radio" name="pdf-scope" value="filtered"' + (pdfScope==='filtered' ? ' checked' : '') +
+            ' onchange="pdfScope=&#39;filtered&#39;"> Filtered takes only</label>' +
+        '</div>' +
+        '</div>';
+
+    const orientHtml =
+        '<div>' +
+        '<div class="pdf-section-label">Page orientation</div>' +
+        '<div class="pdf-scope-row">' +
+        '<label><input type="radio" name="pdf-orient" value="landscape"' + (pdfLandscape ? ' checked' : '') +
+            ' onchange="pdfLandscape=true"> Landscape</label>' +
+        '<label><input type="radio" name="pdf-orient" value="portrait"' + (!pdfLandscape ? ' checked' : '') +
+            ' onchange="pdfLandscape=false"> Portrait</label>' +
+        '</div>' +
+        '</div>';
+
+    const sortFields = ['Slate','Date','Shoot Day','VFX ID','Scene Description'];
+    const sortHtml =
+        '<div>' +
+        '<div class="pdf-section-label">Slate sort</div>' +
+        '<div class="pdf-sort-row">' +
+        '<select class="pdf-sort-select" id="pdf-sort-key" onchange="_pdfSortKeyChange(this.value)">' +
+        sortFields.map(f => '<option value="' + escHtml(f) + '"' + (f===pdfSortKey?' selected':'') + '>' + escHtml(f) + '</option>').join('') +
+        '</select>' +
+        '<button class="pdf-sort-dir-btn" id="pdf-sort-dir" onclick="_pdfToggleSortDir()">' +
+        (pdfSortAsc ? '↑ Asc' : '↓ Desc') + '</button>' +
+        '</div>' +
+        '</div>';
+
+    const infoRows = pdfInfoCols.map((c, i) =>
+        '<div class="pdf-col-row">' +
+        '<input type="checkbox" id="pdf-ic-' + i + '"' + (c.on ? ' checked' : '') +
+            ' onchange="pdfInfoCols[' + i + '].on=this.checked">' +
+        '<label for="pdf-ic-' + i + '">' + escHtml(c.field) + '</label>' +
+        '<button class="pdf-col-arrow" onclick="_pdfInfoUp(' + i + ')" ' + (i===0?'disabled':'') + '>↑</button>' +
+        '<button class="pdf-col-arrow" onclick="_pdfInfoDown(' + i + ')" ' + (i===pdfInfoCols.length-1?'disabled':'') + '>↓</button>' +
+        '</div>'
+    ).join('');
+    const infoHtml =
+        '<div>' +
+        '<div class="pdf-section-label">Info grid fields</div>' +
+        '<div class="pdf-check-row">' +
+        '<button class="pdf-check-btn" onclick="_pdfInfoCheckAll(true)">All</button>' +
+        '<button class="pdf-check-btn" onclick="_pdfInfoCheckAll(false)">None</button>' +
+        '</div>' +
+        '<div class="pdf-col-list" style="margin-top:6px">' + infoRows + '</div>' +
+        '</div>';
+
+    const textHtml =
+        '<div>' +
+        '<div class="pdf-section-label">Text sections</div>' +
+        '<div class="pdf-toggle-row">' +
+        '<label><input type="checkbox"' + (pdfShowVfxWork?' checked':'') +
+            ' onchange="pdfShowVfxWork=this.checked"> VFX Work</label>' +
+        '<label><input type="checkbox"' + (pdfShowNotes?' checked':'') +
+            ' onchange="pdfShowNotes=this.checked"> Notes</label>' +
+        '</div>' +
+        '</div>';
+
+    const takeRows = pdfTakeCols.map((c, i) =>
+        '<div class="pdf-col-row">' +
+        '<input type="checkbox" id="pdf-tc-' + i + '"' + (c.on ? ' checked' : '') +
+            ' onchange="pdfTakeCols[' + i + '].on=this.checked">' +
+        '<label for="pdf-tc-' + i + '">' + escHtml(c.label) + '</label>' +
+        '<button class="pdf-col-arrow" onclick="_pdfTakeUp(' + i + ')" ' + (i===0?'disabled':'') + '>↑</button>' +
+        '<button class="pdf-col-arrow" onclick="_pdfTakeDown(' + i + ')" ' + (i===pdfTakeCols.length-1?'disabled':'') + '>↓</button>' +
+        '</div>'
+    ).join('');
+    const takeHtml =
+        '<div>' +
+        '<div class="pdf-section-label">Takes table columns</div>' +
+        '<div class="pdf-check-row">' +
+        '<button class="pdf-check-btn" onclick="_pdfTakeCheckAll(true)">All</button>' +
+        '<button class="pdf-check-btn" onclick="_pdfTakeCheckAll(false)">None</button>' +
+        '</div>' +
+        '<div class="pdf-col-list" style="margin-top:6px">' + takeRows + '</div>' +
+        '</div>';
+
+    body.innerHTML = presetHtml + scopeHtml + orientHtml + sortHtml + infoHtml + textHtml + takeHtml;
+}}
+
+function _pdfSortKeyChange(v) {{ pdfSortKey = v; }}
+function _pdfToggleSortDir() {{
+    pdfSortAsc = !pdfSortAsc;
+    const btn = document.getElementById('pdf-sort-dir');
+    if (btn) btn.textContent = pdfSortAsc ? '↑ Asc' : '↓ Desc';
+}}
+function _pdfInfoUp(i)   {{ if(i<1) return; [pdfInfoCols[i-1],pdfInfoCols[i]]=[pdfInfoCols[i],pdfInfoCols[i-1]]; _renderPdfModal(); }}
+function _pdfInfoDown(i) {{ if(i>=pdfInfoCols.length-1) return; [pdfInfoCols[i],pdfInfoCols[i+1]]=[pdfInfoCols[i+1],pdfInfoCols[i]]; _renderPdfModal(); }}
+function _pdfInfoCheckAll(on) {{ pdfInfoCols.forEach(c=>c.on=on); _renderPdfModal(); }}
+function _pdfTakeUp(i)   {{ if(i<1) return; [pdfTakeCols[i-1],pdfTakeCols[i]]=[pdfTakeCols[i],pdfTakeCols[i-1]]; _renderPdfModal(); }}
+function _pdfTakeDown(i) {{ if(i>=pdfTakeCols.length-1) return; [pdfTakeCols[i],pdfTakeCols[i+1]]=[pdfTakeCols[i+1],pdfTakeCols[i]]; _renderPdfModal(); }}
+function _pdfTakeCheckAll(on) {{ pdfTakeCols.forEach(c=>c.on=on); _renderPdfModal(); }}
+
+function _pdfCurrentConfig() {{
+    return {{
+        scope: pdfScope, sortKey: pdfSortKey, sortAsc: pdfSortAsc,
+        landscape: pdfLandscape,
+        infoCols: pdfInfoCols.map(c=>({{...c}})),
+        takeCols: pdfTakeCols.map(c=>({{...c}})),
+        showVfxWork: pdfShowVfxWork, showNotes: pdfShowNotes,
+    }};
+}}
+function _pdfApplyConfig(cfg) {{
+    pdfScope       = cfg.scope       || 'all';
+    pdfSortKey     = cfg.sortKey     || 'Slate';
+    pdfSortAsc     = cfg.sortAsc     !== false;
+    pdfLandscape   = cfg.landscape   !== false;
+    pdfInfoCols    = (cfg.infoCols   || []).map(c=>({{...c}}));
+    pdfTakeCols    = (cfg.takeCols   || []).map(c=>({{...c}}));
+    pdfShowVfxWork = cfg.showVfxWork !== false;
+    pdfShowNotes   = cfg.showNotes   !== false;
+}}
+function _pdfLoadPreset() {{
+    const sel = document.getElementById('pdf-preset-sel');
+    const id  = sel ? sel.value : '';
+    if (!id || !pdfPresets[id]) return;
+    _pdfApplyConfig(pdfPresets[id]);
+    _renderPdfModal();
+}}
+function _pdfSavePreset() {{
+    const inp  = document.getElementById('pdf-preset-name');
+    const name = inp ? inp.value.trim() : '';
+    if (!name) {{ alert('Enter a preset name.'); return; }}
+    const id = 'pdfp_' + Date.now();
+    pdfPresets[id] = {{ id, name, ..._pdfCurrentConfig() }};
+    _savePdfPresets();
+    if (inp) inp.value = '';
+    _renderPdfModal();
+}}
+function _pdfRenamePreset() {{
+    const sel = document.getElementById('pdf-preset-sel');
+    const id  = sel ? sel.value : '';
+    if (!id || !pdfPresets[id]) {{ alert('Select a preset to rename.'); return; }}
+    const name = prompt('Rename preset:', pdfPresets[id].name);
+    if (!name || !name.trim()) return;
+    pdfPresets[id].name = name.trim();
+    _savePdfPresets();
+    _renderPdfModal();
+}}
+function _pdfDeletePreset() {{
+    const sel = document.getElementById('pdf-preset-sel');
+    const id  = sel ? sel.value : '';
+    if (!id || !pdfPresets[id]) {{ alert('Select a preset to delete.'); return; }}
+    if (!confirm('Delete preset "' + pdfPresets[id].name + '"?')) return;
+    delete pdfPresets[id];
+    _savePdfPresets();
+    _renderPdfModal();
+}}
+
+async function _doPdfExport() {{
+    if (OFFLINE_MODE) return;
+    // Read scope radio from DOM
+    const scopeEl = document.querySelector('input[name="pdf-scope"]:checked');
+    if (scopeEl) pdfScope = scopeEl.value;
+    const sortSel = document.getElementById('pdf-sort-key');
+    if (sortSel) pdfSortKey = sortSel.value;
+
+    const infoCols = pdfInfoCols.filter(c => c.on).map(c => c.field);
+    const takeCols = pdfTakeCols.filter(c => c.on).map(c => ({{field: c.field, label: c.label}}));
+    if (!takeCols.length) {{ alert('Select at least one takes table column.'); return; }}
+
+    const filtered = dbRows.filter(dbRowMatches);
+    if (!filtered.length) {{ alert('No rows to export.'); return; }}
+
+    const sorted = [...filtered].sort((a, b) => {{
+        const av = (a[pdfSortKey] ?? ''), bv = (b[pdfSortKey] ?? '');
+        const cmp = String(av).localeCompare(String(bv));
+        return pdfSortAsc ? cmp : -cmp;
+    }});
+
+    const seen = new Set();
+    const slateIds = [];
+    for (const r of sorted) {{
+        const s = (r['Slate'] || '').replace(/\/\d+$/, '').trim();
+        if (s && !seen.has(s)) {{ seen.add(s); slateIds.push(s); }}
+    }}
+    if (!slateIds.length) {{ alert('No slates to export.'); return; }}
+
+    const takeIds = pdfScope === 'filtered'
+        ? sorted.map(r => ({{slate: r['Slate']||'', take: r['Take']||'', camera: r['Camera']||''}}))
+        : null;
+
     const btn = document.getElementById('export-pdf-btn');
+    const exportBtn = document.getElementById('pdf-export-action-btn');
     const origText = btn ? btn.textContent : '⬇ Export PDF';
     if (btn) {{ btn.disabled = true; btn.textContent = '⏳ Generating…'; }}
+    if (exportBtn) {{ exportBtn.disabled = true; exportBtn.textContent = '⏳ Generating…'; }}
+
+    closePdfExportModal();
+
     try {{
-        const filtered = dbRows.filter(dbRowMatches);
-        const sorted   = [...filtered].sort((a, b) => {{
-            const av = dbSortValue(a), bv = dbSortValue(b);
-            const cmp = (typeof av === 'number' && typeof bv === 'number')
-                ? av - bv : String(av).localeCompare(String(bv));
-            return dbSortAsc ? cmp : -cmp;
-        }});
-        const seen = new Set();
-        const slateIds = [];
-        for (const row of sorted) {{
-            const s = (row['Slate'] || '').replace(/\/\d+$/, '').trim();
-            if (s && !seen.has(s)) {{ seen.add(s); slateIds.push(s); }}
-        }}
-        if (!slateIds.length) {{ alert('No slates to export.'); return; }}
         const res = await fetch('/api/export-pdf', {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{ slates: slateIds }}),
+            body: JSON.stringify({{
+                slates: slateIds,
+                take_ids: takeIds,
+                info_fields: infoCols,
+                take_cols: takeCols,
+                show_vfx_work: pdfShowVfxWork,
+                show_notes: pdfShowNotes,
+                landscape: pdfLandscape,
+            }}),
         }});
         if (!res.ok) {{
             const err = await res.json().catch(() => ({{}}));
@@ -6085,6 +6432,20 @@ async function _applyBinImport(pending) {{
     ov.addEventListener('click', e => {{ if (e.target === ov) closeCsvExportModal(); }});
     ov.innerHTML = '<div id="csv-modal"></div>';
     document.body.appendChild(ov);
+
+    const pov = document.createElement('div');
+    pov.id = 'pdf-modal-overlay';
+    pov.addEventListener('click', e => {{ if (e.target === pov) closePdfExportModal(); }});
+    pov.innerHTML =
+        '<div id="pdf-modal">' +
+        '<div class="pdf-modal-title">Export PDF</div>' +
+        '<div id="pdf-modal-body"></div>' +
+        '<div class="pdf-modal-footer">' +
+        '<button class="pdf-cancel-btn" onclick="closePdfExportModal()">Cancel</button>' +
+        '<button class="pdf-export-btn" id="pdf-export-action-btn" onclick="_doPdfExport()">Export PDF</button>' +
+        '</div>' +
+        '</div>';
+    document.body.appendChild(pov);
 }})();
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
