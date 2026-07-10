@@ -131,12 +131,23 @@ def api_generate_offline_html():
 def api_export_db_html():
     """Build a self-contained offline HTML page containing only the supplied rows."""
     try:
-        body = request.json or {}
-        rows = body.get("rows") or []
+        body   = request.json or {}
+        rows   = body.get("rows") or []
+        photos = {}
+        slate_ids = {r.get("Slate") for r in rows if r.get("Slate")}
+        db_data   = _load_db_json()
+        include_pics = body.get("photos", False)
+        for record in db_data.get("records", []):
+            sid  = record.get("slateId", "")
+            pics = record.get("referencePictures") or []
+            if sid in slate_ids and pics:
+                # Always register the slate so the 📷 badge shows on folded cards.
+                # Only embed data URIs when the user requested photos.
+                photos[sid] = pics if include_pics else []
         g    = make_generator()
         html = g._build_html(
             g.build_data(),
-            offline_data={"db_rows": rows, "delivered": [], "photos": {}},
+            offline_data={"db_rows": rows, "delivered": [], "photos": photos},
             db_only=True,
         )
         from io import BytesIO

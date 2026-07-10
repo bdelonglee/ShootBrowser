@@ -235,51 +235,124 @@ continuation page — it is always clear which slate the takes belong to.
 
 ---
 
-## 3. Offline HTML Export
+## 3. Offline HTML Export — two separate mechanisms
 
-**No preset system.** One click, no modal. The exported page is fully self-contained —
-no server, no network, no localStorage needed.
+There are two completely different HTML export paths. They share the same `_build_html()`
+engine but differ in scope, output format, photo handling, and intended use.
 
-### What it exports
-Exactly `dbRows.filter(dbRowMatches)` — the rows currently visible on screen.
-The database filtering, sorting, grouping, and card expand/collapse all work in the
-exported file. There are no other tabs (tab bar is hidden).
+---
 
-### Client function: `_doExportDbHtml()` (`generate_html.py`)
-1. Collect `rows = dbRows.filter(dbRowMatches)`.
-2. Disable the `⬇ HTML` button, show `⏳`.
-3. `POST /api/export-db-html` with `{rows}`.
-4. Receive blob, download as `database_export.html`.
-5. Re-enable button.
+### Quick comparison
 
-### Server endpoint: `POST /api/export-db-html` → `api_export_db_html()` (`server.py`)
-```python
-rows = request.json.get("rows") or []
-g    = make_generator()
-html = g._build_html(
-    g.build_data(),
-    offline_data={"db_rows": rows, "delivered": [], "photos": {}},
-    db_only=True,
-)
-# Return as text/html download
+| | Browse page `💾 Offline HTML` | Database page `⬇ HTML` |
+|---|---|---|
+| **Trigger** | Button in browse toolbar | Popup on filter row |
+| **Scope** | Entire database + browse data | Currently filtered rows only |
+| **Output format** | Multi-file (HTML + `photos/` folder) | Single self-contained `.html` |
+| **Photo format** | Separate `.jpg` files (relative paths) | Base64 data URIs (inline) |
+| **Photo choice** | Always exported (all slates) | Optional: without / with |
+| **Where it lands** | `SHOOT_BROWSER/OfflineSite/` on server, opened in new tab | Downloaded via browser to user's machine |
+| **Views in exported file** | All tabs (browse, database, delivered…) | Database view only |
+| **JS flags** | `OFFLINE_MODE=true` | `OFFLINE_MODE=true` + `DB_ONLY_MODE=true` |
+
+---
+
+### 3a. Browse page — `💾 Offline HTML`
+
+**Location:** Browse page toolbar (sort controls row, first line).
+
+**Purpose:** Full snapshot of the entire project — all slates, all takes, all delivered items,
+all reference photos — as a multi-file package that can be shared or archived.
+
+#### Client function: `generateOfflineHtml()` (`generate_html.py`)
+1. Open a blank browser tab immediately (must be in click-handler context, before any `await`).
+2. `POST /api/generate-offline-html`.
+3. On success, navigate the new tab to `/offline-site/vfx_shoot_browser_offline.html`.
+
+#### Server endpoint: `POST /api/generate-offline-html` → `api_generate_offline_html()` (`server.py`)
+Calls `generator.generate_offline_html()` → returns `{"success": true, "path": "..."}`.
+
+#### `generate_offline_html()` (`generate_html.py`)
+Writes files to `SHOOT_BROWSER/OfflineSite/`:
+```
+OfflineSite/
+  vfx_shoot_browser_offline.html   ← main app
+  photos/
+    10_1_0.jpg                     ← one file per photo, named {slate_safe}_{index}.jpg
+    10_1_1.jpg
+    49A_1_0.jpg
+    ...
 ```
 
-### `_build_html(db_only=True)` behaviour (`generate_html.py`)
-Two flags are set when `db_only=True`:
+Photos are decoded from the base64 data URIs stored in the JSON database and written as
+real JPEG files. The HTML references them as `./photos/<filename>` (relative paths).
+This keeps the HTML file small even with many photos.
 
+`_extract_offline_photos(photos_dir)` returns `{slate_id: ["./photos/10_1_0.jpg", ...]}`.
+These relative paths are embedded in the `offlinePhotos` JS variable.
+
+#### `_build_html()` flags (browse offline)
+- `offline_data` is set → `OFFLINE_MODE = true`
+- `db_only` is **not** set → `DB_ONLY_MODE = false`
+- All tabs remain visible; both browse and database views work.
+
+---
+
+### 3b. Database page — `⬇ HTML`
+
+**Location:** Filter row (second line), rightmost export button. Click opens a popup:
+- **Without photos** — compact file, 📷 badge still shows on cards that have photos
+- **With photos** — photos embedded as data URIs; file can be large for big datasets
+
+**Purpose:** Send a filtered subset of takes (e.g. a specific VFX ID, a shoot day, a bin) to
+someone who doesn't have access to the live server. Single file, no folder structure.
+
+#### Client function: `_doExportDbHtml(withPhotos)` (`generate_html.py`)
+1. Opens popup via `_openHtmlExportMenu(event)` → user picks without/with photos.
+2. Collects `rows = dbRows.filter(dbRowMatches)` — exactly what is on screen.
+3. `POST /api/export-db-html` with `{rows, photos: withPhotos}`.
+4. Downloads response blob as `database_export.html`.
+5. In `OFFLINE_MODE` the function returns immediately (button is hidden anyway).
+
+#### Server endpoint: `POST /api/export-db-html` → `api_export_db_html()` (`server.py`)
+```python
+rows         = body.get("rows") or []
+include_pics = body.get("photos", False)
+photos = {}
+slate_ids = {r.get("Slate") for r in rows if r.get("Slate")}
+for record in db_data.get("records", []):
+    sid  = record.get("slateId", "")
+    pics = record.get("referencePictures") or []
+    if sid in slate_ids and pics:
+        # Always register the slate (so 📷 badge appears); embed data only when requested.
+        photos[sid] = pics if include_pics else []
+
+html = g._build_html(g.build_data(),
+    offline_data={"db_rows": rows, "delivered": [], "photos": photos},
+    db_only=True,
+)
+# Sent as text/html attachment → browser download
+```
+
+Photos in the JSON database are already stored as data URIs (`data:image/jpeg;base64,...`),
+so no conversion is needed — they are passed through directly into `offlinePhotos`.
+
+#### `_build_html(db_only=True)` flags
 | JS constant | Value | Effect |
 |---|---|---|
-| `OFFLINE_MODE` | `true` | Disables all server calls (notes, overrides, etc.) |
-| `DB_ONLY_MODE` | `true` | Adds `.db-only-mode` to `<body>`, forces `setView('database')` on load |
+| `OFFLINE_MODE` | `true` | Disables all server calls |
+| `DB_ONLY_MODE` | `true` | Forces database view, hides all other UI |
 
-CSS when `.db-only-mode` is on the body:
+CSS hidden by `.db-only-mode`:
 ```css
 .db-only-mode .tab-bar             { display: none !important; }
 .db-only-mode #offline-html-btn    { display: none !important; }
 .db-only-mode #offline-html-status { display: none !important; }
+.db-only-mode #export-pdf-btn      { display: none !important; }
+.db-only-mode #export-html-btn     { display: none !important; }
 ```
 
-JS at init (after `_restoreUiState()`):
+JS at init forces the database view regardless of saved localStorage state:
 ```js
 if (DB_ONLY_MODE) {
     document.body.classList.add('db-only-mode');
@@ -287,18 +360,27 @@ if (DB_ONLY_MODE) {
 }
 ```
 
-`_restoreUiState()` skips the `setView(s.view)` call when `DB_ONLY_MODE` is true,
-so the saved tab preference from the user's localStorage never overrides the forced view.
+#### Performance: lazy card rendering
+`renderDatabase()` renders **only the title line** for each card. The full details
+(`renderDbDetails`) are populated lazily when a card is first expanded via `toggleDbCard`.
+This is critical for the with-photos case: without lazy rendering, embedding hundreds of
+photos' data URIs into the initial innerHTML of all cards at once would OOM the browser tab.
 
-### What works / what doesn't in the exported file
+#### What works / what doesn't in the exported database file
 
 | Feature | Works? | Notes |
 |---|---|---|
 | Filter fields (Slate, VFX ID, Date…) | ✅ | Pure client-side |
 | Sort / group mode buttons | ✅ | Pure client-side |
-| Card expand / collapse | ✅ | Pure client-side |
-| Reference photos | ✅ | Embedded in `offlinePhotos` via regular offline mechanism |
+| Card expand / collapse | ✅ | Lazy-rendered on first expand |
+| 📷 badge on folded cards | ✅ | Slate IDs always registered in `offlinePhotos` |
+| Reference photos on expand | ✅ (if exported with photos) | Embedded as data URIs |
 | Take notes display | ✅ | Embedded in rows as `_note` field |
-| Save / edit notes | ✗ | Requires server (`OFFLINE_MODE = true`) |
-| Bins | ✗ | localStorage bins from the live app are not carried over |
-| CSV / PDF export from within the exported page | ✗ | Buttons hidden (`.offline-mode`) |
+| CSV export (`⬇ CSV`) | ✅ | Fully client-side |
+| PDF export (`⬇ PDF`) | ✗ | Button hidden (requires server) |
+| HTML re-export | ✗ | Button hidden (requires server) |
+| Save / edit take notes | ✗ | Requires server |
+| Edit / Revert / Omit buttons | ✗ | Hidden when `OFFLINE_MODE=true` |
+| Bins (create, filter) | ⚠️ | Works locally in that file's localStorage; live-app bins not carried over |
+| Bin export (download JSON) | ✅ | Client-side download |
+| Bin import (apply notes) | ✗ | Note-save step requires server |

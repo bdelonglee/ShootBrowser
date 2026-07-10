@@ -1043,6 +1043,10 @@ class HTMLGenerator:
         .db-note-flag {{
             color: #f0a500; font-size: 0.88em; flex-shrink: 0; display: inline-block;
         }}
+        .db-photo-badge {{
+            font-size: 0.82em; flex-shrink: 0; display: inline-block;
+            color: var(--text-muted);
+        }}
         .db-note-box {{
             background: rgba(240,165,0,0.08);
             border: 1px solid rgba(240,165,0,0.28);
@@ -1987,9 +1991,23 @@ class HTMLGenerator:
         .export-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
         .export-btn:disabled {{ opacity: 0.5; cursor: default; }}
         .db-export-btns {{ display: flex; gap: 4px; align-items: center; flex-shrink: 0; }}
+        .db-html-export-menu {{
+            position: absolute; z-index: 500;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            padding: 4px; display: flex; flex-direction: column; gap: 2px; min-width: 160px;
+        }}
+        .db-html-export-menu button {{
+            background: none; border: none; border-radius: 4px;
+            color: var(--text); font-size: 0.83em; text-align: left;
+            padding: 7px 12px; cursor: pointer; white-space: nowrap;
+        }}
+        .db-html-export-menu button:hover {{ background: var(--surface-2); }}
         .db-only-mode .tab-bar,
         .db-only-mode #offline-html-btn,
-        .db-only-mode #offline-html-status {{ display: none !important; }}
+        .db-only-mode #offline-html-status,
+        .db-only-mode #export-pdf-btn,
+        .db-only-mode #export-html-btn {{ display: none !important; }}
 
         /* ── CSV export modal ── */
         #csv-modal-overlay {{
@@ -2430,7 +2448,7 @@ class HTMLGenerator:
         <div class="db-filter-field db-export-btns">
           <button class="export-btn" onclick="openCsvExportModal()" title="Export filtered rows as CSV">⬇ CSV</button>
           <button class="export-btn" id="export-pdf-btn" onclick="openPdfExportModal()" title="Export filtered rows as PDF report">⬇ PDF</button>
-          <button class="export-btn" id="export-html-btn" onclick="_doExportDbHtml()" title="Export filtered takes as offline HTML">⬇ HTML</button>
+          <button class="export-btn" id="export-html-btn" onclick="_openHtmlExportMenu(event)" title="Export filtered takes as offline HTML">⬇ HTML</button>
         </div>
       </div>
       <div id="db-pin-banner" class="db-pin-banner" style="display:none;margin-top:12px">
@@ -4207,19 +4225,40 @@ function _doExportCsv() {{
 
 // ── Offline DB HTML export ────────────────────────────────────────────────────
 
-async function _doExportDbHtml() {{
+function _openHtmlExportMenu(e) {{
+    e.stopPropagation();
+    document.getElementById('db-html-export-menu')?.remove();
+    const btn  = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.id = 'db-html-export-menu';
+    menu.className = 'db-html-export-menu';
+    menu.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+    menu.style.left = rect.left + 'px';
+    menu.innerHTML =
+        '<button onclick="_doExportDbHtml(false)">⬇ Without photos</button>' +
+        '<button onclick="_doExportDbHtml(true)">⬇ With photos</button>';
+    document.body.appendChild(menu);
+    setTimeout(() => document.addEventListener('click', _closeHtmlExportMenu, {{once: true}}), 0);
+}}
+function _closeHtmlExportMenu() {{
+    document.getElementById('db-html-export-menu')?.remove();
+}}
+
+async function _doExportDbHtml(withPhotos) {{
     if (OFFLINE_MODE) return;
+    _closeHtmlExportMenu();
     const rows = dbRows.filter(dbRowMatches);
     if (!rows.length) {{ alert('No rows to export.'); return; }}
 
     const btn = document.getElementById('export-html-btn');
-    if (btn) {{ btn.disabled = true; btn.textContent = '⏳'; }}
+    if (btn) {{ btn.disabled = true; btn.textContent = withPhotos ? '⏳ photos…' : '⏳'; }}
 
     try {{
         const res = await fetch('/api/export-db-html', {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{ rows }}),
+            body: JSON.stringify({{ rows, photos: withPhotos }}),
         }});
         if (!res.ok) {{
             const err = await res.json().catch(() => ({{}}));
@@ -5051,8 +5090,11 @@ function renderDatabase() {{
         return dbSortAsc ? cmp : -cmp;
     }});
 
+    // Precompute row → dbRows index to avoid O(n²) indexOf calls
+    const rowIdxMap = new Map(dbRows.map((r, i) => [r, i]));
+
     if (dbGroupMode === 'none') {{
-        el.innerHTML = sorted.map(row => renderDbCard(row, dbRows.indexOf(row))).join('');
+        el.innerHTML = sorted.map(row => renderDbCard(row, rowIdxMap.get(row) ?? -1)).join('');
         return;
     }}
 
@@ -5066,7 +5108,7 @@ function renderDatabase() {{
 
     el.innerHTML = groupKeys.map(key => {{
         const rows       = groups[key];
-        const cards      = rows.map(row => renderDbCard(row, dbRows.indexOf(row))).join('');
+        const cards      = rows.map(row => renderDbCard(row, rowIdxMap.get(row) ?? -1)).join('');
         const countLabel = `${{rows.length}} take${{rows.length === 1 ? '' : 's'}}`;
         let headerLeft;
         if (dbGroupMode === 'slate') {{
@@ -5177,7 +5219,7 @@ function renderDbCard(row, idx) {{
             ${{copyBtn}}
             ${{chevron}}
         </div>
-        <div class="entry-details">${{renderDbDetails(row)}}</div>
+        <div class="entry-details">${{isExpanded ? renderDbDetails(row) : ''}}</div>
     </div>`;
 }}
 
@@ -5285,6 +5327,13 @@ function toggleDbCard(btn) {{
     const expanded = entry.classList.toggle('expanded');
     if (expanded) {{
         expandedDbRows.add(id);
+        // Lazy-populate details on first expand (avoids rendering all cards eagerly)
+        const detailsEl = entry.querySelector('.entry-details');
+        if (detailsEl && !detailsEl.firstChild) {{
+            const idx = parseInt(id.replace('db_', ''), 10);
+            const row = dbRows[idx];
+            if (row) detailsEl.innerHTML = renderDbDetails(row);
+        }}
         if (slate && slatesWithPhotos.has(slate)) {{
             if (photosBySlate[slate]) {{
                 _injectPhotoStrip(entry, photosBySlate[slate]);
