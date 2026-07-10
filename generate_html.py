@@ -1800,6 +1800,11 @@ class HTMLGenerator:
         }}
         .bin-modal-title {{ font-size: 1em; font-weight: 700; color: var(--text); margin-bottom: 16px; }}
         .bin-modal-empty {{ color: var(--text-muted); font-size: 0.85em; text-align: center; padding: 16px 0; }}
+        .bin-import-notice {{
+            font-size: 0.82em; color: var(--text-muted);
+            background: rgba(163,113,247,0.10); border: 1px solid rgba(163,113,247,0.30);
+            border-radius: 5px; padding: 6px 10px; margin-bottom: 8px;
+        }}
         .bin-modal-row {{
             display: flex; align-items: center; gap: 8px;
             padding: 9px 0; border-bottom: 1px solid var(--border);
@@ -4809,8 +4814,12 @@ function _renderBinModal() {{
     const list   = document.getElementById('bin-modal-list');
     if (!list) return;
     const binArr = Object.values(bins);
+    const importBtn =
+        '<div style="margin-top:12px">' +
+        '<button class="bin-modal-btn import" style="width:100%;padding:7px" onclick="_importBinFile()">⬆ Import Bin…</button>' +
+        '</div>';
     if (!binArr.length) {{
-        list.innerHTML = '<p class="bin-modal-empty">No bins yet. Use the + button on any take to create one.</p>';
+        list.innerHTML = '<p class="bin-modal-empty">No bins yet. Use the + button on any take to create one.</p>' + importBtn;
         return;
     }}
     list.innerHTML = binArr.map(b => `
@@ -4820,10 +4829,7 @@ function _renderBinModal() {{
             <button class="bin-modal-btn export" onclick="_exportBin('${{b.id}}')">Export</button>
             <button class="bin-modal-btn" onclick="renameBin('${{b.id}}')">Rename</button>
             <button class="bin-modal-btn danger" onclick="deleteBin('${{b.id}}')">Delete</button>
-        </div>`).join('') +
-        '<div style="margin-top:12px">' +
-        '<button class="bin-modal-btn import" style="width:100%;padding:7px" onclick="_importBinFile()">⬆ Import Bin…</button>' +
-        '</div>';
+        </div>`).join('') + importBtn;
 }}
 function renameBin(binId) {{
     const bin = bins[binId];
@@ -6498,6 +6504,21 @@ async function _applyBinImport(pending) {{
             ? c.incoming
             : c.existing + '\\n---\\n[' + importDate + '] ' + c.incoming;
         toSave.push({{overrideKey: c.overrideKey, note}});
+    }}
+
+    if (OFFLINE_MODE) {{
+        if (toSave.length) {{
+            const list = document.getElementById('bin-modal-list');
+            if (list) {{
+                const n = document.createElement('div');
+                n.className = 'bin-import-notice';
+                n.textContent = 'Bin imported. ' + toSave.length + ' take note' +
+                    (toSave.length === 1 ? '' : 's') + ' were skipped (offline mode).';
+                list.prepend(n);
+            }}
+        }}
+        renderDatabase();
+        return;
     }}
 
     // Persist notes to server
