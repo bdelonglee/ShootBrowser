@@ -4741,6 +4741,12 @@ async function _doExportAll() {{
     const btn = document.getElementById('db-export-menu-btn');
     if (btn) {{ btn.disabled = true; btn.textContent = '⏳ Exporting…'; }}
 
+    // Collect bin file names (same pattern as _exportBin) for the README
+    const today = new Date().toISOString().slice(0, 10);
+    const binFileNames = extraBins
+        .filter(id => bins[id])
+        .map(id => bins[id].name.replace(/[^a-zA-Z0-9_\-]/g, '_') + '_' + today + '.json');
+
     try {{
         // 1. Main export: CSV + PDF + HTML of current filtered rows
         _doExportCsv(baseName + '.csv');
@@ -4755,9 +4761,30 @@ async function _doExportAll() {{
             await new Promise(r => setTimeout(r, 250));
             _exportBin(binId);
         }}
+
+        // 3. README.pdf — always last so the package description is fresh
+        await new Promise(r => setTimeout(r, 250));
+        await _doExportReadme(baseName, binFileNames);
     }} finally {{
         if (btn) {{ btn.disabled = false; btn.textContent = '⬇ Export'; }}
     }}
+}}
+
+async function _doExportReadme(baseName, binFileNames) {{
+    try {{
+        const resp = await fetch('/api/export-readme-pdf', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json'}},
+            body: JSON.stringify({{ base_name: baseName, bin_names: binFileNames }}),
+        }});
+        if (!resp.ok) return;
+        const blob = await resp.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'README.pdf';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }} catch(e) {{ console.error('README export failed', e); }}
 }}
 
 // ── Bins ──────────────────────────────────────────────────────────────────────
