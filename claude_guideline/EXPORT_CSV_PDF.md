@@ -434,23 +434,49 @@ Bins to export:
 | `_closeExportAllModal()` | Hide overlay |
 | `_exportAllDefaultName()` | Returns `BinName_YYYY-MM-DD` or `full_database_YYYY-MM-DD` |
 | `_doExportAll()` | Run the full export sequence |
+| `_doExportReadme(baseName, binFileNames)` | POST to `/api/export-readme-pdf`, download `README.pdf` |
 
 ### `_doExportAll()` sequence
 1. Read filename, photos checkbox, checked bins, preset selections from the modal DOM.
-2. Init CSV/PDF column defaults if not yet set in this session.
-3. Apply selected CSV preset via `_csvApplyConfig` (if one is chosen).
-4. Apply selected PDF preset via `_pdfApplyConfig` (if one is chosen).
-5. Close the modal.
-6. Disable `⬇ Export` button, show `⏳ Exporting…`.
-7. `_doExportCsv(baseName + '.csv')` — immediate (synchronous blob download).
-8. 350 ms pause.
-9. `await _doPdfExport(baseName + '.pdf')` — server call.
-10. 350 ms pause.
-11. `await _doExportDbHtml(withPhotos, baseName + '.html')` — server call.
-12. For each checked bin: 250 ms pause → `_exportBin(binId)`.
-13. Re-enable `⬇ Export` button (in `finally` block).
+2. Compute `binFileNames` — the exact filenames `_exportBin` will produce (`SafeName_YYYY-MM-DD.json`), used later for the README.
+3. Init CSV/PDF column defaults if not yet set in this session.
+4. Apply selected CSV preset via `_csvApplyConfig` (if one is chosen).
+5. Apply selected PDF preset via `_pdfApplyConfig` (if one is chosen).
+6. Close the modal.
+7. Disable `⬇ Export` button, show `⏳ Exporting…`.
+8. `_doExportCsv(baseName + '.csv')` — immediate (synchronous blob download).
+9. 350 ms pause.
+10. `await _doPdfExport(baseName + '.pdf')` — server call.
+11. 350 ms pause.
+12. `await _doExportDbHtml(withPhotos, baseName + '.html')` — server call.
+13. For each checked bin: 250 ms pause → `_exportBin(binId)`.
+14. 250 ms pause → `await _doExportReadme(baseName, binFileNames)` — always last.
+15. Re-enable `⬇ Export` button (in `finally` block).
 
 The 350 ms / 250 ms pauses prevent the browser from blocking simultaneous download triggers.
+
+### README.pdf
+
+A hardcoded `README.pdf` is always generated as the final download in every Export All run.
+It is intended for VFX vendors receiving the package and is never configurable by the user.
+
+**Content:**
+- Project name + export date header
+- One-sentence intro explaining that CSV, PDF, and HTML contain the same data
+- Per-file descriptions (`baseName.csv`, `.pdf`, `.html`)
+- **Bin files section** — only included when bins were selected; lists each JSON filename and
+  gives a numbered import guide for the HTML viewer
+- Page number footer
+
+**Server:** `POST /api/export-readme-pdf` → `_generate_readme_pdf()` in `server.py`.
+Request body: `{ "base_name": "full_database_2026-07-10", "bin_names": ["BinA_2026-07-10.json", ...] }`.
+The project name and date are read server-side (same pattern as `api_export_pdf`).
+
+**`_generate_readme_pdf(buf, project_name, export_date, base_name, bin_names)`** uses
+ReportLab / `SimpleDocTemplate` on A4 portrait with the same palette as `_generate_pdf`
+(NAVY `#1a2942`, BLUE `#2980b9`, MUTED `#5a6a7a`). Imports ReportLab lazily inside the
+function (same pattern as `_generate_pdf`), so a missing `reportlab` returns a clean 500
+with an actionable error message rather than crashing at startup.
 
 ---
 
