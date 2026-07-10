@@ -7,11 +7,22 @@ filtered rows (respecting all active search/filter/bin state).
 
 ```
 Line 1  [🎬 Scene] [🎭 VFX ID] [🎞 Slate] … group buttons … [Sort ▾] [↑] [N takes / N slates]
-Line 2  [Slate ___] [VFX ID ___] [Date ___] [Camera ___] [Search ___] [Bin ▾] [SHOW OMITTED] [EDITED ONLY]  |  [⬇ CSV] [⬇ PDF] [⬇ HTML]
+Line 2  [Slate ___] [VFX ID ___] [Date ___] [Camera ___] [Search ___] [Bin ▾] [SHOW OMITTED] [EDITED ONLY]  |  [⬇ Export]
 ```
 
-All three export buttons sit together at the right end of the filter row (line 2).
-They are hidden in offline-mode pages (`.offline-mode` CSS class on `<body>`).
+A single **`⬇ Export`** button at the right end of the filter row opens a dropdown menu:
+
+```
+⬇ CSV
+⬇ PDF
+⬇ HTML — Without photos
+⬇ HTML — With photos
+───────────────────────
+⬇ Export All Files…
+```
+
+The CSV and HTML entries call their functions directly. PDF and Export All open modals.
+The entire `⬇ Export` button and all its sub-items are hidden in offline-mode pages.
 
 ---
 
@@ -42,20 +53,23 @@ then sorts known fields by `CSV_ORDERED` and appends any extra fields at the end
 | `_csvSortKeyChange(val)` | Update `csvModalSort.key` |
 | `_csvToggleSortDir()` | Toggle `csvModalSort.asc`, update button label |
 | `_csvCurrentConfig()` | Snapshot `{cols, sort}` for preset saving |
-| `_csvApplyConfig(cfg)` | Apply a loaded preset |
+| `_csvApplyConfig(cfg)` | Apply a loaded preset (see defensive-coding note below) |
 | `_csvLoadPreset()` | Read selected preset from `<select>`, apply, re-render |
 | `_csvSavePreset()` | Save current config under a name |
 | `_csvRenamePreset()` | `prompt()` rename |
 | `_csvDeletePreset()` | Confirm + delete |
-| `_doExportCsv()` | Build CSV blob, trigger download, close modal |
+| `_doExportCsv(downloadName?)` | Build CSV blob, trigger download, close modal |
 
-### Export logic (`_doExportCsv`)
-1. `dbRows.filter(dbRowMatches)` — exactly what's on screen.
-2. Sort by `csvModalSort.key` / `asc`.
-3. Keep only checked columns in their current order.
-4. Escape each cell: wrap in `"`, double internal `"`.
-5. Join lines with `\r\n`, create `Blob('text/csv')`, trigger `<a>.click()`.
-6. Filename: `database_export.csv` (fixed).
+### Export logic (`_doExportCsv(downloadName?)`)
+1. Lazy-init `csvModalCols` if empty (first call in a session with no modal opened).
+2. If no `downloadName`: read sort key from DOM (modal is still open).
+3. `dbRows.filter(dbRowMatches)` — exactly what's on screen.
+4. Sort by `csvModalSort.key` / `asc`.
+5. Keep only checked columns in their current order.
+6. Escape each cell: wrap in `"`, double internal `"`.
+7. Join lines with `\r\n`, create `Blob('text/csv')`, trigger `<a>.click()`.
+8. Filename: `downloadName` if provided, else `database_export.csv`.
+9. If no `downloadName`: close the modal.
 
 ### Preset schema (localStorage `vfx_csv_presets`)
 ```json
@@ -118,20 +132,21 @@ Body, Move, Res., Focus, Tilt, Height, WB, ISO, Filter, Take Notes, My Note (_no
 | `_pdfTakeUp/Down(i)` | Reorder takes table columns |
 | `_pdfTakeCheckAll(on)` | Select/deselect all take columns |
 | `_pdfCurrentConfig()` | Snapshot all modal state for preset saving |
-| `_pdfApplyConfig(cfg)` | Apply a loaded preset |
+| `_pdfApplyConfig(cfg)` | Apply a loaded preset (see defensive-coding note below) |
 | `_pdfLoadPreset()` | Load selected preset, re-render |
 | `_pdfSavePreset()` | Save current config under a name |
 | `_pdfRenamePreset()` | `prompt()` rename |
 | `_pdfDeletePreset()` | Confirm + delete |
-| `_doPdfExport()` | Build request, POST to `/api/export-pdf`, download result |
+| `_doPdfExport(downloadName?)` | Build request, POST to `/api/export-pdf`, download result |
 
-### Export flow (`_doPdfExport`)
-1. Read scope radio from DOM (`all` | `filtered`).
-2. Filter and sort `dbRows` client-side.
-3. Collect unique `slateIds` in sort order.
-4. If scope = `filtered`: build `takeIds` list of `{slate, take, camera}` objects. If `all`: `null`.
-5. Disable export buttons, close modal.
-6. `POST /api/export-pdf`:
+### Export flow (`_doPdfExport(downloadName?)`)
+1. Lazy-init `pdfInfoCols` / `pdfTakeCols` if empty.
+2. If no `downloadName`: read scope radio and sort key from DOM (modal is still open).
+3. Filter and sort `dbRows` client-side.
+4. Collect unique `slateIds` in sort order.
+5. If scope = `filtered`: build `takeIds` list of `{slate, take, camera}` objects. If `all`: `null`.
+6. Disable export buttons; if no `downloadName`: close modal.
+7. `POST /api/export-pdf`:
    ```json
    {
      "slates": ["10/1", "49A/1", ...],
@@ -143,7 +158,7 @@ Body, Move, Res., Focus, Tilt, Height, WB, ISO, Filter, Take Notes, My Note (_no
      "landscape": true
    }
    ```
-7. Receive blob, download as `<ProjectName>_YYYYMMDD.pdf`.
+8. Receive blob, download as `downloadName` if provided, else `<ProjectName>_YYYYMMDD.pdf`.
 
 ### Preset schema (localStorage `vfx_pdf_presets`)
 ```json
@@ -246,7 +261,7 @@ engine but differ in scope, output format, photo handling, and intended use.
 
 | | Browse page `💾 Offline HTML` | Database page `⬇ HTML` |
 |---|---|---|
-| **Trigger** | Button in browse toolbar | Popup on filter row |
+| **Trigger** | Button in browse toolbar | Item in `⬇ Export` dropdown |
 | **Scope** | Entire database + browse data | Currently filtered rows only |
 | **Output format** | Multi-file (HTML + `photos/` folder) | Single self-contained `.html` |
 | **Photo format** | Separate `.jpg` files (relative paths) | Base64 data URIs (inline) |
@@ -300,19 +315,16 @@ These relative paths are embedded in the `offlinePhotos` JS variable.
 
 ### 3b. Database page — `⬇ HTML`
 
-**Location:** Filter row (second line), rightmost export button. Click opens a popup:
-- **Without photos** — compact file, 📷 badge still shows on cards that have photos
-- **With photos** — photos embedded as data URIs; file can be large for big datasets
+**Location:** `⬇ Export` dropdown → **`⬇ HTML — Without photos`** / **`⬇ HTML — With photos`**.
 
 **Purpose:** Send a filtered subset of takes (e.g. a specific VFX ID, a shoot day, a bin) to
 someone who doesn't have access to the live server. Single file, no folder structure.
 
-#### Client function: `_doExportDbHtml(withPhotos)` (`generate_html.py`)
-1. Opens popup via `_openHtmlExportMenu(event)` → user picks without/with photos.
-2. Collects `rows = dbRows.filter(dbRowMatches)` — exactly what is on screen.
-3. `POST /api/export-db-html` with `{rows, photos: withPhotos}`.
-4. Downloads response blob as `database_export.html`.
-5. In `OFFLINE_MODE` the function returns immediately (button is hidden anyway).
+#### Client function: `_doExportDbHtml(withPhotos, downloadName?)` (`generate_html.py`)
+1. Collects `rows = dbRows.filter(dbRowMatches)` — exactly what is on screen.
+2. `POST /api/export-db-html` with `{rows, photos: withPhotos}`.
+3. Downloads response blob as `downloadName` if provided, else `database_export.html`.
+4. In `OFFLINE_MODE` the function returns immediately (button is hidden anyway).
 
 #### Server endpoint: `POST /api/export-db-html` → `api_export_db_html()` (`server.py`)
 ```python
@@ -348,9 +360,8 @@ CSS hidden by `.db-only-mode`:
 .db-only-mode .tab-bar             { display: none !important; }
 .db-only-mode #offline-html-btn    { display: none !important; }
 .db-only-mode #offline-html-status { display: none !important; }
-.db-only-mode #export-pdf-btn      { display: none !important; }
-.db-only-mode #export-html-btn     { display: none !important; }
 ```
+(The `⬇ Export` button and dropdown are hidden via `OFFLINE_MODE` checks in the JS, not CSS.)
 
 JS at init forces the database view regardless of saved localStorage state:
 ```js
@@ -377,10 +388,99 @@ photos' data URIs into the initial innerHTML of all cards at once would OOM the 
 | Reference photos on expand | ✅ (if exported with photos) | Embedded as data URIs |
 | Take notes display | ✅ | Embedded in rows as `_note` field |
 | CSV export (`⬇ CSV`) | ✅ | Fully client-side |
-| PDF export (`⬇ PDF`) | ✗ | Button hidden (requires server) |
-| HTML re-export | ✗ | Button hidden (requires server) |
+| PDF export (`⬇ PDF`) | ✗ | Hidden (requires server) |
+| HTML re-export | ✗ | Hidden (requires server) |
 | Save / edit take notes | ✗ | Requires server |
 | Edit / Revert / Omit buttons | ✗ | Hidden when `OFFLINE_MODE=true` |
 | Bins (create, filter) | ⚠️ | Works locally in that file's localStorage; live-app bins not carried over |
 | Bin export (download JSON) | ✅ | Client-side download |
 | Bin import (apply notes) | ✗ | Note-save step requires server |
+
+---
+
+## 4. Export All Files
+
+**`⬇ Export All Files…`** (bottom of the `⬇ Export` dropdown) exports CSV + PDF + HTML in one
+action, and optionally downloads selected bins as JSON for offline import.
+
+### Modal layout
+
+```
+Export All Files
+Filename:  [__________________]   (default: BinName_YYYY-MM-DD or full_database_YYYY-MM-DD)
+☑ Include photos in HTML
+
+CSV preset:   [— current settings —  ▾]
+PDF preset:   [— current settings —  ▾]
+
+Bins to export:
+  ☐ VFX Day 1
+  ☐ Handheld Unit
+
+[Cancel]  [Export All]
+```
+
+- **Filename:** base name shared by all output files — extensions (`.csv`, `.pdf`, `.html`) are appended automatically.
+- **Include photos:** controls the `withPhotos` flag for the HTML export.
+- **Preset selectors:** optionally apply a saved CSV or PDF preset before exporting. Choosing "— current settings —" leaves the current in-memory state unchanged.
+- **Bins:** list of existing bins, each with a checkbox. Checked bins are downloaded as JSON
+  (same format as `_exportBin`), suitable for importing into the offline HTML page.
+
+### JS functions
+
+| Function | Purpose |
+|---|---|
+| `_openExportAllModal()` | Show overlay, set default filename, populate preset selectors and bin list |
+| `_closeExportAllModal()` | Hide overlay |
+| `_exportAllDefaultName()` | Returns `BinName_YYYY-MM-DD` or `full_database_YYYY-MM-DD` |
+| `_doExportAll()` | Run the full export sequence |
+
+### `_doExportAll()` sequence
+1. Read filename, photos checkbox, checked bins, preset selections from the modal DOM.
+2. Init CSV/PDF column defaults if not yet set in this session.
+3. Apply selected CSV preset via `_csvApplyConfig` (if one is chosen).
+4. Apply selected PDF preset via `_pdfApplyConfig` (if one is chosen).
+5. Close the modal.
+6. Disable `⬇ Export` button, show `⏳ Exporting…`.
+7. `_doExportCsv(baseName + '.csv')` — immediate (synchronous blob download).
+8. 350 ms pause.
+9. `await _doPdfExport(baseName + '.pdf')` — server call.
+10. 350 ms pause.
+11. `await _doExportDbHtml(withPhotos, baseName + '.html')` — server call.
+12. For each checked bin: 250 ms pause → `_exportBin(binId)`.
+13. Re-enable `⬇ Export` button (in `finally` block).
+
+The 350 ms / 250 ms pauses prevent the browser from blocking simultaneous download triggers.
+
+---
+
+## 5. Defensive coding — preset apply and column initialisation
+
+### The `downloadName` pattern
+`_doExportCsv(downloadName?)`, `_doPdfExport(downloadName?)`, and `_doExportDbHtml(withPhotos, downloadName?)` all accept an optional `downloadName`:
+- **From their own modal** (no `downloadName`): read live DOM values, show alerts, close modal on success.
+- **From Export All** (with `downloadName`): skip DOM reads and alerts, use the preset-applied in-memory state, use `downloadName` as the filename.
+
+### Initialisation order in `_doExportAll`
+Column state (`csvModalCols`, `pdfInfoCols`, `pdfTakeCols`) starts as `[]` until either a
+modal is opened or Export All is called. The correct order in `_doExportAll` is:
+
+```
+init defaults  →  apply preset  →  call export function
+```
+
+If the preset's col array is empty (preset saved before modal was ever opened, or old format),
+`_csvApplyConfig` / `_pdfApplyConfig` must **not** overwrite the freshly-initialised defaults
+with an empty array. Both functions guard against this:
+
+```js
+// _csvApplyConfig: only override cols if the preset has them
+if (cfg.cols && cfg.cols.length) csvModalCols = cfg.cols.map(c => ({...c}));
+
+// _pdfApplyConfig: same guard for both col arrays
+if (cfg.infoCols && cfg.infoCols.length) pdfInfoCols = cfg.infoCols.map(c=>({...c}));
+if (cfg.takeCols && cfg.takeCols.length) pdfTakeCols = cfg.takeCols.map(c=>({...c}));
+```
+
+The lazy-inits inside `_doExportCsv` / `_doPdfExport` then become no-ops because the arrays
+are already non-empty when Export All calls them.

@@ -2042,6 +2042,13 @@ class HTMLGenerator:
         .export-all-cancel:hover {{ border-color: var(--accent); }}
         .export-all-go {{ padding: 6px 16px; background: var(--accent); border: none; border-radius: 5px; cursor: pointer; color: #fff; font-size: 0.88em; font-weight: 600; }}
         .export-all-go:disabled {{ opacity: 0.5; cursor: default; }}
+        .export-all-preset-section {{ border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }}
+        .export-all-preset-row {{ display: flex; align-items: center; gap: 8px; font-size: 0.83em; }}
+        .export-all-preset-lbl {{ min-width: 80px; color: var(--text-muted); }}
+        .export-all-preset-sel {{
+            flex: 1; padding: 4px 6px; border: 1px solid var(--border);
+            border-radius: 4px; background: var(--surface-2); color: var(--text); font-size: 0.88em;
+        }}
 
         /* ── CSV export modal ── */
         #csv-modal-overlay {{
@@ -4179,7 +4186,7 @@ function _csvCurrentConfig() {{
     return {{ cols: csvModalCols.map(c => ({{...c}})), sortKey: csvModalSort.key, sortAsc: csvModalSort.asc }};
 }}
 function _csvApplyConfig(cfg) {{
-    csvModalCols  = (cfg.cols || []).map(c => ({{...c}}));
+    if (cfg.cols && cfg.cols.length) csvModalCols = cfg.cols.map(c => ({{...c}}));
     csvModalSort  = {{ key: cfg.sortKey || 'Slate', asc: cfg.sortAsc !== false }};
 }}
 
@@ -4524,8 +4531,8 @@ function _pdfApplyConfig(cfg) {{
     pdfSortKey     = cfg.sortKey     || 'Slate';
     pdfSortAsc     = cfg.sortAsc     !== false;
     pdfLandscape   = cfg.landscape   !== false;
-    pdfInfoCols    = (cfg.infoCols   || []).map(c=>({{...c}}));
-    pdfTakeCols    = (cfg.takeCols   || []).map(c=>({{...c}}));
+    if (cfg.infoCols && cfg.infoCols.length) pdfInfoCols = cfg.infoCols.map(c=>({{...c}}));
+    if (cfg.takeCols && cfg.takeCols.length) pdfTakeCols = cfg.takeCols.map(c=>({{...c}}));
     pdfShowVfxWork = cfg.showVfxWork !== false;
     pdfShowNotes   = cfg.showNotes   !== false;
 }}
@@ -4666,6 +4673,25 @@ function _openExportAllModal() {{
     const inp = document.getElementById('export-all-filename');
     if (inp) inp.value = _exportAllDefaultName();
 
+    // Populate preset dropdowns
+    _loadCsvPresets();
+    _loadPdfPresets();
+    const noPreset = '<option value="">&#9472; current settings &#9472;</option>';
+    const csvSel = document.getElementById('export-all-csv-preset');
+    if (csvSel) {{
+        csvSel.innerHTML = noPreset +
+            Object.values(csvPresets).map(p =>
+                '<option value="' + escHtml(p.id) + '">' + escHtml(p.name) + '</option>'
+            ).join('');
+    }}
+    const pdfSel = document.getElementById('export-all-pdf-preset');
+    if (pdfSel) {{
+        pdfSel.innerHTML = noPreset +
+            Object.values(pdfPresets).map(p =>
+                '<option value="' + escHtml(p.id) + '">' + escHtml(p.name) + '</option>'
+            ).join('');
+    }}
+
     // Populate optional bin list (only shown when no bin is currently active)
     const binSection = document.getElementById('export-all-bin-section');
     if (binSection) {{
@@ -4698,6 +4724,17 @@ async function _doExportAll() {{
     const withPhotos = document.getElementById('export-all-photos')?.checked ?? true;
     const binCbs     = [...document.querySelectorAll('.export-all-bin-cb:checked')];
     const extraBins  = binCbs.map(cb => cb.dataset.binId);
+
+    // Init column defaults before applying presets so they are never empty when export functions run
+    if (!csvModalCols.length) csvModalCols = _csvDefaultCols();
+    const csvPresetId = document.getElementById('export-all-csv-preset')?.value;
+    if (csvPresetId && csvPresets[csvPresetId]) _csvApplyConfig(csvPresets[csvPresetId]);
+
+    // Init PDF column defaults before applying preset so they are never empty when _doPdfExport runs
+    if (!pdfInfoCols.length) pdfInfoCols = _pdfDefaultInfoCols();
+    if (!pdfTakeCols.length) pdfTakeCols = _pdfDefaultTakeCols();
+    const pdfPresetId = document.getElementById('export-all-pdf-preset')?.value;
+    if (pdfPresetId && pdfPresets[pdfPresetId]) _pdfApplyConfig(pdfPresets[pdfPresetId]);
 
     _closeExportAllModal();
 
@@ -6688,9 +6725,19 @@ async function _applyBinImport(pending) {{
         '<div class="export-all-sub">CSV · PDF · HTML downloaded with the same base name.</div>' +
         '<label class="export-all-label">Filename</label>' +
         '<input id="export-all-filename" type="text" class="export-all-input" spellcheck="false">' +
-        '<label class="export-all-check" style="margin-bottom:12px">' +
+        '<label class="export-all-check">' +
         '<input id="export-all-photos" type="checkbox" checked> Include photos in HTML' +
         '</label>' +
+        '<div class="export-all-preset-section">' +
+        '<div class="export-all-preset-row">' +
+        '<span class="export-all-preset-lbl">CSV preset:</span>' +
+        '<select id="export-all-csv-preset" class="export-all-preset-sel"></select>' +
+        '</div>' +
+        '<div class="export-all-preset-row">' +
+        '<span class="export-all-preset-lbl">PDF preset:</span>' +
+        '<select id="export-all-pdf-preset" class="export-all-preset-sel"></select>' +
+        '</div>' +
+        '</div>' +
         '<div id="export-all-bin-section" class="export-all-bin-section" style="display:none"></div>' +
         '<div class="export-all-footer">' +
         '<button class="export-all-cancel" onclick="_closeExportAllModal()">Cancel</button>' +
