@@ -2008,11 +2008,40 @@ class HTMLGenerator:
             padding: 7px 12px; cursor: pointer; white-space: nowrap;
         }}
         .db-html-export-menu button:hover {{ background: var(--surface-2); }}
+        .db-export-menu-sep {{ height: 1px; background: var(--border); margin: 3px 4px; }}
         .db-only-mode .tab-bar,
         .db-only-mode #offline-html-btn,
-        .db-only-mode #offline-html-status,
-        .db-only-mode #export-pdf-btn,
-        .db-only-mode #export-html-btn {{ display: none !important; }}
+        .db-only-mode #offline-html-status {{ display: none !important; }}
+        /* Export All modal */
+        #export-all-overlay {{
+            display: none; position: fixed; inset: 0; z-index: 3000;
+            background: rgba(0,0,0,0.55); align-items: center; justify-content: center;
+        }}
+        #export-all-modal {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 22px 24px; min-width: 340px; max-width: 460px;
+            width: 90vw;
+        }}
+        .export-all-title {{ font-size: 1em; font-weight: 600; margin-bottom: 5px; }}
+        .export-all-sub {{ font-size: 0.81em; color: var(--text-muted); margin-bottom: 14px; }}
+        .export-all-label {{ display: block; font-size: 0.82em; margin-bottom: 5px; }}
+        .export-all-input {{
+            width: 100%; box-sizing: border-box; padding: 6px 9px;
+            border: 1px solid var(--border); border-radius: 5px;
+            background: var(--surface-2); color: var(--text);
+            font-size: 0.88em; margin-bottom: 12px;
+        }}
+        .export-all-check {{ display: flex; align-items: center; gap: 8px; font-size: 0.83em; cursor: pointer; margin-bottom: 4px; }}
+        .export-all-bin-section {{
+            border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px;
+        }}
+        .export-all-bin-label {{ font-size: 0.81em; color: var(--text-muted); margin-bottom: 7px; }}
+        .export-all-bin-list {{ max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }}
+        .export-all-footer {{ display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }}
+        .export-all-cancel {{ padding: 6px 14px; border: 1px solid var(--border); background: none; border-radius: 5px; cursor: pointer; color: var(--text); font-size: 0.88em; }}
+        .export-all-cancel:hover {{ border-color: var(--accent); }}
+        .export-all-go {{ padding: 6px 16px; background: var(--accent); border: none; border-radius: 5px; cursor: pointer; color: #fff; font-size: 0.88em; font-weight: 600; }}
+        .export-all-go:disabled {{ opacity: 0.5; cursor: default; }}
 
         /* ── CSV export modal ── */
         #csv-modal-overlay {{
@@ -2451,9 +2480,7 @@ class HTMLGenerator:
           </label>
         </div>
         <div class="db-filter-field db-export-btns">
-          <button class="export-btn" onclick="openCsvExportModal()" title="Export filtered rows as CSV">⬇ CSV</button>
-          <button class="export-btn" id="export-pdf-btn" onclick="openPdfExportModal()" title="Export filtered rows as PDF report">⬇ PDF</button>
-          <button class="export-btn" id="export-html-btn" onclick="_openHtmlExportMenu(event)" title="Export filtered takes as offline HTML">⬇ HTML</button>
+          <button class="export-btn" id="db-export-menu-btn" onclick="_openDbExportMenu(event)" title="Export filtered rows">⬇ Export</button>
         </div>
       </div>
       <div id="db-pin-banner" class="db-pin-banner" style="display:none;margin-top:12px">
@@ -4195,13 +4222,16 @@ function _csvDeletePreset() {{
     _renderCsvModal();
 }}
 
-function _doExportCsv() {{
-    // Read sort key from DOM in case user changed it without triggering onchange
-    const sortSel = document.getElementById('csv-sort-key');
-    if (sortSel) csvModalSort.key = sortSel.value;
+function _doExportCsv(downloadName) {{
+    if (!csvModalCols.length) csvModalCols = _csvDefaultCols();
+    // Read sort key from DOM when called from the modal
+    if (!downloadName) {{
+        const sortSel = document.getElementById('csv-sort-key');
+        if (sortSel) csvModalSort.key = sortSel.value;
+    }}
 
     const cols = csvModalCols.filter(c => c.on).map(c => c.field);
-    if (!cols.length) {{ alert('Select at least one column.'); return; }}
+    if (!cols.length) {{ if (!downloadName) alert('Select at least one column.'); return; }}
 
     const filtered = dbRows.filter(dbRowMatches);
     if (!filtered.length) return;
@@ -4222,42 +4252,48 @@ function _doExportCsv() {{
     const blob = new Blob([lines.join('\\r\\n')], {{ type: 'text/csv' }});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url; a.download = 'database_export.csv';
+    a.href = url; a.download = downloadName || 'database_export.csv';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    closeCsvExportModal();
+    if (!downloadName) closeCsvExportModal();
 }}
 
 // ── Offline DB HTML export ────────────────────────────────────────────────────
 
-function _openHtmlExportMenu(e) {{
+function _openDbExportMenu(e) {{
     e.stopPropagation();
-    document.getElementById('db-html-export-menu')?.remove();
+    document.getElementById('db-export-menu')?.remove();
     const btn  = e.currentTarget;
     const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
-    menu.id = 'db-html-export-menu';
+    menu.id = 'db-export-menu';
     menu.className = 'db-html-export-menu';
     menu.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
     menu.style.left = rect.left + 'px';
-    menu.innerHTML =
-        '<button onclick="_doExportDbHtml(false)">⬇ Without photos</button>' +
-        '<button onclick="_doExportDbHtml(true)">⬇ With photos</button>';
+    let items = '<button onclick="_closeDbExportMenu();openCsvExportModal()">⬇ CSV</button>';
+    if (!OFFLINE_MODE) {{
+        items +=
+            '<button onclick="_closeDbExportMenu();openPdfExportModal()">⬇ PDF</button>' +
+            '<button onclick="_closeDbExportMenu();_doExportDbHtml(false)">⬇ HTML — Without photos</button>' +
+            '<button onclick="_closeDbExportMenu();_doExportDbHtml(true)">⬇ HTML — With photos</button>' +
+            '<div class="db-export-menu-sep"></div>' +
+            '<button onclick="_closeDbExportMenu();_openExportAllModal()">⬇ Export All Files…</button>';
+    }}
+    menu.innerHTML = items;
     document.body.appendChild(menu);
-    setTimeout(() => document.addEventListener('click', _closeHtmlExportMenu, {{once: true}}), 0);
+    setTimeout(() => document.addEventListener('click', _closeDbExportMenu, {{once: true}}), 0);
 }}
-function _closeHtmlExportMenu() {{
-    document.getElementById('db-html-export-menu')?.remove();
+function _closeDbExportMenu() {{
+    document.getElementById('db-export-menu')?.remove();
 }}
 
-async function _doExportDbHtml(withPhotos) {{
+async function _doExportDbHtml(withPhotos, downloadName) {{
     if (OFFLINE_MODE) return;
-    _closeHtmlExportMenu();
     const rows = dbRows.filter(dbRowMatches);
-    if (!rows.length) {{ alert('No rows to export.'); return; }}
+    if (!rows.length) {{ if (!downloadName) alert('No rows to export.'); return; }}
 
-    const btn = document.getElementById('export-html-btn');
-    if (btn) {{ btn.disabled = true; btn.textContent = withPhotos ? '⏳ photos…' : '⏳'; }}
+    const btn = downloadName ? null : document.getElementById('db-export-menu-btn');
+    if (btn) {{ btn.disabled = true; btn.textContent = withPhotos ? '⏳ photos…' : '⏳ HTML…'; }}
 
     try {{
         const res = await fetch('/api/export-db-html', {{
@@ -4267,18 +4303,18 @@ async function _doExportDbHtml(withPhotos) {{
         }});
         if (!res.ok) {{
             const err = await res.json().catch(() => ({{}}));
-            alert('HTML export failed: ' + (err.error || res.statusText));
+            if (!downloadName) alert('HTML export failed: ' + (err.error || res.statusText));
             return;
         }}
         const blob = await res.blob();
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement('a');
         a.href = url;
-        a.download = 'database_export.html';
+        a.download = downloadName || 'database_export.html';
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 10000);
     }} finally {{
-        if (btn) {{ btn.disabled = false; btn.textContent = '⬇ HTML'; }}
+        if (btn) {{ btn.disabled = false; btn.textContent = '⬇ Export'; }}
     }}
 }}
 
@@ -4530,17 +4566,22 @@ function _pdfDeletePreset() {{
     _renderPdfModal();
 }}
 
-async function _doPdfExport() {{
+async function _doPdfExport(downloadName) {{
     if (OFFLINE_MODE) return;
-    // Read scope radio from DOM
-    const scopeEl = document.querySelector('input[name="pdf-scope"]:checked');
-    if (scopeEl) pdfScope = scopeEl.value;
-    const sortSel = document.getElementById('pdf-sort-key');
-    if (sortSel) pdfSortKey = sortSel.value;
+    // Lazy-init defaults when called without opening the modal
+    if (!pdfInfoCols.length) pdfInfoCols = _pdfDefaultInfoCols();
+    if (!pdfTakeCols.length) pdfTakeCols = _pdfDefaultTakeCols();
+    // Read scope/sort from DOM only when called from the modal
+    if (!downloadName) {{
+        const scopeEl = document.querySelector('input[name="pdf-scope"]:checked');
+        if (scopeEl) pdfScope = scopeEl.value;
+        const sortSel = document.getElementById('pdf-sort-key');
+        if (sortSel) pdfSortKey = sortSel.value;
+    }}
 
     const infoCols = pdfInfoCols.filter(c => c.on).map(c => c.field);
     const takeCols = pdfTakeCols.filter(c => c.on).map(c => ({{field: c.field, label: c.label}}));
-    if (!takeCols.length) {{ alert('Select at least one takes table column.'); return; }}
+    if (!takeCols.length) {{ if (!downloadName) alert('Select at least one takes table column.'); return; }}
 
     const filtered = dbRows.filter(dbRowMatches);
     if (!filtered.length) {{ alert('No rows to export.'); return; }}
@@ -4563,13 +4604,12 @@ async function _doPdfExport() {{
         ? sorted.map(r => ({{slate: r['Slate']||'', take: r['Take']||'', camera: r['Camera']||''}}))
         : null;
 
-    const btn = document.getElementById('export-pdf-btn');
-    const exportBtn = document.getElementById('pdf-export-action-btn');
-    const origText = btn ? btn.textContent : '⬇ Export PDF';
-    if (btn) {{ btn.disabled = true; btn.textContent = '⏳ Generating…'; }}
+    const btn = downloadName ? null : document.getElementById('db-export-menu-btn');
+    const exportBtn = downloadName ? null : document.getElementById('pdf-export-action-btn');
+    if (btn) {{ btn.disabled = true; btn.textContent = '⏳ PDF…'; }}
     if (exportBtn) {{ exportBtn.disabled = true; exportBtn.textContent = '⏳ Generating…'; }}
 
-    closePdfExportModal();
+    if (!downloadName) closePdfExportModal();
 
     try {{
         const res = await fetch('/api/export-pdf', {{
@@ -4587,7 +4627,7 @@ async function _doPdfExport() {{
         }});
         if (!res.ok) {{
             const err = await res.json().catch(() => ({{}}));
-            alert('PDF export failed: ' + (err.error || res.statusText));
+            if (!downloadName) alert('PDF export failed: ' + (err.error || res.statusText));
             return;
         }}
         const blob = await res.blob();
@@ -4596,15 +4636,90 @@ async function _doPdfExport() {{
         a.href     = url;
         const cd   = res.headers.get('Content-Disposition') || '';
         const m    = cd.match(/filename="([^"]+)"/);
-        a.download = m ? m[1] : 'export.pdf';
+        a.download = downloadName || (m ? m[1] : 'export.pdf');
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 10000);
     }} catch(e) {{
-        alert('PDF export error: ' + e.message);
+        if (!downloadName) alert('PDF export error: ' + e.message);
     }} finally {{
-        if (btn) {{ btn.disabled = false; btn.textContent = origText; }}
+        if (btn) {{ btn.disabled = false; btn.textContent = '⬇ Export'; }}
+        if (exportBtn) {{ exportBtn.disabled = false; exportBtn.textContent = 'Export PDF'; }}
+    }}
+}}
+
+// ── Export All ────────────────────────────────────────────────────────────────
+
+function _exportAllDefaultName() {{
+    const d    = new Date();
+    const date = d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+    const bin  = activeBinId && bins[activeBinId] ? bins[activeBinId].name : '';
+    const base = bin ? bin.replace(/[^a-zA-Z0-9_-]/g, '_') : 'full_database';
+    return base + '_' + date;
+}}
+
+function _openExportAllModal() {{
+    document.getElementById('export-all-overlay').style.display = 'flex';
+    const inp = document.getElementById('export-all-filename');
+    if (inp) inp.value = _exportAllDefaultName();
+
+    // Populate optional bin list (only shown when no bin is currently active)
+    const binSection = document.getElementById('export-all-bin-section');
+    if (binSection) {{
+        const binArr = Object.values(bins);
+        if (!activeBinId && binArr.length) {{
+            binSection.style.display = 'block';
+            binSection.innerHTML =
+                '<div class="export-all-bin-label">Also export bin files (for import in offline page):</div>' +
+                '<div class="export-all-bin-list">' +
+                binArr.map(b =>
+                    '<label class="export-all-check">' +
+                    '<input type="checkbox" class="export-all-bin-cb" data-bin-id="' + escHtml(b.id) + '"> ' +
+                    escHtml(b.name) +
+                    ' <span style="color:var(--text-muted);font-size:0.9em">(' + b.items.length + ' items)</span>' +
+                    '</label>'
+                ).join('') +
+                '</div>';
+        }} else {{
+            binSection.style.display = 'none';
+        }}
+    }}
+}}
+function _closeExportAllModal() {{
+    document.getElementById('export-all-overlay').style.display = 'none';
+}}
+
+async function _doExportAll() {{
+    const nameInput = document.getElementById('export-all-filename');
+    const baseName  = (nameInput ? nameInput.value.trim() : '') || _exportAllDefaultName();
+    const withPhotos = document.getElementById('export-all-photos')?.checked ?? true;
+    const binCbs     = [...document.querySelectorAll('.export-all-bin-cb:checked')];
+    const extraBins  = binCbs.map(cb => cb.dataset.binId);
+
+    _closeExportAllModal();
+
+    const btn = document.getElementById('db-export-menu-btn');
+    if (btn) {{ btn.disabled = true; btn.textContent = '⏳ Exporting…'; }}
+
+    try {{
+        // 1. Main export: CSV + PDF + HTML of current filtered rows
+        _doExportCsv(baseName + '.csv');
+        await new Promise(r => setTimeout(r, 350));
+        await _doPdfExport(baseName + '.pdf');
+        await new Promise(r => setTimeout(r, 350));
+        await _doExportDbHtml(withPhotos, baseName + '.html');
+
+        // 2. Bin JSON exports (for import into offline page)
+        for (const binId of extraBins) {{
+            if (!bins[binId]) continue;
+            await new Promise(r => setTimeout(r, 250));
+            _exportBin(binId);
+        }}
+    }} finally {{
+        if (btn) {{ btn.disabled = false; btn.textContent = '⬇ Export'; }}
     }}
 }}
 
@@ -6563,6 +6678,26 @@ async function _applyBinImport(pending) {{
         '</div>' +
         '</div>';
     document.body.appendChild(pov);
+
+    const aov = document.createElement('div');
+    aov.id = 'export-all-overlay';
+    aov.addEventListener('click', e => {{ if (e.target === aov) _closeExportAllModal(); }});
+    aov.innerHTML =
+        '<div id="export-all-modal">' +
+        '<div class="export-all-title">Export All Files</div>' +
+        '<div class="export-all-sub">CSV · PDF · HTML downloaded with the same base name.</div>' +
+        '<label class="export-all-label">Filename</label>' +
+        '<input id="export-all-filename" type="text" class="export-all-input" spellcheck="false">' +
+        '<label class="export-all-check" style="margin-bottom:12px">' +
+        '<input id="export-all-photos" type="checkbox" checked> Include photos in HTML' +
+        '</label>' +
+        '<div id="export-all-bin-section" class="export-all-bin-section" style="display:none"></div>' +
+        '<div class="export-all-footer">' +
+        '<button class="export-all-cancel" onclick="_closeExportAllModal()">Cancel</button>' +
+        '<button class="export-all-go" onclick="_doExportAll()">Export All</button>' +
+        '</div>' +
+        '</div>';
+    document.body.appendChild(aov);
 }})();
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
