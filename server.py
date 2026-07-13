@@ -50,17 +50,19 @@ from generate_html import HTMLGenerator, _denormalize_json_to_rows
 app = Flask(__name__)
 
 # Resolved at startup — see _resolve_project_paths()
-PROJECT_ROOT: str = ""
-DATA_DIR:     str = ""
-LIDAR_DIR:    str = ""
-DELIVERY_DIR: str = ""
-ASSETS_DIR:   str = ""
+PROJECT_ROOT:     str = ""
+DATA_DIR:         str = ""
+LIDAR_DIR:        str = ""
+DELIVERY_DIR:     str = ""
+ASSETS_DIR:       str = ""
+ASSETS_SHOOT_DIR: str = ""
 
 _DIR_DEFAULTS = {
     "data":              "DATA",
     "lidar":             "LIDAR",
     "delivery_packages": "DELIVERY_PACKAGES",
     "assets":            "ASSETS",
+    "assets_shoot":      "ASSETS_SHOOT",
 }
 
 
@@ -1538,35 +1540,39 @@ def main() -> None:
         default="/Volumes/MACGUFF001/POSEIDON/SHOOT_BROWSER",
         help="Project root directory (contains DATA/, SHOOT_BROWSER/, LIDAR/, …)",
     )
-    parser.add_argument("--data",     default=None, help="Override DATA directory path")
-    parser.add_argument("--lidar",    default=None, help="Override LIDAR directory path")
-    parser.add_argument("--asset",    default=None, help="Override ASSETS directory path")
+    parser.add_argument("--data",          default=None, help="Override DATA directory path")
+    parser.add_argument("--lidar",         default=None, help="Override LIDAR directory path")
+    parser.add_argument("--asset",         default=None, help="Override ASSETS directory path")
+    parser.add_argument("--assets-shoot",  default=None, dest="assets_shoot",
+                        help="Override ASSETS_SHOOT directory path")
     parser.add_argument("--delivery-packages", default=None, dest="delivery_packages",
                         help="Override DELIVERY_PACKAGES directory path")
     parser.add_argument("--port",       type=int, default=5001, help="Port (default: 5001)")
     parser.add_argument("--no-browser", action="store_true",    help="Do not open browser automatically")
     args = parser.parse_args()
 
-    global PROJECT_ROOT, DATA_DIR, LIDAR_DIR, DELIVERY_DIR, ASSETS_DIR
-    PROJECT_ROOT = str(Path(args.root).resolve())
-    cfg          = _load_project_config()
-    cfg_paths    = cfg.get("paths", {})
-    DATA_DIR     = _resolve_dir("data",              args.data,               cfg_paths)
-    LIDAR_DIR    = _resolve_dir("lidar",             args.lidar,              cfg_paths)
-    DELIVERY_DIR = _resolve_dir("delivery_packages", args.delivery_packages,  cfg_paths)
-    ASSETS_DIR   = _resolve_dir("assets",            args.asset,              cfg_paths)
+    global PROJECT_ROOT, DATA_DIR, LIDAR_DIR, DELIVERY_DIR, ASSETS_DIR, ASSETS_SHOOT_DIR
+    PROJECT_ROOT     = str(Path(args.root).resolve())
+    cfg              = _load_project_config()
+    cfg_paths        = cfg.get("paths", {})
+    DATA_DIR         = _resolve_dir("data",              args.data,               cfg_paths)
+    LIDAR_DIR        = _resolve_dir("lidar",             args.lidar,              cfg_paths)
+    DELIVERY_DIR     = _resolve_dir("delivery_packages", args.delivery_packages,  cfg_paths)
+    ASSETS_DIR       = _resolve_dir("assets",            args.asset,              cfg_paths)
+    ASSETS_SHOOT_DIR = _resolve_dir("assets_shoot",      args.assets_shoot,       cfg_paths)
 
     print("\n" + "=" * 60)
     print("🎬  VFX SHOOT BROWSER — Local Server")
     print("=" * 60)
     _db_file, _ = _find_db_json_file()
     _db_label   = str(_db_file) if _db_file else "— not found —"
-    print(f"  Root     : {PROJECT_ROOT}")
-    print(f"  Data     : {DATA_DIR}")
-    print(f"  Database : {_db_label}")
-    print(f"  Delivery : {DELIVERY_DIR}")
-    print(f"  Lidar    : {LIDAR_DIR}")
-    print(f"  Assets   : {ASSETS_DIR}")
+    print(f"  Root         : {PROJECT_ROOT}")
+    print(f"  Data         : {DATA_DIR}")
+    print(f"  Database     : {_db_label}")
+    print(f"  Delivery     : {DELIVERY_DIR}")
+    print(f"  Lidar        : {LIDAR_DIR}")
+    print(f"  Assets       : {ASSETS_DIR}")
+    print(f"  Assets Shoot : {ASSETS_SHOOT_DIR}")
     print(f"  URL      : http://127.0.0.1:{args.port}")
     print(f"\n  Press Ctrl+C to stop the server.")
     print("=" * 60 + "\n")
