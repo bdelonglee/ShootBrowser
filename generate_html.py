@@ -758,17 +758,13 @@ class HTMLGenerator:
             font-weight: 600;
         }}
         .vendor-badge {{
-            font-size: 0.72em;
-            color: var(--text-muted);
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            padding: 2px 7px;
-            border-radius: 4px;
-            opacity: 0.6;
-            cursor: pointer;
-            transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+            font-size: 0.68em; font-weight: 700; letter-spacing: .3px;
+            color: #fff; background: #0a9e6a;
+            padding: 2px 9px; border-radius: 50px;
+            cursor: pointer; white-space: nowrap;
+            transition: filter 0.15s;
         }}
-        .vendor-badge:hover {{ opacity: 1; border-color: var(--accent); color: var(--accent); }}
+        .vendor-badge:hover {{ filter: brightness(1.2); }}
         .open-folder, .finder-btn, .toggle-btn {{
             background: none;
             border: none;
@@ -3074,7 +3070,7 @@ function renderEntry(entry, q) {{
 
     const vendors     = deliveredByBlock[entry.directory_name] || [];
     const vendorBadges = vendors.map(v =>
-        `<span class="vendor-badge" data-vendor="${{escHtml(v)}}" onclick="jumpToDeliveredVendor(this.dataset.vendor)">${{escHtml(v)}}</span>`
+        `<span class="vendor-badge" data-vendor="${{escHtml(v)}}" onclick="jumpToDeliveredVendor(this.dataset.vendor)">✓ ${{escHtml(v)}}</span>`
     ).join('');
     const catBadges = [];
     for (const s of (entry.subdirs || [])) {{
@@ -3859,7 +3855,7 @@ function renderAssetCard(asset, q) {{
 
     const vendorBadges = vendors.map(v =>
         `<span class="vendor-badge" data-vendor="${{escHtml(v)}}"
-              onclick="event.stopPropagation();jumpToDeliveredVendor(this.dataset.vendor)">${{escHtml(v)}}</span>`
+              onclick="event.stopPropagation();jumpToDeliveredVendor(this.dataset.vendor)">✓ ${{escHtml(v)}}</span>`
     ).join('');
 
     const copyBtn   = `<button class="open-folder"
@@ -6400,7 +6396,7 @@ function renderLidarCard(entry) {{
     const inCartClass   = inCart ? ' in-cart' : '';
     const chevron = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
     const vendors = deliveredByLidar[entry.dir_name] || [];
-    const vendorBadges = vendors.map(v => '<span class="vendor-badge">' + escHtml(v) + '</span>').join('');
+    const vendorBadges = vendors.map(v => '<span class="vendor-badge">✓ ' + escHtml(v) + '</span>').join('');
     return '<div class="lidar-card' + expandedClass + inCartClass + '" data-dir="' + entry.dir_name + '">' +
         '<div class="lidar-card-header" data-dir="' + entry.dir_name + '" onclick="toggleLidarCard(this.dataset.dir)">' +
         '<input type="checkbox" class="lidar-cb" data-dir="' + entry.dir_name + '"' +
