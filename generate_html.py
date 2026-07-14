@@ -2960,27 +2960,41 @@ function escRe(s) {{
 
 // ── Subdirectory rendering ───────────────────────────────────────────────────
 
-function renderSubdirs(subdirs) {{
+function renderSubdirs(subdirs, basePath) {{
     if (!subdirs || subdirs.length === 0) return '';
+
+    // Helper: openable attrs when a path is known
+    function _openable(path) {{
+        if (!path) return {{ cls: '', attrs: '' }};
+        return {{
+            cls:   ' subdir-openable',
+            attrs: ` data-path="${{escHtml(path)}}" onclick="openInFinder(this.dataset.path)"`,
+        }};
+    }}
 
     let parts = '';
 
     for (const s of subdirs) {{
+        const sectionPath = basePath && s.name !== '__other__' ? basePath + '/' + s.name : null;
+        const sec = _openable(sectionPath);
+
         if (s.kind === 'nested') {{
-            const rows = s.children.map(c =>
-                `<div class="subdir-child">
+            const rows = s.children.map(c => {{
+                const childPath = sectionPath ? sectionPath + '/' + c.name : null;
+                const ch = _openable(childPath);
+                return `<div class="subdir-child${{ch.cls}}"${{ch.attrs}}>
                     <span>${{escHtml(c.name)}}</span>
                     <span class="subdir-child-count">${{c.count}}</span>
-                </div>`
-            ).join('');
+                </div>`;
+            }}).join('');
             parts += `<div class="subdir-section">
-                <div class="subdir-section-label">📁 ${{escHtml(s.name)}}</div>
+                <div class="subdir-section-label${{sec.cls}}"${{sec.attrs}}>📁 ${{escHtml(s.name)}}</div>
                 <div class="subdir-children">${{rows}}</div>
             </div>`;
 
         }} else if (s.kind === 'count') {{
             parts += `<div class="subdir-count-row">
-                <span class="subdir-count-name">📁 ${{escHtml(s.name)}}</span>
+                <span class="subdir-count-name${{sec.cls}}"${{sec.attrs}}>📁 ${{escHtml(s.name)}}</span>
                 <span class="subdir-child-count">(${{s.count}} files)</span>
             </div>`;
 
@@ -2992,14 +3006,15 @@ function renderSubdirs(subdirs) {{
                 return `<div class="subdir-file">📄 ${{escHtml(c.name)}}${{countBadge}}</div>`;
             }}).join('');
             parts += `<div class="subdir-section">
-                <div class="subdir-section-label">📁 ${{escHtml(s.name)}}</div>
+                <div class="subdir-section-label${{sec.cls}}"${{sec.attrs}}>📁 ${{escHtml(s.name)}}</div>
                 <div class="subdir-children">${{rows}}</div>
             </div>`;
 
         }} else if (s.kind === 'simple') {{
-            const tags = s.children.map(c =>
-                `<span class="subdir-simple-item">${{escHtml(c.name)}}</span>`
-            ).join('');
+            const tags = s.children.map(c => {{
+                const ch = _openable(basePath ? basePath + '/' + c.name : null);
+                return `<span class="subdir-simple-item${{ch.cls}}"${{ch.attrs}}>${{escHtml(c.name)}}</span>`;
+            }}).join('');
             parts += `<div class="subdir-simple-group">${{tags}}</div>`;
         }}
     }}
@@ -3848,7 +3863,7 @@ function renderAssetCard(asset, q) {{
             ${{cb}}<span class="asset-name">${{nameHtml}}</span>
             ${{badges}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
         </div>
-        <div class="asset-details">${{renderSubdirs(asset.subdirs)}}</div>
+        <div class="asset-details">${{renderSubdirs(asset.subdirs, asset.path)}}</div>
     </div>`;
 }}
 
