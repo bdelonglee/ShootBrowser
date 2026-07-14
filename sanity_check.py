@@ -78,7 +78,7 @@ class SanityChecker:
     }
     DEFAULT_TEMPLATE_DIR = "J00_TEMPLATE"
     DEFAULT_HDR_SUBDIRS = {"Fisheye": "F", "Theta": "T", "Theta_Underwater": "U"}
-    CONFIG_PATH = "SHOOT_BROWSER/Config/sanity_check.json"
+    CONFIG_PATH = "__SB_SETUP__/Config/sanity_check.json"
 
     def __init__(self, data_path: str):
         self.data_path = Path(data_path).resolve()  # Resolve to absolute path
@@ -1159,7 +1159,7 @@ def main():
     parser.add_argument(
         "data_path",
         nargs="?",
-        default="/Volumes/MACGUFF001/POSEIDON/SHOOT_BROWSER",
+        default="/Volumes/Crucial X10/POSEIDON/STRUCTURE",
         help="Path to the DATA directory",
     )
     parser.add_argument(

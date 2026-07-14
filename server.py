@@ -69,8 +69,8 @@ _DIR_DEFAULTS = {
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _load_project_config() -> dict:
-    """Read project_config.json from SHOOT_BROWSER/Config/ (best-effort)."""
-    cfg_path = Path(PROJECT_ROOT) / "SHOOT_BROWSER" / "Config" / "project_config.json"
+    """Read project_config.json from __SB_SETUP__/Config/ (best-effort)."""
+    cfg_path = Path(PROJECT_ROOT) / "__SB_SETUP__" / "Config" / "project_config.json"
     try:
         return json.loads(cfg_path.read_text(encoding="utf-8"))
     except Exception:
@@ -165,7 +165,7 @@ def api_export_db_html():
 @app.route("/offline-site/<path:filename>")
 def offline_site_file(filename):
     """Serve the generated OfflineSite directory (HTML + photos)."""
-    directory = Path(PROJECT_ROOT) / "SHOOT_BROWSER" / "OfflineSite"
+    directory = Path(PROJECT_ROOT) / "__SB_SETUP__" / "OfflineSite"
     return send_from_directory(str(directory), filename)
 
 
@@ -952,8 +952,8 @@ def api_extract_slates():
     log_suffix       = now.strftime("%Y-%m-%d_%H%M")
 
     # Write log file (one per run, keyed by date+hour+minute)
-    log_dir  = Path(PROJECT_ROOT) / "SHOOT_BROWSER" / "Log"
-    log_dir.mkdir(exist_ok=True)
+    log_dir  = Path(PROJECT_ROOT) / "__SB_SETUP__" / "Log"
+    log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"extract_slates_{log_suffix}.log"
     lines = [
         f"Slate extraction — {now_str}",
@@ -1609,7 +1609,7 @@ def main() -> None:
     parser.add_argument(
         "--root",
         default="/Volumes/MACGUFF001/POSEIDON/SHOOT_BROWSER",
-        help="Project root directory (contains DATA/, SHOOT_BROWSER/, LIDAR/, …)",
+        help="Project root directory (contains DATA/, __SB_SETUP__/, LIDAR/, …)",
     )
     parser.add_argument("--data",          default=None, help="Override DATA directory path")
     parser.add_argument("--lidar",         default=None, help="Override LIDAR directory path")

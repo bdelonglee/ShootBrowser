@@ -120,8 +120,8 @@ class HTMLGenerator:
     DEFAULT_SKIP_DIRS   = {'TODO__', '__RAPPORTS_SCRIPT', '__Souvenirs_Vrac', '__CALLSHEETS'}
     DEFAULT_TEMPLATE_DIR = 'J00_TEMPLATE'
     DEFAULT_HDR_SUBDIRS  = {'Fisheye': 'F', 'Theta': 'T', 'Theta_Underwater': 'U'}
-    CONFIG_PATH    = 'SHOOT_BROWSER/Config/sanity_check.json'
-    PROJECT_CONFIG = 'SHOOT_BROWSER/Config/project_config.json'
+    CONFIG_PATH    = '__SB_SETUP__/Config/sanity_check.json'
+    PROJECT_CONFIG = '__SB_SETUP__/Config/project_config.json'
 
     # Subdirectory display modes (matched against non-__ subdir names)
     HDR_DIRS         = {'20_HDR'}
@@ -168,7 +168,7 @@ class HTMLGenerator:
         self.default_output_dir = str(self.delivery_dir)
 
     def default_output_path(self) -> Path:
-        return self.data_path / 'SHOOT_BROWSER' / 'vfx_shoot_browser.html'
+        return self.data_path / '__SB_SETUP__' / 'vfx_shoot_browser.html'
 
     # ── Block package note ───────────────────────────────────────────────────
 
@@ -413,7 +413,7 @@ class HTMLGenerator:
 
     def generate_offline_html(self, output_path: Optional[str] = None):
         print("🎨 Generating offline HTML page...")
-        pages_dir = self.data_path / 'SHOOT_BROWSER' / 'OfflineSite'
+        pages_dir = self.data_path / '__SB_SETUP__' / 'OfflineSite'
         pages_dir.mkdir(parents=True, exist_ok=True)
         out = Path(output_path) if output_path else (
             pages_dir / 'vfx_shoot_browser_offline.html'

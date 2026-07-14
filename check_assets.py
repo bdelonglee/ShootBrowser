@@ -389,7 +389,7 @@ def _resolve_root(args) -> Path:
         structure = Path(args.root).resolve()
     else:
         script_dir = Path(__file__).resolve().parent
-        cfg_path   = script_dir / 'SHOOT_BROWSER' / 'Config' / 'project_config.json'
+        cfg_path   = script_dir / '__SB_SETUP__' / 'Config' / 'project_config.json'
         if not cfg_path.exists():
             launch = script_dir / 'launch.sh'
             if launch.exists():
