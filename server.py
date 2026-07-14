@@ -224,7 +224,9 @@ def api_build_package():
     if not package_name:  errors.append("package_name is required")
     if not output_dir:    errors.append("output_dir is required")
     lidars = body.get("lidars") or []
-    if not blocks and not lidars:  errors.append("no blocks or lidars selected")
+    assets = body.get("assets") or []
+    if not blocks and not lidars and not assets:
+        errors.append("no blocks, lidars, or assets selected")
     if errors:
         return jsonify({"success": False, "errors": errors}), 400
 
@@ -304,6 +306,26 @@ def api_build_package():
                 "name":      lidar.get("name", ""),
             })
 
+        # Copy asset directories with ASSET__ prefix
+        copied_assets = []
+        assets_root = Path(ASSETS_SHOOT_DIR).resolve()
+        for asset in assets:
+            src = Path(asset.get("path", "")).resolve()
+            if not src.is_dir():
+                errors.append(f"Asset directory not found: {asset.get('name', '?')}")
+                continue
+            if not str(src).startswith(str(assets_root)):
+                errors.append(f"Asset path outside ASSETS_SHOOT: {src}")
+                continue
+            dest_name = "ASSET__" + asset.get("name", src.name)
+            dest = pkg_dir / dest_name
+            shutil.copytree(str(src), str(dest), ignore=_ignore_empty_dirs)
+            copied_assets.append({
+                "name":      asset.get("name", src.name),
+                "type_dir":  asset.get("type_dir", ""),
+                "dest_name": dest_name,
+            })
+
         manifest = {
             "vendor":            vendor,
             "package_name":      package_name,
@@ -316,6 +338,7 @@ def api_build_package():
             "package_note":      package_note,
             "blocks":            enriched_blocks,
             "lidars":            copied_lidars,
+            "assets":            copied_assets,
         }
 
         # package_manifest.json inside the package dir
@@ -761,6 +784,54 @@ def api_lidar():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+def _parse_assets_shoot() -> list:
+    """Scan ASSETS_SHOOT_DIR and return structured list of asset objects."""
+    root = Path(ASSETS_SHOOT_DIR)
+    if not root.exists():
+        return []
+
+    gen = make_generator()
+    assets = []
+
+    for type_dir in sorted(root.iterdir()):
+        if not type_dir.is_dir() or type_dir.name.startswith('.'):
+            continue
+        type_label = re.sub(r'^\d+_', '', type_dir.name)
+
+        for asset_dir in sorted(type_dir.iterdir()):
+            if not asset_dir.is_dir() or asset_dir.name.startswith('.'):
+                continue
+
+            # Non-empty category dirs (no __ prefix) → badge list
+            categories = [
+                d.name for d in sorted(asset_dir.iterdir())
+                if d.is_dir() and not d.name.startswith('__') and not d.name.startswith('.')
+            ]
+
+            # Reuse get_subdir_sections — asset dirs share the same template structure
+            subdirs = [asdict(s) for s in gen.get_subdir_sections(asset_dir)]
+
+            assets.append({
+                'type_dir':   type_dir.name,
+                'type_label': type_label,
+                'name':       asset_dir.name,
+                'path':       str(asset_dir),
+                'categories': categories,
+                'subdirs':    subdirs,
+            })
+
+    return assets
+
+
+@app.route("/api/assets-shoot")
+def api_assets_shoot():
+    """Return all assets from ASSETS_SHOOT_DIR."""
+    try:
+        return jsonify({"success": True, "assets": _parse_assets_shoot()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/lidar-preview/<path:file_path>")
 def api_lidar_preview(file_path):
     """Serve a lidar preview image (path must be inside LIDAR_DIR)."""
@@ -951,7 +1022,7 @@ def api_open_folder():
     if not path:
         return jsonify({"success": False, "error": "No path provided"}), 400
     resolved = Path(path).resolve()
-    allowed_roots = [str(Path(DATA_DIR).resolve()), str(Path(LIDAR_DIR).resolve())]
+    allowed_roots = [str(Path(DATA_DIR).resolve()), str(Path(LIDAR_DIR).resolve()), str(Path(ASSETS_SHOOT_DIR).resolve())]
     if not any(str(resolved).startswith(r) for r in allowed_roots):
         return jsonify({"success": False, "error": "Path outside allowed directories"}), 403
     if not resolved.is_dir():

@@ -1228,6 +1228,7 @@ class HTMLGenerator:
         .offline-mode #tab-queue,
         .offline-mode #tab-delivered,
         .offline-mode #tab-lidar,
+        .offline-mode #tab-assets,
         .offline-mode #cart-panel,
         .offline-mode .entry-cb,
         .offline-mode .finder-btn,
@@ -2324,6 +2325,66 @@ class HTMLGenerator:
             color: var(--text-muted); font-size: 1em; display: none; line-height: 1;
         }}
         #lidar-search-clear:hover {{ color: var(--text); }}
+
+        /* ── Assets view ── */
+        .assets-active {{ --accent: #e8a030; --accent-glow: rgba(232,160,48,0.15); }}
+        .assets-active .tab-btn.active {{ color: #e8a030; border-bottom-color: #e8a030; }}
+
+        .asset-card {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-left: 3px solid transparent;
+            padding: 12px 16px; margin-bottom: 8px;
+            border-radius: 8px; transition: all 0.15s;
+        }}
+        .asset-card:hover {{ background: var(--surface-2); border-color: var(--border-hover); border-left-color: var(--accent); }}
+        .asset-card.in-cart {{ border-left-color: var(--accent); background: var(--accent-glow); }}
+        .asset-card-header {{
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }}
+        .asset-cb {{ opacity: 0.3; cursor: pointer; width: 15px; height: 15px; flex-shrink: 0; }}
+        .asset-card:hover .asset-cb, .asset-card.in-cart .asset-cb, .asset-cb:checked {{ opacity: 1; }}
+        .asset-name {{
+            font-weight: 600; font-size: .92rem; color: var(--text);
+            flex: 1; min-width: 100px; letter-spacing: .3px;
+        }}
+        .asset-cat-badge {{
+            font-size: .68rem; font-weight: 700; padding: 2px 7px;
+            border-radius: 4px; letter-spacing: .4px; color: #fff;
+            white-space: nowrap; opacity: .9;
+        }}
+        .asset-cat-badge.done-badge {{ opacity: .6; }}
+        .badge-hdr      {{ background: #6b3fa0; }}
+        .badge-photog   {{ background: #b55a20; }}
+        .badge-lidar    {{ background: #1e7a3a; }}
+        .badge-3dprint  {{ background: #a02828; }}
+        .badge-photos   {{ background: #1a7070; }}
+        .badge-videos   {{ background: #807020; }}
+        .badge-temoin   {{ background: #385880; }}
+        .badge-infos    {{ background: #506070; }}
+        .badge-concept  {{ background: #6a3860; }}
+        .badge-refs     {{ background: #505050; }}
+        .badge-misc     {{ background: #5a4828; }}
+
+        .asset-details {{
+            display: none; padding-top: 10px; border-top: 1px solid var(--border);
+            margin-top: 10px;
+        }}
+        .asset-card.expanded .asset-details {{ display: block; }}
+        #assets-search-input {{
+            width: 100%; padding: 8px 34px;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.9em;
+            outline: none; transition: border-color 0.15s;
+        }}
+        #assets-search-input::placeholder {{ color: var(--text-muted); }}
+        #assets-search-input:focus {{ border-color: var(--accent); }}
+        #assets-search-clear {{
+            position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; cursor: pointer;
+            color: var(--text-muted); font-size: 1em; display: none; line-height: 1;
+        }}
+        #assets-search-clear:hover {{ color: var(--text); }}
+        .cart-section-label {{ font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .6px; padding: 4px 0 2px; }}
     </style>
 </head>
 <body>
@@ -2339,6 +2400,7 @@ class HTMLGenerator:
       <button class="tab-btn" onclick="setView('database')" id="tab-database">🗄️ Database</button>
       <button class="tab-btn" onclick="setView('queries')" id="tab-queries">🔎 Queries</button>
       <button class="tab-btn" onclick="setView('lidar')" id="tab-lidar">📡 Lidar</button>
+      <button class="tab-btn" onclick="setView('assets')" id="tab-assets">🗂️ Assets</button>
       <button class="tab-btn" onclick="setView('queue')" id="tab-queue">📋 Queue</button>
       <button class="tab-btn" onclick="setView('delivered')" id="tab-delivered">✅ Delivered</button>
     </nav>
@@ -2545,6 +2607,21 @@ class HTMLGenerator:
       </div>
     </div>
 
+    <div id="view-assets" style="display:none">
+      <div class="controls">
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input id="assets-search-input" type="text"
+                 placeholder="Search asset name, type, category…"
+                 oninput="setAssetsQuery(this.value)">
+          <button id="assets-search-clear" onclick="clearAssetsSearch()" title="Clear">✕</button>
+        </div>
+      </div>
+      <div id="assets-content">
+        <div class="empty-state"><div class="empty-state-icon">🗂️</div><p>Loading…</p></div>
+      </div>
+    </div>
+
     <div id="view-queue" style="display:none">
       <div class="queue-toolbar">
         <button class="queue-build-btn" id="queue-build-btn" onclick="buildSelected()">🏗️ Build selected</button>
@@ -2588,6 +2665,7 @@ class HTMLGenerator:
       <div id="cart-items" class="cart-items"></div>
       <div id="cart-lidar-suggest" style="display:none" class="cart-lidar-suggest"></div>
       <div id="cart-lidar-items"></div>
+      <div id="cart-asset-items"></div>
       <div id="cart-collisions"></div>
       <div class="cart-package-note-row">
         <label class="cart-package-note-label" for="package-note-input">Package note</label>
@@ -2789,7 +2867,7 @@ function _restoreUiState() {{
             if (cb) cb.checked = true;
         }}
         // Active tab — restore last (skip in db-only exports)
-        if (!DB_ONLY_MODE && s.view && ['browse','database','queries','lidar','queue','delivered'].includes(s.view)) {{
+        if (!DB_ONLY_MODE && s.view && ['browse','database','queries','lidar','assets','queue','delivered'].includes(s.view)) {{
             setView(s.view);
         }}
     }} catch(e) {{}}
@@ -3217,6 +3295,13 @@ function clearCart() {{
         if (cb) cb.checked = false;
     }});
     _lidarSuggestions = [];
+    cartAssets.clear();
+    cartAssetsSave();
+    document.querySelectorAll('.asset-card').forEach(el => {{
+        el.classList.remove('in-cart');
+        const cb = el.querySelector('.asset-cb');
+        if (cb) cb.checked = false;
+    }});
     renderCart();
 }}
 
@@ -3307,7 +3392,7 @@ function renderCart() {{
     const suggestEl  = document.getElementById('cart-lidar-suggest');
     const lidarItems = document.getElementById('cart-lidar-items');
 
-    const total = cart.size + cartLidars.size;
+    const total = cart.size + cartLidars.size + cartAssets.size;
     if (total === 0) {{
         panel.classList.remove('visible');
         document.body.classList.remove('cart-open', 'cart-collapsed');
@@ -3364,6 +3449,24 @@ function renderCart() {{
             ).join('');
         }} else {{
             lidarItems.innerHTML = '';
+        }}
+    }}
+
+    // Asset items section
+    const assetItemsEl = document.getElementById('cart-asset-items');
+    if (assetItemsEl) {{
+        if (cartAssets.size > 0) {{
+            const label = (cart.size > 0 || cartLidars.size > 0) ? '<div class="cart-section-label">Assets</div>' : '';
+            assetItemsEl.innerHTML = label + [...cartAssets.values()].map(a =>
+                '<div class="cart-item">' +
+                '<div class="cart-item-top">' +
+                '<span class="cart-item-name">🗂️ ' + escHtml(a.name.replace(/_/g,' ')) + '</span>' +
+                '<button class="cart-item-remove" data-path="' + escHtml(a.path) + '"' +
+                ' onclick="removeAssetFromCart(this.dataset.path)" title="Remove">✕</button>' +
+                '</div></div>'
+            ).join('');
+        }} else {{
+            assetItemsEl.innerHTML = '';
         }}
     }}
 
@@ -3467,8 +3570,8 @@ function saveToQueue() {{
         showBuildStatus('error', 'Vendor, Package name and Output directory are required.');
         return;
     }}
-    if (cart.size === 0 && cartLidars.size === 0) {{
-        showBuildStatus('error', 'No blocks or lidars in cart.');
+    if (cart.size === 0 && cartLidars.size === 0 && cartAssets.size === 0) {{
+        showBuildStatus('error', 'No blocks, lidars, or assets in cart.');
         return;
     }}
 
@@ -3488,6 +3591,7 @@ function saveToQueue() {{
             note,
         }})),
         lidars: [...cartLidars.values()],
+        assets: [...cartAssets.values()],
     }};
 
     const queue = loadQueue();
@@ -3529,7 +3633,7 @@ function updateQueueBadge() {{
 
 function setView(view) {{
     currentView = view;
-    ['browse', 'database', 'queries', 'lidar', 'queue', 'delivered'].forEach(v => {{
+    ['browse', 'database', 'queries', 'lidar', 'assets', 'queue', 'delivered'].forEach(v => {{
         document.getElementById(`view-${{v}}`).style.display = v === view ? 'block' : 'none';
         document.getElementById(`tab-${{v}}`).classList.toggle('active', v === view);
     }});
@@ -3537,10 +3641,12 @@ function setView(view) {{
     container.classList.toggle('delivered-active', view === 'delivered');
     container.classList.toggle('database-active',  view === 'database');
     container.classList.toggle('lidar-active',     view === 'lidar');
+    container.classList.toggle('assets-active',    view === 'assets');
     if (view === 'delivered') loadDelivered();
     if (view === 'database')  loadDatabase();
     if (view === 'queries')   loadQueries();
     if (view === 'lidar')     loadLidar();
+    if (view === 'assets')    loadAssets();
     if (view === 'queue')     renderQueue();
     _saveUiState();
 }}
@@ -3584,6 +3690,216 @@ function _buildDeliveredByBlock() {{
     for (const k of Object.keys(lmap)) {{
         deliveredByLidar[k] = [...lmap[k]].sort();
     }}
+    // Rebuild asset delivery index
+    const amap = {{}};
+    for (const pkg of deliveredPackages) {{
+        for (const asset of (pkg.assets || [])) {{
+            const key = asset.name;
+            if (!key) continue;
+            if (!amap[key]) amap[key] = new Set();
+            amap[key].add(pkg.vendor);
+        }}
+    }}
+    deliveredByAsset = {{}};
+    for (const k of Object.keys(amap)) {{
+        deliveredByAsset[k] = [...amap[k]].sort();
+    }}
+}}
+
+// ── Assets view ──────────────────────────────────────────────────────────────
+
+let assetsData     = null;
+let assetsQuery    = '';
+let deliveredByAsset = {{}};   // asset.name → [vendor, ...]
+const expandedAssets = new Set();
+const cartAssets     = new Map();  // path → asset object
+const ASSET_CART_KEY = 'vfx_assets_cart';
+
+const _ASSET_BADGE_MAP = {{
+    '10_Infos':               {{ cls: 'badge-infos',   label: 'Infos'        }},
+    '11_Concept_Deco':        {{ cls: 'badge-concept',  label: 'Concept'     }},
+    '15_Assets':              {{ cls: 'badge-misc',     label: 'Assets'      }},
+    '20_HDR':                 {{ cls: 'badge-hdr',      label: 'HDR'         }},
+    '30_Photog_Polycam':      {{ cls: 'badge-photog',   label: 'Polycam'    }},
+    '31_Photog_Scale':        {{ cls: 'badge-photog',   label: 'Scale'      }},
+    '32_Photog_Photos':       {{ cls: 'badge-photog',   label: 'Photog'     }},
+    '33_Lidar':               {{ cls: 'badge-lidar',    label: 'Lidar'      }},
+    '34_3D_Print':            {{ cls: 'badge-3dprint',  label: '3D Print'   }},
+    '35_Scan_Engine':         {{ cls: 'badge-3dprint',  label: 'Scan'       }},
+    '40_Photos':              {{ cls: 'badge-photos',   label: 'Photos'     }},
+    '41_Infographie':         {{ cls: 'badge-photos',   label: 'Infographie'}},
+    '50_Videos':              {{ cls: 'badge-videos',   label: 'Videos'     }},
+    '60_Temoin_Photos':       {{ cls: 'badge-temoin',   label: 'Témoin'     }},
+    '70_Temoin_Videos':       {{ cls: 'badge-temoin',   label: 'Témoin Vid' }},
+    '80_References_Preshoot': {{ cls: 'badge-refs',     label: 'Refs'       }},
+    '90_References':          {{ cls: 'badge-refs',     label: 'Refs'       }},
+    '100_Souvenirs':          {{ cls: 'badge-misc',     label: 'Souvenirs'  }},
+}};
+
+function _assetBadgeInfo(catName) {{
+    const done = catName.startsWith('DONE_');
+    const key  = done ? catName.slice(5) : catName;
+    const info = _ASSET_BADGE_MAP[key];
+    if (info) return {{ cls: info.cls + (done ? ' done-badge' : ''), label: (done ? '✓ ' : '') + info.label }};
+    const fallback = key.replace(/^\d+_/, '').replace(/_/g, ' ');
+    return {{ cls: 'badge-misc' + (done ? ' done-badge' : ''), label: (done ? '✓ ' : '') + fallback }};
+}}
+
+function cartAssetsSave() {{
+    localStorage.setItem(ASSET_CART_KEY, JSON.stringify([...cartAssets.values()]));
+}}
+
+function cartAssetsLoad() {{
+    try {{
+        const saved = JSON.parse(localStorage.getItem(ASSET_CART_KEY) || '[]');
+        saved.forEach(a => {{ if (a.path) cartAssets.set(a.path, a); }});
+    }} catch(e) {{}}
+}}
+
+function toggleAssetCart(path) {{
+    if (cartAssets.has(path)) {{
+        cartAssets.delete(path);
+    }} else {{
+        const asset = (assetsData || []).find(a => a.path === path);
+        if (asset) cartAssets.set(path, asset);
+    }}
+    cartAssetsSave();
+    renderCart();
+    // Sync checkbox on the card
+    const card = document.querySelector(`.asset-card[data-path="${{CSS.escape(path)}}"]`);
+    if (card) {{
+        card.classList.toggle('in-cart', cartAssets.has(path));
+        const cb = card.querySelector('.asset-cb');
+        if (cb) cb.checked = cartAssets.has(path);
+    }}
+}}
+
+function removeAssetFromCart(path) {{
+    cartAssets.delete(path);
+    cartAssetsSave();
+    renderCart();
+    const card = document.querySelector(`.asset-card[data-path="${{CSS.escape(path)}}"]`);
+    if (card) {{
+        card.classList.remove('in-cart');
+        const cb = card.querySelector('.asset-cb');
+        if (cb) cb.checked = false;
+    }}
+}}
+
+function toggleAssetCard(btn) {{
+    const card = btn.closest('.asset-card');
+    const path = card.dataset.path;
+    if (expandedAssets.has(path)) {{ expandedAssets.delete(path); }}
+    else                           {{ expandedAssets.add(path); }}
+    card.classList.toggle('expanded', expandedAssets.has(path));
+}}
+
+function renderAssetCard(asset, q) {{
+    const inCart     = cartAssets.has(asset.path);
+    const isExpanded = expandedAssets.has(asset.path);
+    const vendors    = deliveredByAsset[asset.name] || [];
+
+    const cb = `<input type="checkbox" class="asset-cb" ${{inCart ? 'checked' : ''}}
+        onclick="toggleAssetCart(this.closest('.asset-card').dataset.path)">`;
+
+    const badges = asset.categories.map(cat => {{
+        const info = _assetBadgeInfo(cat);
+        return `<span class="asset-cat-badge ${{info.cls}}" title="${{escHtml(cat)}}">${{escHtml(info.label)}}</span>`;
+    }}).join('');
+
+    const vendorBadges = vendors.map(v =>
+        `<span class="vendor-badge" data-vendor="${{escHtml(v)}}"
+              onclick="event.stopPropagation();jumpToDeliveredVendor(this.dataset.vendor)">${{escHtml(v)}}</span>`
+    ).join('');
+
+    const copyBtn   = `<button class="open-folder"
+        onclick="event.stopPropagation();copyPath(this,this.closest('.asset-card').dataset.path)"
+        title="Copy path"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg></button>`;
+    const finderBtn = `<button class="finder-btn"
+        onclick="event.stopPropagation();openInFinder(this.closest('.asset-card').dataset.path)"
+        title="Open in Finder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+        </svg></button>`;
+    const chevron   = `<button class="toggle-btn" onclick="toggleAssetCard(this)" title="Expand / Collapse">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/></svg></button>`;
+
+    const nameHtml = highlight(asset.name.replace(/_/g, ' '), q);
+
+    return `<div class="asset-card${{inCart ? ' in-cart' : ''}}${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(asset.path)}}">
+        <div class="asset-card-header">
+            ${{cb}}<span class="asset-name">${{nameHtml}}</span>
+            ${{badges}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
+        </div>
+        <div class="asset-details">${{renderSubdirs(asset.subdirs)}}</div>
+    </div>`;
+}}
+
+function renderAssets() {{
+    const el = document.getElementById('assets-content');
+    if (!el) return;
+    const q       = assetsQuery.toLowerCase().trim();
+    const all     = assetsData || [];
+    const matched = q ? all.filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        a.type_label.toLowerCase().includes(q) ||
+        a.type_dir.toLowerCase().includes(q) ||
+        a.categories.some(c => c.toLowerCase().includes(q))
+    ) : all;
+
+    if (!matched.length) {{
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🗂️</div><p>' +
+            (q ? `No assets matching "<strong>${{escHtml(q)}}</strong>"` : 'No assets found.') + '</p></div>';
+        return;
+    }}
+
+    // Group by type_dir (preserving sorted order from server)
+    const groups = new Map();
+    for (const a of matched) {{
+        if (!groups.has(a.type_dir)) groups.set(a.type_dir, {{ label: a.type_label, assets: [] }});
+        groups.get(a.type_dir).assets.push(a);
+    }}
+
+    let html = '';
+    for (const [, group] of groups) {{
+        const n = group.assets.length;
+        html += `<div class="group-header">
+            <span class="group-name">${{escHtml(group.label)}}</span>
+            <span class="group-count">${{n}} asset${{n !== 1 ? 's' : ''}}</span>
+        </div>`;
+        html += group.assets.map(a => renderAssetCard(a, q)).join('');
+    }}
+    el.innerHTML = html;
+}}
+
+async function loadAssets() {{
+    if (assetsData !== null) {{ renderAssets(); return; }}
+    const el = document.getElementById('assets-content');
+    if (el) el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🗂️</div><p>Loading…</p></div>';
+    try {{
+        const res  = await fetch('/api/assets-shoot');
+        const data = await res.json();
+        assetsData = data.assets || [];
+        renderAssets();
+    }} catch(e) {{
+        if (el) el.innerHTML = '<div class="empty-state"><p>Failed to load assets.</p></div>';
+    }}
+}}
+
+function setAssetsQuery(val) {{
+    assetsQuery = val;
+    document.getElementById('assets-search-clear').style.display = val ? 'block' : 'none';
+    renderAssets();
+}}
+
+function clearAssetsSearch() {{
+    assetsQuery = '';
+    const inp = document.getElementById('assets-search-input');
+    if (inp) inp.value = '';
+    document.getElementById('assets-search-clear').style.display = 'none';
+    renderAssets();
 }}
 
 async function _loadDeliveredBackground() {{
@@ -5732,6 +6048,7 @@ async function buildSelected() {{
 
 cartLoad();
 cartLidarsLoad();
+cartAssetsLoad();
 loadPackageNote();
 loadBuildForm();
 renderCart();
@@ -6881,8 +7198,9 @@ document.addEventListener('keydown', e => {{
     if (e.key === '1') {{ setView('browse');    return; }}
     if (e.key === '2') {{ setView('database');  return; }}
     if (e.key === '3') {{ setView('lidar');     return; }}
-    if (e.key === '4') {{ setView('queue');     return; }}
-    if (e.key === '5') {{ setView('delivered'); return; }}
+    if (e.key === '4') {{ setView('assets');    return; }}
+    if (e.key === '5') {{ setView('queue');     return; }}
+    if (e.key === '6') {{ setView('delivered'); return; }}
 
     // ⌘F / Ctrl+F — focus the active tab's search
     if (e.key === 'f' && (e.metaKey || e.ctrlKey)) {{
