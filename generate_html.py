@@ -85,7 +85,8 @@ def _denormalize_json_to_rows(data: dict) -> list:
 @dataclass
 class SubdirChild:
     name: str
-    count: int  # file count inside that directory
+    count: int       # file count inside that directory
+    rel_path: str = ''  # path relative to section dir when it differs from name
 
 
 @dataclass
@@ -225,7 +226,8 @@ class HTMLGenerator:
                             if grandchild.is_dir() and not grandchild.name.startswith('.'):
                                 children.append(
                                     SubdirChild(grandchild.name,
-                                                self.count_files_recursive(grandchild))
+                                                self.count_files_recursive(grandchild),
+                                                rel_path=f'{candidate.name}/{grandchild.name}')
                                 )
                     except PermissionError:
                         pass
@@ -2998,7 +3000,7 @@ function renderSubdirs(subdirs, basePath) {{
 
         if (s.kind === 'nested') {{
             const rows = s.children.map(c => {{
-                const childPath = sectionPath ? sectionPath + '/' + c.name : null;
+                const childPath = sectionPath ? sectionPath + '/' + (c.rel_path || c.name) : null;
                 const ch = _openable(childPath);
                 return `<div class="subdir-child${{ch.cls}}"${{ch.attrs}}>
                     <span>${{escHtml(c.name)}}</span>
@@ -3098,7 +3100,7 @@ function renderEntry(entry, q) {{
         <div class="entry-title-line">
             ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{catBadgesHtml}}${{slatesBadge}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
         </div>
-        <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
+        <div class="entry-details">${{renderSubdirs(entry.subdirs, entry.path)}}</div>
     </div>`;
 }}
 
