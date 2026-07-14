@@ -2372,6 +2372,7 @@ class HTMLGenerator:
             margin-top: 10px;
         }}
         .asset-card.expanded .asset-details {{ display: block; }}
+        .asset-card.expanded {{ margin-bottom: 18px; }}
         #assets-search-input {{
             width: 100%; padding: 8px 34px;
             background: var(--surface-2); border: 1px solid var(--border);
