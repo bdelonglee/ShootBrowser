@@ -2014,11 +2014,11 @@ class HTMLGenerator:
         .db-only-mode #offline-html-btn,
         .db-only-mode #offline-html-status {{ display: none !important; }}
         /* Export All modal */
-        #export-all-overlay {{
+        #export-all-overlay, #extract-all-overlay {{
             display: none; position: fixed; inset: 0; z-index: 3000;
             background: rgba(0,0,0,0.55); align-items: center; justify-content: center;
         }}
-        #export-all-modal {{
+        #export-all-modal, #extract-all-modal {{
             background: var(--surface); border: 1px solid var(--border);
             border-radius: 10px; padding: 22px 24px; min-width: 340px; max-width: 460px;
             width: 90vw;
@@ -2198,8 +2198,9 @@ class HTMLGenerator:
             padding: 8px 16px; cursor: pointer;
         }}
         .extract-status {{ font-size: 0.78em; color: var(--text-muted); }}
-        .extract-status.ok  {{ color: #56d364; }}
-        .extract-status.err {{ color: #f85149; }}
+        .extract-status.ok      {{ color: #56d364; }}
+        .extract-status.err     {{ color: #f85149; }}
+        .extract-status.running {{ color: #00e676; font-weight: 700; }}
         body.cart-open {{ padding-bottom: 370px; }}
         body.cart-open.cart-collapsed {{ padding-bottom: 48px; }}
 
@@ -2444,7 +2445,8 @@ class HTMLGenerator:
         </div>
         <button class="mode-button" onclick="toggleAll()" id="btn-toggle-all">⊕ Expand All</button>
 
-        <button class="tool-btn" id="extract-slates-btn" onclick="runExtractSlates()">📊 Extract Slates</button>
+        <button class="tool-btn" id="extract-slates-btn" onclick="_openExtractMenu(event)"
+            title="Extract slate data from the database and write files into each block&#39;s 00_Database folder">📊 Extract Slates</button>
         <span id="extract-status" class="extract-status"></span>
         <button class="tool-btn" id="offline-html-btn" onclick="generateOfflineHtml()">💾 Offline HTML</button>
         <span id="offline-html-status" class="extract-status"></span>
@@ -4451,7 +4453,6 @@ function renderQueries() {{
 
 // ── CSV export modal ──────────────────────────────────────────────────────────
 
-const CSV_PRESETS_KEY = 'vfx_csv_presets';
 const CSV_ORDERED = [
     'Slate','VFX ID','Take','Roll','Take Notes','Scene Description','Notes',
     'VFX Work','Camera','Body','Camera Move','Resolution','Lens','Focal',
@@ -4463,25 +4464,30 @@ const CSV_ORDERED = [
 let csvPresets     = {{}};
 let csvModalCols   = [];   // [{{field, on}}]
 let csvModalSort   = {{ key: 'Slate', asc: true }};
+let _csvExtractMode = false;
 
-function _loadCsvPresets() {{
-    try {{ csvPresets = JSON.parse(localStorage.getItem(CSV_PRESETS_KEY) || '{{}}'); }}
+async function _loadCsvPresets() {{
+    try {{ csvPresets = await fetch('/api/ui-presets/csv_presets').then(r => r.json()); }}
     catch(e) {{ csvPresets = {{}}; }}
 }}
 function _saveCsvPresets() {{
-    localStorage.setItem(CSV_PRESETS_KEY, JSON.stringify(csvPresets));
+    fetch('/api/ui-presets/csv_presets', {{
+        method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify(csvPresets),
+    }}).catch(() => {{}});
 }}
 
 function _csvDefaultCols() {{
-    if (!dbRows.length) return [];
+    if (!dbRows.length) return CSV_ORDERED.map(f => ({{ field: f, on: true }}));
     const all  = Object.keys(dbRows[0]).filter(c => !c.startsWith('_'));
     const ord  = CSV_ORDERED.filter(c => all.includes(c));
     const rest = all.filter(c => !CSV_ORDERED.includes(c));
     return [...ord, ...rest].map(f => ({{ field: f, on: true }}));
 }}
 
-function openCsvExportModal() {{
-    _loadCsvPresets();
+async function openCsvExportModal(extractMode) {{
+    _csvExtractMode = !!extractMode;
+    await _loadCsvPresets();
     if (!csvModalCols.length) csvModalCols = _csvDefaultCols();
     const ov = document.getElementById('csv-modal-overlay');
     if (ov) {{ _renderCsvModal(); ov.style.display = 'flex'; }}
@@ -4521,7 +4527,7 @@ function _renderCsvModal() {{
     ).join('');
 
     modal.innerHTML =
-        '<div class="csv-modal-title">Export CSV</div>' +
+        '<div class="csv-modal-title">' + (_csvExtractMode ? 'Extract Slates — CSV' : 'Export CSV') + '</div>' +
 
         '<div>' +
         '<div class="csv-modal-section-label">Presets</div>' +
@@ -4559,7 +4565,9 @@ function _renderCsvModal() {{
 
         '<div class="csv-modal-footer">' +
         '<button class="csv-cancel-btn" onclick="closeCsvExportModal()">Cancel</button>' +
-        '<button class="csv-export-btn" onclick="_doExportCsv()">Export CSV</button>' +
+        (_csvExtractMode
+            ? '<button class="csv-export-btn" onclick="_doExtractCsv()">Extract to Disk</button>'
+            : '<button class="csv-export-btn" onclick="_doExportCsv()">Export CSV</button>') +
         '</div>';
 }}
 
@@ -4708,6 +4716,169 @@ function _closeDbExportMenu() {{
     document.getElementById('db-export-menu')?.remove();
 }}
 
+// ── Extract Slates export menu ────────────────────────────────────────────────
+
+function _openExtractMenu(e) {{
+    e.stopPropagation();
+    document.getElementById('extract-menu')?.remove();
+    const btn  = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.id = 'extract-menu';
+    menu.className = 'db-html-export-menu';
+    menu.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+    menu.style.left = rect.left + 'px';
+    menu.innerHTML =
+        '<button onclick="_closeExtractMenu();_openExtractAllModal()">⚡ Extract All</button>' +
+        '<div class="db-export-menu-sep"></div>' +
+        '<button onclick="_closeExtractMenu();openCsvExportModal(true)">📄 CSV</button>' +
+        '<button onclick="_closeExtractMenu();openPdfExportModal(true)">📑 PDF</button>' +
+        '<button onclick="_closeExtractMenu();_doExtractHtml(false)">🌐 HTML — Without photos</button>' +
+        '<button onclick="_closeExtractMenu();_doExtractHtml(true)">🌐 HTML — With photos</button>';
+    document.body.appendChild(menu);
+    setTimeout(() => document.addEventListener('click', _closeExtractMenu, {{once: true}}), 0);
+}}
+function _closeExtractMenu() {{
+    document.getElementById('extract-menu')?.remove();
+}}
+
+async function _openExtractAllModal() {{
+    await Promise.all([_loadCsvPresets(), _loadPdfPresets()]);
+    const noPreset = '<option value="">&#9472; current settings &#9472;</option>';
+    const csvSel = document.getElementById('extract-all-csv-preset');
+    if (csvSel) {{
+        csvSel.innerHTML = noPreset +
+            Object.values(csvPresets).map(p =>
+                '<option value="' + escHtml(p.id) + '">' + escHtml(p.name) + '</option>'
+            ).join('');
+    }}
+    const pdfSel = document.getElementById('extract-all-pdf-preset');
+    if (pdfSel) {{
+        pdfSel.innerHTML = noPreset +
+            Object.values(pdfPresets).map(p =>
+                '<option value="' + escHtml(p.id) + '">' + escHtml(p.name) + '</option>'
+            ).join('');
+    }}
+    // Restore last-used prefs from disk
+    try {{
+        const prefs = await fetch('/api/ui-state/extract_all_prefs').then(r => r.json());
+        if (csvSel && prefs.csvPresetId !== undefined) csvSel.value = prefs.csvPresetId;
+        if (pdfSel && prefs.pdfPresetId !== undefined) pdfSel.value = prefs.pdfPresetId;
+        const photoCb = document.getElementById('extract-all-photos');
+        if (photoCb && prefs.withPhotos !== undefined) photoCb.checked = prefs.withPhotos;
+    }} catch(e) {{}}
+    document.getElementById('extract-all-overlay').style.display = 'flex';
+}}
+function _closeExtractAllModal() {{
+    document.getElementById('extract-all-overlay').style.display = 'none';
+}}
+
+async function _doExtractAll() {{
+    // Apply chosen presets
+    if (!csvModalCols.length) csvModalCols = _csvDefaultCols();
+    const csvPresetId = document.getElementById('extract-all-csv-preset')?.value;
+    if (csvPresetId && csvPresets[csvPresetId]) _csvApplyConfig(csvPresets[csvPresetId]);
+
+    if (!pdfInfoCols.length) pdfInfoCols = _pdfDefaultInfoCols();
+    if (!pdfTakeCols.length) pdfTakeCols = _pdfDefaultTakeCols();
+    const pdfPresetId = document.getElementById('extract-all-pdf-preset')?.value;
+    if (pdfPresetId && pdfPresets[pdfPresetId]) _pdfApplyConfig(pdfPresets[pdfPresetId]);
+
+    const withPhotos = document.getElementById('extract-all-photos')?.checked ?? false;
+
+    // Save prefs to disk (fire-and-forget)
+    fetch('/api/ui-state/extract_all_prefs', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{ csvPresetId: csvPresetId || '', pdfPresetId: pdfPresetId || '', withPhotos }}),
+    }}).catch(() => {{}});
+
+    _closeExtractAllModal();
+
+    const btn    = document.getElementById('extract-slates-btn');
+    const status = document.getElementById('extract-status');
+    if (btn) btn.disabled = true;
+    if (status) {{ status.textContent = '⏳ Extracting all…'; status.className = 'extract-status running'; }}
+
+    const cols = csvModalCols.filter(c => c.on).map(c => c.field);
+    const jobs = [
+        {{ format: 'csv',  cols, sort_key: csvModalSort.key, sort_asc: csvModalSort.asc }},
+        {{ format: 'pdf',
+           info_fields:   pdfInfoCols.filter(c => c.on).map(c => c.field),
+           take_cols:     pdfTakeCols.filter(c => c.on).map(c => ({{field: c.field, label: c.label}})),
+           show_vfx_work: pdfShowVfxWork, show_notes: pdfShowNotes, landscape: pdfLandscape }},
+        {{ format: withPhotos ? 'html_photos' : 'html' }},
+    ];
+
+    const results = await Promise.all(jobs.map(j =>
+        fetch('/api/extract-slates-export', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify(j),
+        }}).then(r => r.json()).catch(() => ({{ success: false, error: 'Network error' }}))
+    ));
+
+    if (btn) btn.disabled = false;
+    const failed = results.filter(r => !r.success);
+    const blocks = results.find(r => r.success)?.updated ?? 0;
+    if (status) {{
+        if (!failed.length) {{
+            status.textContent = `✓ CSV + PDF + HTML — ${{blocks}} blocks`;
+            status.className = 'extract-status ok';
+            setTimeout(() => {{ if (status) {{ status.textContent = ''; status.className = 'extract-status'; }} }}, 6000);
+        }} else {{
+            status.textContent = `✗ ${{failed.length}} format(s) failed`;
+            status.className = 'extract-status err';
+        }}
+    }}
+    checkExtractStatus();
+}}
+
+function _doExtractCsv() {{
+    const sortSel = document.getElementById('csv-sort-key');
+    if (sortSel) csvModalSort.key = sortSel.value;
+    const cols = csvModalCols.filter(c => c.on).map(c => c.field);
+    if (!cols.length) {{ alert('Select at least one column.'); return; }}
+    _doExtractFile('csv', {{ cols, sort_key: csvModalSort.key, sort_asc: csvModalSort.asc }});
+}}
+function _doExtractHtml(withPhotos) {{
+    _doExtractFile(withPhotos ? 'html_photos' : 'html', {{}});
+}}
+
+async function _doExtractFile(format, params) {{
+    closeCsvExportModal();
+    closePdfExportModal();
+    const btn    = document.getElementById('extract-slates-btn');
+    const status = document.getElementById('extract-status');
+    if (btn) {{ btn.disabled = true; }}
+    if (status) {{ status.textContent = '⏳'; status.className = 'extract-status running'; }}
+    try {{
+        const res  = await fetch('/api/extract-slates-export', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ format, ...params }}),
+        }});
+        const data = await res.json();
+        if (data.success) {{
+            const errs = data.errors?.length ? ` (${{data.errors.length}} errors)` : '';
+            if (status) {{
+                status.textContent = `✓ ${{data.updated}} blocks — ${{format.replace('_photos','').toUpperCase()}}${{errs}}`;
+                status.className = 'extract-status ok';
+                setTimeout(() => {{ if (status) {{ status.textContent = ''; status.className = 'extract-status'; }} }}, 6000);
+            }}
+            checkExtractStatus();
+        }} else {{
+            if (status) {{ status.textContent = `✗ ${{data.error || 'Failed'}}`; status.className = 'extract-status err'; }}
+        }}
+    }} catch(e) {{
+        if (status) {{ status.textContent = '✗ Server error — check terminal'; status.className = 'extract-status err'; }}
+    }} finally {{
+        if (btn) {{ btn.disabled = false; }}
+        _csvExtractMode = false;
+        _pdfExtractMode = false;
+    }}
+}}
+
 async function _doExportDbHtml(withPhotos, downloadName) {{
     if (OFFLINE_MODE) return;
     const rows = dbRows.filter(dbRowMatches);
@@ -4741,7 +4912,6 @@ async function _doExportDbHtml(withPhotos, downloadName) {{
 
 // ── PDF export modal ──────────────────────────────────────────────────────────
 
-const PDF_PRESETS_KEY = 'vfx_pdf_presets';
 
 const PDF_INFO_AVAIL = [
     'VFX ID','Set Location','Int/Ext','Day/Night','Unit',
@@ -4772,6 +4942,7 @@ const PDF_TAKE_AVAIL = [
 
 let pdfPresets      = {{}};
 let pdfScope        = 'all';
+let _pdfExtractMode = false;
 let pdfSortKey      = 'Slate';
 let pdfSortAsc      = true;
 let pdfLandscape    = true;
@@ -4780,12 +4951,15 @@ let pdfTakeCols     = [];   // [{{field, label, on}}]
 let pdfShowVfxWork  = true;
 let pdfShowNotes    = true;
 
-function _loadPdfPresets() {{
-    try {{ pdfPresets = JSON.parse(localStorage.getItem(PDF_PRESETS_KEY) || '{{}}'); }}
+async function _loadPdfPresets() {{
+    try {{ pdfPresets = await fetch('/api/ui-presets/pdf_presets').then(r => r.json()); }}
     catch(e) {{ pdfPresets = {{}}; }}
 }}
 function _savePdfPresets() {{
-    localStorage.setItem(PDF_PRESETS_KEY, JSON.stringify(pdfPresets));
+    fetch('/api/ui-presets/pdf_presets', {{
+        method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify(pdfPresets),
+    }}).catch(() => {{}});
 }}
 function _pdfDefaultInfoCols() {{
     return PDF_INFO_AVAIL.map(f => ({{field: f, on: true}}));
@@ -4795,9 +4969,10 @@ function _pdfDefaultTakeCols() {{
         .concat(PDF_TAKE_AVAIL.slice(9).map(c => ({{...c, on: false}})));
 }}
 
-function openPdfExportModal() {{
+async function openPdfExportModal(extractMode) {{
     if (OFFLINE_MODE) {{ alert('PDF export is not available in offline mode.'); return; }}
-    _loadPdfPresets();
+    _pdfExtractMode = !!extractMode;
+    await _loadPdfPresets();
     if (!pdfInfoCols.length) pdfInfoCols = _pdfDefaultInfoCols();
     if (!pdfTakeCols.length) pdfTakeCols = _pdfDefaultTakeCols();
     const ov = document.getElementById('pdf-modal-overlay');
@@ -4999,6 +5174,20 @@ async function _doPdfExport(downloadName) {{
         const sortSel = document.getElementById('pdf-sort-key');
         if (sortSel) pdfSortKey = sortSel.value;
     }}
+    // In extract mode, write per-block PDFs to disk instead of downloading
+    if (_pdfExtractMode && !downloadName) {{
+        closePdfExportModal();
+        const infoCols = pdfInfoCols.filter(c => c.on).map(c => c.field);
+        const takeCols = pdfTakeCols.filter(c => c.on).map(c => ({{field: c.field, label: c.label}}));
+        _doExtractFile('pdf', {{
+            info_fields: infoCols,
+            take_cols: takeCols,
+            show_vfx_work: pdfShowVfxWork,
+            show_notes: pdfShowNotes,
+            landscape: pdfLandscape,
+        }});
+        return;
+    }}
 
     const infoCols = pdfInfoCols.filter(c => c.on).map(c => c.field);
     const takeCols = pdfTakeCols.filter(c => c.on).map(c => ({{field: c.field, label: c.label}}));
@@ -5082,14 +5271,13 @@ function _exportAllDefaultName() {{
     return base + '_' + date;
 }}
 
-function _openExportAllModal() {{
+async function _openExportAllModal() {{
     document.getElementById('export-all-overlay').style.display = 'flex';
     const inp = document.getElementById('export-all-filename');
     if (inp) inp.value = _exportAllDefaultName();
 
     // Populate preset dropdowns
-    _loadCsvPresets();
-    _loadPdfPresets();
+    await Promise.all([_loadCsvPresets(), _loadPdfPresets()]);
     const noPreset = '<option value="">&#9472; current settings &#9472;</option>';
     const csvSel = document.getElementById('export-all-csv-preset');
     if (csvSel) {{
@@ -7187,6 +7375,33 @@ async function _applyBinImport(pending) {{
         '</div>' +
         '</div>';
     document.body.appendChild(aov);
+
+    const xaov = document.createElement('div');
+    xaov.id = 'extract-all-overlay';
+    xaov.addEventListener('click', e => {{ if (e.target === xaov) _closeExtractAllModal(); }});
+    xaov.innerHTML =
+        '<div id="extract-all-modal">' +
+        '<div class="export-all-title">Extract All</div>' +
+        '<div class="export-all-sub">CSV · PDF · HTML written to each block&#39;s 00_Database/ folder.</div>' +
+        '<div class="export-all-preset-section" style="border-top:none;margin-top:0;padding-top:0">' +
+        '<div class="export-all-preset-row">' +
+        '<span class="export-all-preset-lbl">CSV preset:</span>' +
+        '<select id="extract-all-csv-preset" class="export-all-preset-sel"></select>' +
+        '</div>' +
+        '<div class="export-all-preset-row">' +
+        '<span class="export-all-preset-lbl">PDF preset:</span>' +
+        '<select id="extract-all-pdf-preset" class="export-all-preset-sel"></select>' +
+        '</div>' +
+        '</div>' +
+        '<label class="export-all-check" style="margin-top:10px">' +
+        '<input id="extract-all-photos" type="checkbox"> Include photos in HTML' +
+        '</label>' +
+        '<div class="export-all-footer">' +
+        '<button class="export-all-cancel" onclick="_closeExtractAllModal()">Cancel</button>' +
+        '<button class="export-all-go" onclick="_doExtractAll()">Extract to Disk</button>' +
+        '</div>' +
+        '</div>';
+    document.body.appendChild(xaov);
 }})();
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────

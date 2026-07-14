@@ -1015,6 +1015,156 @@ def api_extract_slates():
     })
 
 
+@app.route("/api/extract-slates-export", methods=["POST"])
+def api_extract_slates_export():
+    """Extract per-block slates and write CSV / HTML / PDF to each block's 00_Database/."""
+    body = request.json or {}
+    fmt  = body.get("format", "csv")   # "csv" | "html" | "html_photos" | "pdf"
+    ext  = "pdf" if fmt == "pdf" else ("html" if fmt in ("html", "html_photos") else "csv")
+
+    jsonfile, db_date = _find_db_json_file()
+    if not jsonfile or not db_date:
+        return jsonify({"success": False, "error": "No database JSON found"}), 400
+
+    try:
+        data = _load_db_json()
+        rows = _denormalize_json_to_rows(data)
+        rows = _apply_overrides(rows, _load_overrides())
+        rows = _apply_notes(rows, _load_notes())
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Could not parse JSON: {e}"}), 500
+    if not rows:
+        return jsonify({"success": False, "error": "No rows in JSON"}), 500
+
+    # CSV options
+    default_cols = [f for f in rows[0].keys() if not f.startswith("_")]
+    cols     = body.get("cols") or default_cols
+    sort_key = body.get("sort_key", "Slate")
+    sort_asc = body.get("sort_asc", True)
+
+    # PDF options
+    info_fields   = body.get("info_fields") or PDF_INFO_FIELD_DEFAULTS
+    take_cols_pdf = body.get("take_cols")   or PDF_TAKE_COL_DEFAULTS
+    show_vfx_work = body.get("show_vfx_work", True)
+    show_notes    = body.get("show_notes",    True)
+    pdf_landscape = body.get("landscape",     True)
+
+    records_by_slate = {r["slateId"]: r for r in data.get("records", [])}
+    project_name     = (data.get("project") or {}).get("name", "VFX Shoot")
+
+    updated, errors = 0, []
+
+    for item in sorted(Path(DATA_DIR).iterdir()):
+        if not item.is_dir() or not _BLOCK_RE.match(item.name):
+            continue
+
+        scene_keys = _block_scene_keys(item.name)
+        if not scene_keys:
+            continue
+
+        matching = [r for r in rows if _slate_scene_key(r.get("Slate", "")) in scene_keys]
+        if not matching:
+            continue
+
+        try:
+            db_sub = _resolve_db_subdir(item)
+            if db_sub.name.startswith("__"):
+                renamed = db_sub.parent / db_sub.name[2:]
+                db_sub.mkdir(exist_ok=True)
+                db_sub.rename(renamed)
+                db_sub = renamed
+            else:
+                db_sub.mkdir(exist_ok=True)
+
+            existing = list(db_sub.glob(f"slates_*.{ext}"))
+            if existing:
+                history_dir = db_sub / "history"
+                history_dir.mkdir(exist_ok=True)
+                for f in existing:
+                    shutil.move(str(f), str(history_dir / f.name))
+
+            out_path = db_sub / f"slates_{db_date}.{ext}"
+
+            if fmt == "csv":
+                sorted_rows = sorted(matching, key=lambda r: str(r.get(sort_key) or ""), reverse=not sort_asc)
+                esc   = lambda v: '"' + str(v or "").replace('"', '""') + '"'
+                lines = [",".join(esc(c) for c in cols)]
+                for row in sorted_rows:
+                    lines.append(",".join(esc(row.get(c, "")) for c in cols))
+                out_path.write_text("\r\n".join(lines), encoding="utf-8")
+
+            elif fmt == "pdf":
+                seen, slate_ids = set(), []
+                for row in matching:
+                    s = re.sub(r"/\d+$", "", (row.get("Slate") or "").strip())
+                    if s and s not in seen:
+                        seen.add(s); slate_ids.append(s)
+                slate_rows = {sid: [] for sid in slate_ids}
+                for row in matching:
+                    base = re.sub(r"/\d+$", "", (row.get("Slate") or "").strip())
+                    if base in slate_rows:
+                        slate_rows[base].append(row)
+                buf = io.BytesIO()
+                _generate_pdf(buf, project_name, slate_ids, slate_rows, records_by_slate,
+                              info_fields=info_fields, take_cols=take_cols_pdf,
+                              show_vfx_work=show_vfx_work, show_notes=show_notes,
+                              landscape=pdf_landscape)
+                buf.seek(0)
+                out_path.write_bytes(buf.read())
+
+            elif fmt in ("html", "html_photos"):
+                with_photos = (fmt == "html_photos")
+                photos = {}
+                if with_photos:
+                    slate_ids_set = {r.get("Slate") for r in matching if r.get("Slate")}
+                    for record in data.get("records", []):
+                        sid = record.get("slateId", "")
+                        if sid in slate_ids_set and record.get("referencePictures"):
+                            photos[sid] = record["referencePictures"]
+                g    = make_generator()
+                html = g._build_html(
+                    g.build_data(),
+                    offline_data={"db_rows": matching, "delivered": [], "photos": photos},
+                    db_only=True,
+                )
+                out_path.write_text(html, encoding="utf-8")
+
+            updated += 1
+        except Exception as e:
+            errors.append(f"{item.name}: {e}")
+
+    return jsonify({
+        "success": True,
+        "format":  fmt,
+        "updated": updated,
+        "db_date": db_date,
+        "errors":  errors,
+    })
+
+
+def _sb_json_endpoint(subdir: str, key: str):
+    if not re.fullmatch(r"[a-zA-Z0-9_\-]+", key):
+        return jsonify({"error": "invalid key"}), 400
+    d = Path(PROJECT_ROOT) / "__SB_SETUP__" / subdir
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / f"{key}.json"
+    if request.method == "GET":
+        if not path.exists():
+            return jsonify({})
+        return jsonify(json.loads(path.read_text(encoding="utf-8")))
+    data = request.json or {}
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return jsonify({"ok": True})
+
+@app.route("/api/ui-state/<key>", methods=["GET", "POST"])
+def api_ui_state(key):
+    return _sb_json_endpoint("UI_state", key)
+
+@app.route("/api/ui-presets/<key>", methods=["GET", "POST"])
+def api_ui_presets(key):
+    return _sb_json_endpoint("UI_presets", key)
+
+
 @app.route("/api/open-folder", methods=["POST"])
 def api_open_folder():
     """Open a block directory in the native file manager."""
