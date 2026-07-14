@@ -785,6 +785,7 @@ class HTMLGenerator:
         .open-folder:hover, .finder-btn:hover, .toggle-btn:hover {{ opacity: 1 !important; color: var(--accent); }}
         .open-folder.copied {{ opacity: 1 !important; color: #56d364; }}
         .toggle-btn svg {{ transition: transform 0.2s; }}
+        .entry.expanded {{ margin-bottom: 18px; }}
         .entry.expanded .toggle-btn {{ opacity: 0.7; }}
         .entry.expanded .toggle-btn svg {{ transform: rotate(180deg); }}
         .entry.vfx-pass {{ border-left-color: #3a9e6a; }}
