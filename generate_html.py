@@ -2609,12 +2609,20 @@ class HTMLGenerator:
 
     <div id="view-assets" style="display:none">
       <div class="controls">
+        <div id="assets-type-filters" style="display:contents"></div>
         <div class="search-wrapper">
           <span class="search-icon">🔍</span>
           <input id="assets-search-input" type="text"
-                 placeholder="Search asset name, type, category…"
+                 placeholder="Search asset name, category…"
                  oninput="setAssetsQuery(this.value)">
           <button id="assets-search-clear" onclick="clearAssetsSearch()" title="Clear">✕</button>
+        </div>
+        <button class="mode-button" onclick="toggleAllAssets()" id="assets-expand-all">⊕ Expand All</button>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value" id="assets-stat-count">0</div>
+            <div class="stat-label">Assets</div>
+          </div>
         </div>
       </div>
       <div id="assets-content">
@@ -3708,8 +3716,10 @@ function _buildDeliveredByBlock() {{
 
 // ── Assets view ──────────────────────────────────────────────────────────────
 
-let assetsData     = null;
-let assetsQuery    = '';
+let assetsData       = null;
+let assetsQuery      = '';
+let assetsTypeFilter = 'all';   // 'all' or a type_dir string
+let assetsAllExpanded = false;
 let deliveredByAsset = {{}};   // asset.name → [vendor, ...]
 const expandedAssets = new Set();
 const cartAssets     = new Map();  // path → asset object
@@ -3837,38 +3847,89 @@ function renderAssetCard(asset, q) {{
     </div>`;
 }}
 
+function _renderAssetsTypeFilters() {{
+    const el = document.getElementById('assets-type-filters');
+    if (!el || !assetsData) return;
+    // Collect unique types in order
+    const seen = new Map();
+    for (const a of assetsData) {{
+        if (!seen.has(a.type_dir)) seen.set(a.type_dir, a.type_label);
+    }}
+    let html = `<button class="mode-button${{assetsTypeFilter === 'all' ? ' active' : ''}}"
+        onclick="setAssetsTypeFilter('all')">All</button>`;
+    for (const [typeDir, typeLabel] of seen) {{
+        html += `<button class="mode-button${{assetsTypeFilter === typeDir ? ' active' : ''}}"
+            data-type-dir="${{escHtml(typeDir)}}"
+            onclick="setAssetsTypeFilter(this.dataset.typeDir)">${{escHtml(typeLabel)}}</button>`;
+    }}
+    el.innerHTML = html;
+}}
+
+function setAssetsTypeFilter(type) {{
+    assetsTypeFilter = type;
+    renderAssets();
+}}
+
+function toggleAllAssets() {{
+    assetsAllExpanded = !assetsAllExpanded;
+    const btn = document.getElementById('assets-expand-all');
+    if (btn) btn.textContent = assetsAllExpanded ? '⊖ Collapse All' : '⊕ Expand All';
+    document.querySelectorAll('.asset-card').forEach(card => {{
+        card.classList.toggle('expanded', assetsAllExpanded);
+        const path = card.dataset.path;
+        if (assetsAllExpanded) {{ expandedAssets.add(path); }}
+        else                   {{ expandedAssets.delete(path); }}
+    }});
+}}
+
 function renderAssets() {{
     const el = document.getElementById('assets-content');
     if (!el) return;
-    const q       = assetsQuery.toLowerCase().trim();
-    const all     = assetsData || [];
-    const matched = q ? all.filter(a =>
-        a.name.toLowerCase().includes(q) ||
-        a.type_label.toLowerCase().includes(q) ||
-        a.type_dir.toLowerCase().includes(q) ||
-        a.categories.some(c => c.toLowerCase().includes(q))
-    ) : all;
+    const q   = assetsQuery.toLowerCase().trim();
+    const all = assetsData || [];
 
-    if (!matched.length) {{
+    // Apply type filter then search
+    const filtered = all.filter(a => {{
+        if (assetsTypeFilter !== 'all' && a.type_dir !== assetsTypeFilter) return false;
+        if (!q) return true;
+        return a.name.toLowerCase().includes(q) ||
+               a.categories.some(c => c.toLowerCase().includes(q));
+    }});
+
+    // Update stat counter
+    const statEl = document.getElementById('assets-stat-count');
+    if (statEl) statEl.textContent = filtered.length;
+
+    // Rebuild type filter buttons (updates active state)
+    _renderAssetsTypeFilters();
+
+    if (!filtered.length) {{
         el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🗂️</div><p>' +
-            (q ? `No assets matching "<strong>${{escHtml(q)}}</strong>"` : 'No assets found.') + '</p></div>';
+            (q || assetsTypeFilter !== 'all'
+                ? 'No assets match the current filter.'
+                : 'No assets found.') + '</p></div>';
         return;
     }}
 
     // Group by type_dir (preserving sorted order from server)
     const groups = new Map();
-    for (const a of matched) {{
+    for (const a of filtered) {{
         if (!groups.has(a.type_dir)) groups.set(a.type_dir, {{ label: a.type_label, assets: [] }});
         groups.get(a.type_dir).assets.push(a);
     }}
 
+    // When filtering to a single type, suppress the group header
+    const showHeaders = assetsTypeFilter === 'all' && groups.size > 1;
+
     let html = '';
     for (const [, group] of groups) {{
         const n = group.assets.length;
-        html += `<div class="group-header">
-            <span class="group-name">${{escHtml(group.label)}}</span>
-            <span class="group-count">${{n}} asset${{n !== 1 ? 's' : ''}}</span>
-        </div>`;
+        if (showHeaders) {{
+            html += `<div class="group-header">
+                <span class="group-name">${{escHtml(group.label)}}</span>
+                <span class="group-count">${{n}} asset${{n !== 1 ? 's' : ''}}</span>
+            </div>`;
+        }}
         html += group.assets.map(a => renderAssetCard(a, q)).join('');
     }}
     el.innerHTML = html;
@@ -3882,6 +3943,7 @@ async function loadAssets() {{
         const res  = await fetch('/api/assets-shoot');
         const data = await res.json();
         assetsData = data.assets || [];
+        _renderAssetsTypeFilters();
         renderAssets();
     }} catch(e) {{
         if (el) el.innerHTML = '<div class="empty-state"><p>Failed to load assets.</p></div>';
