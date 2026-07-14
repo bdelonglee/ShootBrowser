@@ -2353,6 +2353,8 @@ class HTMLGenerator:
             white-space: nowrap; opacity: .9;
         }}
         .asset-cat-badge.done-badge {{ opacity: .6; }}
+        .asset-cat-badge {{ cursor: pointer; }}
+        .asset-cat-badge:hover {{ opacity: 1; filter: brightness(1.25); }}
         .badge-hdr      {{ background: #6b3fa0; }}
         .badge-photog   {{ background: #b55a20; }}
         .badge-lidar    {{ background: #1e7a3a; }}
@@ -3813,8 +3815,11 @@ function renderAssetCard(asset, q) {{
         onclick="toggleAssetCart(this.closest('.asset-card').dataset.path)">`;
 
     const badges = asset.categories.map(cat => {{
-        const info = _assetBadgeInfo(cat);
-        return `<span class="asset-cat-badge ${{info.cls}}" title="${{escHtml(cat)}}">${{escHtml(info.label)}}</span>`;
+        const info    = _assetBadgeInfo(cat);
+        const catPath = asset.path + '/' + cat;
+        return `<span class="asset-cat-badge ${{info.cls}}" title="${{escHtml(cat)}}"
+            data-path="${{escHtml(catPath)}}"
+            onclick="event.stopPropagation();openInFinder(this.dataset.path)">${{escHtml(info.label)}}</span>`;
     }}).join('');
 
     const vendorBadges = vendors.map(v =>
