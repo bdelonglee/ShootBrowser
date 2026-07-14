@@ -2387,6 +2387,21 @@ class HTMLGenerator:
         }}
         #assets-search-clear:hover {{ color: var(--text); }}
         .cart-section-label {{ font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .6px; padding: 4px 0 2px; }}
+        .assets-type-header {{
+            display: flex; align-items: center; gap: 12px;
+            padding: 28px 2px 10px; margin-bottom: 6px;
+            font-size: .82rem; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 1.6px; color: var(--accent);
+        }}
+        .assets-type-header::after {{
+            content: ''; flex: 1; height: 1px;
+            background: linear-gradient(to right, var(--accent), var(--border));
+            opacity: .5;
+        }}
+        .assets-type-header .assets-type-count {{
+            font-size: .75rem; font-weight: 500; color: var(--text-muted);
+            white-space: nowrap; order: 2;
+        }}
     </style>
 </head>
 <body>
@@ -3945,9 +3960,9 @@ function renderAssets() {{
     for (const [, group] of groups) {{
         const n = group.assets.length;
         if (showHeaders) {{
-            html += `<div class="group-header">
-                <span class="group-name">${{escHtml(group.label)}}</span>
-                <span class="group-count">${{n}} asset${{n !== 1 ? 's' : ''}}</span>
+            html += `<div class="assets-type-header">
+                ${{escHtml(group.label)}}
+                <span class="assets-type-count">${{n}} asset${{n !== 1 ? 's' : ''}}</span>
             </div>`;
         }}
         html += group.assets.map(a => renderAssetCard(a, q)).join('');
