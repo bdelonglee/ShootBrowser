@@ -3086,14 +3086,17 @@ function renderEntry(entry, q) {{
         }}
     }}
     const catBadgesHtml = catBadges.join('');
+    const sc = entry.slate_count || 0;
+    const slatesBadge = (sc > 0 && entry.day)
+        ? `<span class="summary-slates" data-day="${{escHtml(entry.day)}}" data-scenes="${{escHtml((entry.scenes||[]).join(','))}}" onclick="jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))">Slates (${{sc}})</span>`
+        : '';
     const inCart     = cart.has(entry.path);
     const cb         = `<input type="checkbox" class="entry-cb" ${{inCart ? 'checked' : ''}} onclick="toggleCart(this.closest('.entry').dataset.path)">`;
     const isExpanded = expandedPaths.has(entry.path);
     return `<div class="entry${{inCart ? ' in-cart' : ''}}${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(entry.path)}}">
         <div class="entry-title-line">
-            ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{catBadgesHtml}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
+            ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{catBadgesHtml}}${{slatesBadge}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
         </div>
-        ${{renderSummary(entry.subdirs, entry.slate_count || 0, entry.day, entry.scenes, entry.path)}}
         <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
     </div>`;
 }}
