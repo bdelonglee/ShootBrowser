@@ -741,7 +741,7 @@ class HTMLGenerator:
             border: 1px solid rgba(227,179,65,0.2);
         }}
         .title-desc {{
-            font-size: 0.95em;
+            font-size: 0.95em; flex: 1;
             background: rgba(68,147,248,0.12);
             color: #7eb8f7;
             border: 1px solid rgba(68,147,248,0.2);
@@ -809,6 +809,7 @@ class HTMLGenerator:
         }}
         .subdir-openable {{ cursor: pointer; }}
         .subdir-openable:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .asset-cat-badge.subdir-openable:hover {{ color: #fff; border-color: transparent; }}
         .summary-slates {{
             font-size: 0.75em;
             color: var(--text-muted);
@@ -3041,24 +3042,8 @@ function renderSubdirs(subdirs, basePath) {{
 // ── Entry rendering ───────────────────────────────────────────────────────────
 
 function renderSummary(subdirs, slateCount, day, scenes, entryPath) {{
-    const pills = [];
-    for (const s of (subdirs || [])) {{
-        if (s.kind === 'simple') {{
-            s.children.forEach(c => {{
-                const sub = entryPath ? `${{entryPath}}/${{c.name}}` : null;
-                const attrs = sub ? ` data-subpath="${{escHtml(sub)}}" onclick="openInFinder(this.dataset.subpath)"` : '';
-                pills.push(`<span class="summary-subdir${{sub ? ' subdir-openable' : ''}}"${{attrs}}>${{escHtml(c.name)}}</span>`);
-            }});
-        }} else {{
-            const sub = entryPath ? `${{entryPath}}/${{s.name}}` : null;
-            const attrs = sub ? ` data-subpath="${{escHtml(sub)}}" onclick="openInFinder(this.dataset.subpath)"` : '';
-            pills.push(`<span class="summary-subdir${{sub ? ' subdir-openable' : ''}}"${{attrs}}>📁 ${{escHtml(s.name)}}</span>`);
-        }}
-    }}
-    if (slateCount > 0 && day) {{
-        pills.push(`<span class="summary-slates" data-day="${{escHtml(day)}}" data-scenes="${{escHtml((scenes||[]).join(','))}}" onclick="jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))">Slates (${{slateCount}})</span>`);
-    }}
-    return pills.length ? `<div class="entry-summary">${{pills.join('')}}</div>` : '';
+    if (!(slateCount > 0 && day)) return '';
+    return `<div class="entry-summary"><span class="summary-slates" data-day="${{escHtml(day)}}" data-scenes="${{escHtml((scenes||[]).join(','))}}" onclick="jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))">Slates (${{slateCount}})</span></div>`;
 }}
 
 function renderEntry(entry, q) {{
@@ -3088,12 +3073,25 @@ function renderEntry(entry, q) {{
     const vendorBadges = vendors.map(v =>
         `<span class="vendor-badge" data-vendor="${{escHtml(v)}}" onclick="jumpToDeliveredVendor(this.dataset.vendor)">${{escHtml(v)}}</span>`
     ).join('');
+    const catBadges = [];
+    for (const s of (entry.subdirs || [])) {{
+        if (s.kind === 'simple') {{
+            s.children.forEach(c => {{
+                const info = _assetBadgeInfo(c.name);
+                catBadges.push(`<span class="asset-cat-badge ${{info.cls}} subdir-openable" data-subpath="${{escHtml(entry.path + '/' + c.name)}}" onclick="openInFinder(this.dataset.subpath)" title="${{escHtml(c.name)}}">${{escHtml(info.label)}}</span>`);
+            }});
+        }} else if (s.name !== '__other__') {{
+            const info = _assetBadgeInfo(s.name);
+            catBadges.push(`<span class="asset-cat-badge ${{info.cls}} subdir-openable" data-subpath="${{escHtml(entry.path + '/' + s.name)}}" onclick="openInFinder(this.dataset.subpath)" title="${{escHtml(s.name)}}">📁 ${{escHtml(info.label)}}</span>`);
+        }}
+    }}
+    const catBadgesHtml = catBadges.join('');
     const inCart     = cart.has(entry.path);
     const cb         = `<input type="checkbox" class="entry-cb" ${{inCart ? 'checked' : ''}} onclick="toggleCart(this.closest('.entry').dataset.path)">`;
     const isExpanded = expandedPaths.has(entry.path);
     return `<div class="entry${{inCart ? ' in-cart' : ''}}${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(entry.path)}}">
         <div class="entry-title-line">
-            ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
+            ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{catBadgesHtml}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
         </div>
         ${{renderSummary(entry.subdirs, entry.slate_count || 0, entry.day, entry.scenes, entry.path)}}
         <div class="entry-details">${{renderSubdirs(entry.subdirs)}}</div>
