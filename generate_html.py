@@ -1101,12 +1101,34 @@ class HTMLGenerator:
             border: 1px solid rgba(163,113,247,0.2);
             border-left: 3px solid #a371f7;
             border-radius: 6px;
-            display: flex; align-items: flex-start; gap: 10px;
+            display: flex; flex-direction: column; gap: 5px;
             font-size: 0.83em;
         }}
+        .db-bin-note-banner-top {{
+            display: flex; align-items: center; gap: 8px;
+        }}
         .db-bin-note-banner-name {{
-            color: #a371f7; font-size: 0.85em; font-weight: 600;
-            flex-shrink: 0; margin-top: 1px;
+            color: #a371f7; font-weight: 600; flex-shrink: 0;
+        }}
+        .db-bin-note-banner-count {{
+            font-size: 0.85em; color: var(--text-muted); flex-shrink: 0;
+        }}
+        .db-bin-note-manage-btn {{
+            background: none; border: 1px solid transparent;
+            color: var(--text-muted); border-radius: 4px; padding: 1px 6px;
+            font-size: 0.82em; cursor: pointer; flex-shrink: 0;
+            transition: border-color 0.15s, color 0.15s;
+        }}
+        .db-bin-note-manage-btn:hover {{ border-color: #a371f7; color: #a371f7; }}
+        .db-bin-note-deactivate-btn {{
+            background: none; border: 1px solid transparent;
+            color: var(--text-muted); border-radius: 4px; padding: 1px 6px;
+            font-size: 1em; line-height: 1; cursor: pointer; flex-shrink: 0;
+            transition: border-color 0.15s, color 0.15s;
+        }}
+        .db-bin-note-deactivate-btn:hover {{ border-color: #f47067; color: #f47067; }}
+        .db-bin-note-banner-body {{
+            display: flex; align-items: flex-start; gap: 8px;
         }}
         .db-bin-note-banner-text {{
             flex: 1; color: var(--text-muted); white-space: pre-wrap; word-break: break-word;
@@ -5484,6 +5506,8 @@ function setActiveBin(val) {{
         return;
     }}
     activeBinId = val || null;
+    const sel = document.getElementById('bin-select');
+    if (sel) sel.value = activeBinId || '';
     renderDatabase();
     _saveUiState();
 }}
@@ -7297,14 +7321,24 @@ async function _doClearNote(btn) {{
 function _renderBinNoteBanner(el) {{
     const bin = activeBinId ? bins[activeBinId] : null;
     if (!bin) {{ if (el) el.style.display = 'none'; return; }}
-    const note = (bin.note || '').trim();
+    const note  = (bin.note || '').trim();
+    const count = _binCountLabel(bin);
+    const bi    = escHtml(bin.id);
     el.innerHTML =
+        '<div class="db-bin-note-banner-top">' +
         '<span class="db-bin-note-banner-name">' + escHtml(bin.name) + '</span>' +
+        '<span class="db-bin-note-banner-count">' + count + '</span>' +
+        '<span style="flex:1"></span>' +
+        '<button class="db-bin-note-manage-btn" onclick="openBinModal()" title="Manage bins">⚙</button>' +
+        '<button class="db-bin-note-deactivate-btn" onclick="setActiveBin(&#39;&#39;)" title="Deactivate bin">×</button>' +
+        '</div>' +
+        '<div class="db-bin-note-banner-body">' +
         '<span class="db-bin-note-banner-text">' +
         (note ? escHtml(note) : '<em style="opacity:0.35;font-style:italic">Add a note to this bin…</em>') +
         '</span>' +
         '<button class="db-bin-note-edit-btn" onclick="_openBinNoteEdit()">Edit note</button>' +
-        '<button class="db-bin-note-export-btn" onclick="_exportBin(&#39;' + bin.id + '&#39;)" title="Export bin to JSON">Export ↓</button>';
+        '<button class="db-bin-note-export-btn" onclick="_exportBin(&#39;' + bi + '&#39;)" title="Export bin to JSON">Export ↓</button>' +
+        '</div>';
     el.style.display = 'flex';
 }}
 
@@ -7316,18 +7350,29 @@ function _cancelBinNoteEdit() {{
 function _openBinNoteEdit() {{
     const bin = activeBinId ? bins[activeBinId] : null;
     if (!bin) return;
-    const el   = document.getElementById('db-bin-note-banner');
+    const el    = document.getElementById('db-bin-note-banner');
     if (!el) return;
-    const note = (bin.note || '').trim();
+    const note  = (bin.note || '').trim();
+    const count = _binCountLabel(bin);
     el.innerHTML =
+        '<div class="db-bin-note-banner-top">' +
         '<span class="db-bin-note-banner-name">' + escHtml(bin.name) + '</span>' +
+        '<span class="db-bin-note-banner-count">' + count + '</span>' +
+        '</div>' +
+        '<div class="db-bin-note-banner-body">' +
         '<textarea class="db-bin-note-textarea" id="bin-note-ta">' + escHtml(note) + '</textarea>' +
         '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">' +
         '<button class="db-bin-note-save-btn" onclick="_saveBinNote()">Save</button>' +
         '<button class="db-note-cancel-btn" onclick="_cancelBinNoteEdit()">Cancel</button>' +
-        '</div>';
+        '</div></div>';
     const ta = document.getElementById('bin-note-ta');
-    if (ta) {{ ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }}
+    if (ta) {{
+        ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length;
+        ta.addEventListener('keydown', e => {{
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {{ e.preventDefault(); _saveBinNote(); }}
+            if (e.key === 'Escape') {{ e.preventDefault(); _cancelBinNoteEdit(); }}
+        }});
+    }}
 }}
 
 function _saveBinNote() {{
