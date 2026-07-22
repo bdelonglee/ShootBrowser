@@ -709,45 +709,50 @@ class HTMLGenerator:
 
         /* ── Entry title line ── */
         .entry-title-line {{
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            flex-wrap: wrap;
-            margin-bottom: 10px;
+            display: flex; align-items: center; gap: 5px;
+            flex-wrap: wrap; margin-bottom: 10px;
         }}
-        .title-day, .title-scene, .title-code, .title-desc {{
-            display: inline-block;
-            padding: 3px 9px;
-            border-radius: 6px;
-            font-weight: 600;
+        .title-day, .title-scene, .title-code {{
+            display: inline-block; padding: 2px 7px;
+            border-radius: 5px; font-weight: 600;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.75em; cursor: pointer;
+            transition: filter 0.12s, border-color 0.12s, background 0.12s;
         }}
         .title-day {{
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.8em;
-            background: rgba(86,211,100,0.12);
-            color: #56d364;
+            background: rgba(86,211,100,0.12); color: #56d364;
             border: 1px solid rgba(86,211,100,0.2);
         }}
+        .title-day:hover, .title-day.filter-active {{
+            background: rgba(86,211,100,0.28); border-color: #56d364;
+        }}
         .title-scene {{
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.8em;
-            background: rgba(57,197,207,0.12);
-            color: #39c5cf;
+            background: rgba(57,197,207,0.12); color: #39c5cf;
             border: 1px solid rgba(57,197,207,0.2);
         }}
+        .title-scene:hover, .title-scene.filter-active {{
+            background: rgba(57,197,207,0.28); border-color: #39c5cf;
+        }}
         .title-code {{
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.8em;
-            background: rgba(227,179,65,0.12);
-            color: #e3b341;
+            background: rgba(227,179,65,0.12); color: #e3b341;
             border: 1px solid rgba(227,179,65,0.2);
         }}
-        .title-desc {{
-            font-size: 0.95em; flex: 1;
-            background: rgba(68,147,248,0.12);
-            color: #7eb8f7;
-            border: 1px solid rgba(68,147,248,0.2);
+        .title-code:hover, .title-code.filter-active {{
+            background: rgba(227,179,65,0.28); border-color: #e3b341;
         }}
+        .title-desc {{
+            font-size: 0.92em; font-weight: 600; flex: 1;
+            color: var(--text); padding: 2px 4px;
+        }}
+        .browse-filter-chip {{
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 9px; border-radius: 20px; font-size: 0.82em; cursor: pointer;
+            transition: filter 0.12s;
+        }}
+        .browse-filter-chip:hover {{ filter: brightness(1.25); }}
+        .browse-filter-chip.chip-day   {{ background: rgba(86,211,100,0.15);  border: 1px solid rgba(86,211,100,0.4);  color: #56d364; }}
+        .browse-filter-chip.chip-scene {{ background: rgba(57,197,207,0.15);  border: 1px solid rgba(57,197,207,0.4);  color: #39c5cf; }}
+        .browse-filter-chip.chip-code  {{ background: rgba(227,179,65,0.15);  border: 1px solid rgba(227,179,65,0.4);  color: #e3b341; }}
         .badge-no-data {{
             background: rgba(248,81,73,0.15);
             color: #f85149;
@@ -2536,6 +2541,10 @@ class HTMLGenerator:
                 <div class="stat-value" id="stat-groups">0</div>
                 <div class="stat-label">Groups</div>
             </div>
+            <div class="stat">
+                <div class="stat-value" id="stat-slates">0</div>
+                <div class="stat-label">Slates</div>
+            </div>
         </div>
     </div>
 
@@ -2826,12 +2835,14 @@ for (const view of Object.values(data)) {{
     }}
 }}
 
-let currentMode     = 'days';
-let currentQuery    = '';
-let currentView     = 'browse';
-let browseSortKey   = 'day';
-let browseSortAsc   = true;
-const expandedPaths = new Set();
+let currentMode       = 'days';
+let currentQuery      = '';
+let currentView       = 'browse';
+let browseSortKey     = 'day';
+let browseSortAsc     = true;
+let activeFilterType  = null;
+let activeFilterValue = null;
+const expandedPaths   = new Set();
 
 // ── Persistent UI state ───────────────────────────────────────────────────────
 const _UI_KEY = 'vfx_ui_state';
@@ -3010,6 +3021,28 @@ function _browseSortValue(e) {{
     }}
 }}
 
+// ── Quick filter ─────────────────────────────────────────────────────────────
+
+function entryPassesFilter(e) {{
+    if (!activeFilterType) return true;
+    if (activeFilterType === 'day')   return e.day === activeFilterValue;
+    if (activeFilterType === 'scene') return (e.scenes || []).includes(activeFilterValue);
+    if (activeFilterType === 'code')  return (e.code || '').split('_').includes(activeFilterValue);
+    return true;
+}}
+function setQuickFilter(type, val) {{
+    if (activeFilterType === type && activeFilterValue === val) {{
+        activeFilterType = activeFilterValue = null;
+    }} else {{
+        activeFilterType = type; activeFilterValue = val;
+    }}
+    render();
+}}
+function clearQuickFilter() {{
+    activeFilterType = activeFilterValue = null;
+    render();
+}}
+
 // ── Search ───────────────────────────────────────────────────────────────────
 
 function onSearch(value) {{
@@ -3125,14 +3158,19 @@ function renderSummary(subdirs, slateCount, day, scenes, entryPath) {{
 }}
 
 function renderEntry(entry, q) {{
-    const dayHtml    = `<span class="title-day">${{highlight(entry.day, q)}}</span>`;
-    const scenesHtml = entry.scenes.map(s =>
-        `<span class="title-scene">${{highlight(s, q)}}</span>`
-    ).join('');
-    const codesHtml  = entry.code.split('_').map(c =>
-        `<span class="title-code">${{highlight(c, q)}}</span>`
-    ).join('');
+    const dayActive  = (activeFilterType === 'day'   && activeFilterValue === entry.day)  ? ' filter-active' : '';
+    const dayHtml    = `<span class="title-day${{dayActive}}" data-filter-type="day" data-filter-val="${{escHtml(entry.day)}}" onclick="setQuickFilter(this.dataset.filterType, this.dataset.filterVal)" title="Filter by day">${{highlight(entry.day, q)}}</span>`;
     const descHtml   = `<span class="title-desc">${{highlight(entry.description.replace(/_/g,' '), q)}}</span>`;
+
+    const scenesHtml = entry.scenes.map(s => {{
+        const active = (activeFilterType === 'scene' && activeFilterValue === s) ? ' filter-active' : '';
+        return `<span class="title-scene${{active}}" data-filter-type="scene" data-filter-val="${{escHtml(s)}}" onclick="setQuickFilter(this.dataset.filterType, this.dataset.filterVal)" title="Filter by scene">${{highlight(s, q)}}</span>`;
+    }}).join('');
+    const codesHtml  = entry.code.split('_').map(c => {{
+        const active = (activeFilterType === 'code' && activeFilterValue === c) ? ' filter-active' : '';
+        return `<span class="title-code${{active}}" data-filter-type="code" data-filter-val="${{escHtml(c)}}" onclick="setQuickFilter(this.dataset.filterType, this.dataset.filterVal)" title="Filter by code">${{highlight(c, q)}}</span>`;
+    }}).join('');
+
     const noData     = entry.has_data ? '' : '<span class="badge-no-data">No Data</span>';
     const copyBtn    = `<button class="open-folder" onclick="copyPath(this, this.closest('.entry').dataset.path)" title="Copy path">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3147,7 +3185,7 @@ function renderEntry(entry, q) {{
             <polyline points="6 9 12 15 18 9"/>
         </svg></button>`;
 
-    const vendors     = deliveredByBlock[entry.directory_name] || [];
+    const vendors      = deliveredByBlock[entry.directory_name] || [];
     const vendorBadges = vendors.map(v =>
         `<span class="vendor-badge" data-vendor="${{escHtml(v)}}" onclick="jumpToDeliveredVendor(this.dataset.vendor)">✓ ${{escHtml(v)}}</span>`
     ).join('');
@@ -3186,75 +3224,78 @@ function render() {{
     const infoEl    = document.getElementById('search-info');
     const q         = currentQuery;
 
+    function _applyFilters(arr) {{
+        return arr.filter(e => (!q || entryMatches(e, q)) && entryPassesFilter(e));
+    }}
+    function _totalSlates(arr) {{
+        return arr.reduce((s, e) => s + (e.slate_count || 0), 0);
+    }}
+    function _filterChip() {{
+        if (!activeFilterType) return '';
+        return `<span class="browse-filter-chip chip-${{activeFilterType}}" onclick="clearQuickFilter()" title="Clear filter">${{escHtml(activeFilterType)}}: <strong>${{escHtml(activeFilterValue)}}</strong> ✕</span>`;
+    }}
+    function _updateInfo(shown, total) {{
+        const parts = [];
+        if (q) parts.push(`Showing ${{shown}} of ${{total}} matching &#8220;<strong>${{escHtml(q)}}</strong>&#8221;`);
+        const chip = _filterChip();
+        if (chip) parts.push(chip);
+        infoEl.innerHTML  = parts.join(' &ensp;·&ensp; ');
+        infoEl.style.display = parts.length ? 'block' : 'none';
+    }}
+
     if (currentMode === 'none') {{
-        const allEntries = Object.values(data.by_days || {{}}).flat()
+        const all     = Object.values(data.by_days || {{}}).flat()
             .sort((a, b) => _browseSortValue(a).localeCompare(_browseSortValue(b)) * (browseSortAsc ? 1 : -1));
-        const matched    = q ? allEntries.filter(e => entryMatches(e, q)) : allEntries;
+        const matched = _applyFilters(all);
         contentEl.innerHTML = matched.length
             ? matched.map(e => renderEntry(e, q)).join('')
-            : emptyState(q ? `No results for "<strong>${{escHtml(q)}}</strong>"` : 'No data found');
-        updateStats(matched.length, 0);
-        if (q) {{
-            infoEl.style.display = 'block';
-            infoEl.textContent = `Showing ${{matched.length}} of ${{allEntries.length}} entries matching "${{q}}"`;
-        }} else {{
-            infoEl.style.display = 'none';
-        }}
+            : emptyState(q ? `No results for &#8220;<strong>${{escHtml(q)}}</strong>&#8221;` : 'No data found');
+        updateStats(matched.length, 0, _totalSlates(matched));
+        _updateInfo(matched.length, all.length);
         return;
     }}
 
-    const modeData  = data[`by_${{currentMode}}`];
-
+    const modeData = data[`by_${{currentMode}}`];
     if (!modeData || Object.keys(modeData).length === 0) {{
         contentEl.innerHTML = emptyState('No data found');
-        updateStats(0, 0);
+        updateStats(0, 0, 0);
         infoEl.style.display = 'none';
         return;
     }}
 
-    let html = '';
-    let totalShown = 0;
-    let groupsShown = 0;
+    let html = '', totalShown = 0, groupsShown = 0, totalSlates = 0;
+    const grandTotal = Object.values(modeData).reduce((s, a) => s + a.length, 0);
 
     for (const [key, entries] of Object.entries(modeData)) {{
         const sorted  = [...entries].sort((a, b) => _browseSortValue(a).localeCompare(_browseSortValue(b)) * (browseSortAsc ? 1 : -1));
-        const matched = q ? sorted.filter(e => entryMatches(e, q)) : sorted;
-        if (matched.length === 0) continue;
+        const matched = _applyFilters(sorted);
+        if (!matched.length) continue;
 
         groupsShown++;
-        totalShown += matched.length;
+        totalShown  += matched.length;
+        totalSlates += _totalSlates(matched);
 
         const countLabel = matched.length === entries.length
             ? `${{matched.length}} ${{matched.length === 1 ? 'entry' : 'entries'}}`
             : `${{matched.length}} / ${{entries.length}} entries`;
 
-        html += `<div class="group">
-            <div class="group-header">
-                <span>${{groupIcon()}} ${{escHtml(key)}}</span>
-                <span class="group-count">${{countLabel}}</span>
-            </div>`;
+        html += `<div class="group"><div class="group-header"><span>${{groupIcon()}} ${{escHtml(key)}}</span><span class="group-count">${{countLabel}}</span></div>`;
         matched.forEach(e => {{ html += renderEntry(e, q); }});
         html += '</div>';
     }}
 
-    contentEl.innerHTML = html || emptyState(`No results for "<strong>${{escHtml(q)}}</strong>"`);
-    updateStats(totalShown, groupsShown);
-
-    if (q) {{
-        const total = Object.values(modeData).reduce((s,a) => s + a.length, 0);
-        infoEl.style.display = 'block';
-        infoEl.textContent = `Showing ${{totalShown}} of ${{total}} entries matching "${{q}}"`;
-    }} else {{
-        infoEl.style.display = 'none';
-    }}
+    contentEl.innerHTML = html || emptyState(`No results for &#8220;<strong>${{escHtml(q)}}</strong>&#8221;`);
+    updateStats(totalShown, groupsShown, totalSlates);
+    _updateInfo(totalShown, grandTotal);
 }}
 
 function groupIcon() {{
     return {{ days:'📅', scenes:'🎞️', codes:'🏷️' }}[currentMode] || '📂';
 }}
-function updateStats(total, groups) {{
-    document.getElementById('stat-total').textContent = total;
+function updateStats(total, groups, slates) {{
+    document.getElementById('stat-total').textContent  = total;
     document.getElementById('stat-groups').textContent = groups;
+    document.getElementById('stat-slates').textContent = slates || 0;
 }}
 function emptyState(msg) {{
     return `<div class="empty-state"><div class="empty-state-icon">📂</div><p>${{msg}}</p></div>`;
