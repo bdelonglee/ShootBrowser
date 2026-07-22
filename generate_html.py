@@ -1796,10 +1796,21 @@ class HTMLGenerator:
         #bin-modal {{
             background: var(--surface); border: 1px solid var(--border);
             border-radius: 12px; padding: 24px;
-            min-width: 340px; max-width: 480px; width: 90%;
+            min-width: 360px; max-width: 520px; width: 90%;
             box-shadow: 0 16px 48px rgba(0,0,0,0.5);
         }}
-        .bin-modal-title {{ font-size: 1em; font-weight: 700; color: var(--text); margin-bottom: 16px; }}
+        .bin-modal-header {{
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 16px;
+        }}
+        .bin-modal-title {{ font-size: 1em; font-weight: 700; color: var(--text); }}
+        .bin-new-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 5px; color: var(--accent); font-size: 0.8em;
+            padding: 4px 10px; cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }}
+        .bin-new-btn:hover {{ border-color: var(--accent); background: rgba(88,166,255,0.08); }}
         .bin-modal-empty {{ color: var(--text-muted); font-size: 0.85em; text-align: center; padding: 16px 0; }}
         .bin-import-notice {{
             font-size: 0.82em; color: var(--text-muted);
@@ -1807,12 +1818,49 @@ class HTMLGenerator:
             border-radius: 5px; padding: 6px 10px; margin-bottom: 8px;
         }}
         .bin-modal-row {{
-            display: flex; align-items: center; gap: 8px;
-            padding: 9px 0; border-bottom: 1px solid var(--border);
+            display: flex; align-items: flex-start; gap: 8px;
+            padding: 9px 4px; border-bottom: 1px solid var(--border);
+            border-radius: 6px; transition: background 0.1s;
         }}
         .bin-modal-row:last-child {{ border-bottom: none; }}
-        .bin-modal-name {{ flex: 1; font-size: 0.88em; color: var(--text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-        .bin-modal-count {{ font-size: 0.75em; color: var(--text-muted); flex-shrink: 0; }}
+        .bin-modal-row.active {{ background: rgba(163,113,247,0.08); }}
+        .bin-active-dot {{
+            background: none; border: 2px solid var(--border);
+            border-radius: 50%; width: 20px; height: 20px; flex-shrink: 0;
+            cursor: pointer; color: transparent; font-size: 10px;
+            display: flex; align-items: center; justify-content: center;
+            transition: border-color 0.15s, background 0.15s; margin-top: 3px;
+        }}
+        .bin-active-dot:hover {{ border-color: #a371f7; }}
+        .bin-active-dot.active {{ background: #a371f7; border-color: #a371f7; color: white; }}
+        .bin-modal-info {{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }}
+        .bin-modal-name-row {{ display: flex; align-items: center; gap: 4px; }}
+        .bin-modal-name {{ font-size: 0.88em; color: var(--text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+        .bin-modal-rename-btn {{
+            background: none; border: none; color: var(--text-muted); font-size: 0.9em;
+            cursor: pointer; padding: 0 2px; opacity: 0.4; flex-shrink: 0;
+            transition: opacity 0.15s; line-height: 1;
+        }}
+        .bin-modal-rename-btn:hover {{ opacity: 1; }}
+        .bin-modal-count {{ font-size: 0.73em; color: var(--text-muted); }}
+        .bin-modal-note-snippet {{
+            font-size: 0.75em; color: var(--text-muted); opacity: 0.65;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic;
+        }}
+        .bin-modal-rename-input {{
+            flex: 1; min-width: 0;
+            background: var(--surface-2); border: 1px solid #a371f7;
+            border-radius: 4px; color: var(--text); font-size: 0.88em;
+            padding: 2px 7px; outline: none;
+        }}
+        .bin-modal-rename-ok, .bin-modal-rename-x {{
+            background: none; border: 1px solid var(--border);
+            border-radius: 4px; color: var(--text-muted); font-size: 0.78em;
+            padding: 2px 7px; cursor: pointer; flex-shrink: 0;
+            transition: border-color 0.15s, color 0.15s;
+        }}
+        .bin-modal-rename-ok:hover {{ border-color: #3fb950; color: #3fb950; }}
+        .bin-modal-rename-x:hover  {{ border-color: #f47067; color: #f47067; }}
         .bin-modal-btn {{
             background: var(--surface-2); border: 1px solid var(--border);
             border-radius: 5px; color: var(--text-muted); font-size: 0.78em;
@@ -1825,8 +1873,7 @@ class HTMLGenerator:
             margin-top: 16px; width: 100%;
             background: var(--surface-2); border: 1px solid var(--border);
             border-radius: 6px; color: var(--text); font-size: 0.85em;
-            padding: 8px; cursor: pointer;
-            transition: border-color 0.15s;
+            padding: 8px; cursor: pointer; transition: border-color 0.15s;
         }}
         .bin-modal-close:hover {{ border-color: var(--accent); }}
         .db-sort-select {{
@@ -5655,8 +5702,95 @@ function openBinModal() {{
 function closeBinModal() {{
     document.getElementById('bin-modal-overlay').style.display = 'none';
 }}
+function _binCountLabel(bin) {{
+    const takes  = bin.items.filter(i => i.type === 'take').length;
+    const sItems = bin.items.filter(i => i.type === 'slate');
+    if (!takes && !sItems.length) return 'Empty';
+    const parts = [];
+    if (takes) parts.push(takes + ' Take' + (takes !== 1 ? 's' : ''));
+    if (sItems.length) {{
+        const total = sItems.reduce((s, si) =>
+            s + dbRows.filter(r => r['Slate'] === si.slate).length, 0);
+        parts.push(sItems.length + ' Slate' + (sItems.length !== 1 ? 's' : '') +
+            ' (' + total + ' takes)');
+    }}
+    return parts.join(' · ');
+}}
+function _modalToggleActive(binId) {{
+    setActiveBin(activeBinId === binId ? '' : binId);
+    _renderBinModal();
+}}
+function _startRenameBin(binId) {{
+    const bin = bins[binId];
+    if (!bin) return;
+    const row = document.querySelector('.bin-modal-row[data-bin-id="' + binId + '"]');
+    if (!row) return;
+    const nr = row.querySelector('.bin-modal-name-row');
+    const bi = escHtml(binId);
+    nr.innerHTML =
+        '<input class="bin-modal-rename-input" id="bin-ri-' + bi + '" value="' + escHtml(bin.name) + '">' +
+        '<button class="bin-modal-rename-ok" onclick="_doRenameBin(&#39;' + bi + '&#39;)">✓</button>' +
+        '<button class="bin-modal-rename-x" onclick="_cancelRenameBin()">✕</button>';
+    const inp = document.getElementById('bin-ri-' + binId);
+    if (!inp) return;
+    inp.focus(); inp.select();
+    inp.addEventListener('keydown', e => {{
+        if (e.key === 'Enter')  _doRenameBin(binId);
+        if (e.key === 'Escape') _cancelRenameBin();
+    }});
+}}
+function _doRenameBin(binId) {{
+    const bin = bins[binId];
+    const inp = document.getElementById('bin-ri-' + binId);
+    if (!bin || !inp) return;
+    const name = inp.value.trim();
+    if (!name) return;
+    bin.name = name;
+    _saveBins();
+    _renderBinModal();
+    _updateBinSelect();
+    renderDatabase();
+}}
+function _cancelRenameBin() {{ _renderBinModal(); }}
+function _newBinFromModal() {{
+    const list = document.getElementById('bin-modal-list');
+    if (!list) return;
+    if (document.getElementById('bin-new-row')) {{
+        const inp = document.getElementById('bin-new-inp');
+        if (inp) inp.focus();
+        return;
+    }}
+    const tmp = document.createElement('div');
+    tmp.id = 'bin-new-row';
+    tmp.className = 'bin-modal-row';
+    tmp.innerHTML =
+        '<div class="bin-modal-info" style="flex-direction:row;align-items:center;gap:6px">' +
+        '<input class="bin-modal-rename-input" id="bin-new-inp" placeholder="Bin name…" style="flex:1">' +
+        '<button class="bin-modal-rename-ok" onclick="_doCreateBinModal()">Create</button>' +
+        '<button class="bin-modal-rename-x" onclick="document.getElementById(&#39;bin-new-row&#39;).remove()">✕</button>' +
+        '</div>';
+    list.prepend(tmp);
+    const inp = document.getElementById('bin-new-inp');
+    if (!inp) return;
+    inp.focus();
+    inp.addEventListener('keydown', e => {{
+        if (e.key === 'Enter')  _doCreateBinModal();
+        if (e.key === 'Escape') tmp.remove();
+    }});
+}}
+function _doCreateBinModal() {{
+    const inp = document.getElementById('bin-new-inp');
+    if (!inp) return;
+    const name = inp.value.trim();
+    if (!name) return;
+    const id = _newBinId();
+    bins[id] = {{ id, name, items: [] }};
+    _saveBins();
+    _renderBinModal();
+    _updateBinSelect();
+}}
 function _renderBinModal() {{
-    const list   = document.getElementById('bin-modal-list');
+    const list = document.getElementById('bin-modal-list');
     if (!list) return;
     const binArr = Object.values(bins);
     const importBtn =
@@ -5667,25 +5801,27 @@ function _renderBinModal() {{
         list.innerHTML = '<p class="bin-modal-empty">No bins yet. Use the + button on any take to create one.</p>' + importBtn;
         return;
     }}
-    list.innerHTML = binArr.map(b => `
-        <div class="bin-modal-row">
-            <span class="bin-modal-name" title="${{escHtml(b.name)}}">${{escHtml(b.name)}}</span>
-            <span class="bin-modal-count">${{b.items.length}} item${{b.items.length !== 1 ? 's' : ''}}</span>
-            <button class="bin-modal-btn export" onclick="_exportBin('${{b.id}}')">Export</button>
-            <button class="bin-modal-btn" onclick="renameBin('${{b.id}}')">Rename</button>
-            <button class="bin-modal-btn danger" onclick="deleteBin('${{b.id}}')">Delete</button>
-        </div>`).join('') + importBtn;
-}}
-function renameBin(binId) {{
-    const bin = bins[binId];
-    if (!bin) return;
-    const name = prompt('Rename bin:', bin.name);
-    if (!name || !name.trim()) return;
-    bin.name = name.trim();
-    _saveBins();
-    _renderBinModal();
-    _updateBinSelect();
-    renderDatabase();
+    list.innerHTML = binArr.map(b => {{
+        const isActive = activeBinId === b.id;
+        const bi = escHtml(b.id);
+        const note = ((b.note || "").split("\\n")[0] || "").trim();
+        const countLabel = _binCountLabel(b);
+        return '<div class="bin-modal-row' + (isActive ? ' active' : '') + '" data-bin-id="' + bi + '">' +
+            '<button class="bin-active-dot' + (isActive ? ' active' : '') + '"' +
+            ' onclick="_modalToggleActive(&#39;' + bi + '&#39;)"' +
+            ' title="' + (isActive ? 'Deactivate' : 'Set as active bin') + '">●</button>' +
+            '<div class="bin-modal-info">' +
+            '<div class="bin-modal-name-row">' +
+            '<span class="bin-modal-name" title="' + escHtml(b.name) + '">' + escHtml(b.name) + '</span>' +
+            '<button class="bin-modal-rename-btn" onclick="_startRenameBin(&#39;' + bi + '&#39;)" title="Rename">✎</button>' +
+            '</div>' +
+            '<div class="bin-modal-count">' + countLabel + '</div>' +
+            (note ? '<div class="bin-modal-note-snippet">' + escHtml(note) + '</div>' : '') +
+            '</div>' +
+            '<button class="bin-modal-btn export" onclick="_exportBin(&#39;' + bi + '&#39;)" title="Export bin">Export ↓</button>' +
+            '<button class="bin-modal-btn danger" onclick="deleteBin(&#39;' + bi + '&#39;)" title="Delete bin">Delete</button>' +
+            '</div>';
+    }}).join('') + importBtn;
 }}
 function deleteBin(binId) {{
     const bin = bins[binId];
@@ -5704,7 +5840,10 @@ function deleteBin(binId) {{
     overlay.addEventListener('click', e => {{ if (e.target === overlay) closeBinModal(); }});
     overlay.innerHTML =
         '<div id="bin-modal">' +
-        '<div class="bin-modal-title">Edit Bins</div>' +
+        '<div class="bin-modal-header">' +
+        '<span class="bin-modal-title">Bins</span>' +
+        '<button class="bin-new-btn" onclick="_newBinFromModal()">+ New Bin</button>' +
+        '</div>' +
         '<div id="bin-modal-list"></div>' +
         '<button class="bin-modal-close" onclick="closeBinModal()">Close</button>' +
         '</div>';
