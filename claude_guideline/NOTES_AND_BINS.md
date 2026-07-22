@@ -125,13 +125,51 @@ if (activeBinId && bins[activeBinId]) {
 }
 ```
 
+### Banner layout (two-line)
+
+**Display mode:**
+```
+┌──────────────────────────────────────────────────────┐
+│ Bin Name   3 Takes · 2 Slates (7 takes)    [⚙]  [×] │
+│ note text here…                  [Edit note] [Export ↓] │
+└──────────────────────────────────────────────────────┘
+```
+- Top row (`.db-bin-note-banner-top`): name · count · spacer · ⚙ manage · × deactivate
+- Body row (`.db-bin-note-banner-body`): note text · Edit note · Export ↓
+
+**Edit mode** (after clicking "Edit note"):
+```
+┌──────────────────────────────────────────────────────┐
+│ Bin Name   3 Takes · 2 Slates (7 takes)              │
+│ [textarea……………………………………………………]  [Save]              │
+│                                          [Cancel]    │
+└──────────────────────────────────────────────────────┘
+```
+- `Cmd/Ctrl+Enter` saves, `Escape` cancels (keyboard shortcuts wired in textarea `keydown`).
+- The top row shows name + count but hides ⚙ and × while editing.
+
 ### Functions
 | Function | Action |
 |---|---|
-| `_renderBinNoteBanner(el)` | Renders bin name, note text, Edit note button, Export ↓ button |
-| `_openBinNoteEdit()` | Replaces banner content with textarea + Save / Cancel |
+| `_renderBinNoteBanner(el)` | Renders two-line display mode (calls `_binCountLabel`) |
+| `_openBinNoteEdit()` | Replaces banner body with textarea + Save/Cancel; wires keyboard shortcuts |
 | `_saveBinNote()` | Reads textarea, saves to `bin.note`, calls `_saveBins()`, re-renders banner |
 | `_cancelBinNoteEdit()` | Re-renders banner in display mode |
+
+### ⚙ and × buttons
+- **⚙** calls `openBinModal()` — jumps to the bin manager modal without touching the active bin.
+- **×** calls `setActiveBin('')` — clears `activeBinId`, hides the banner, and resets the bin combobox to "No Bin".
+
+### `setActiveBin(val)` — combobox sync
+`setActiveBin` always syncs the `#bin-select` combobox:
+```js
+activeBinId = val || null;
+const sel = document.getElementById('bin-select');
+if (sel) sel.value = activeBinId || '';
+renderDatabase();
+_saveUiState();
+```
+This ensures the `×` button, `_modalToggleActive`, and any other caller all keep the dropdown in sync without needing a full `_updateBinSelect()` rebuild.
 
 ---
 
@@ -337,7 +375,13 @@ The incoming note is always appended after the existing note, prefixed with the 
 | `.db-note-box` | Note display/edit container in expanded card | — |
 | `.db-note-box.empty` | Note box when no note exists | — |
 | `.db-note-textarea` | Editing textarea | amber focus border |
-| `.db-bin-note-banner` | Full-width banner strip when bin is active | purple `#a371f7` |
+| `.db-bin-note-banner` | Full-width banner strip (flex column) when bin is active | purple left border `#a371f7` |
+| `.db-bin-note-banner-top` | Top row: name · count · spacer · ⚙ · × | flex row |
+| `.db-bin-note-banner-name` | Bin name in banner | `#a371f7` purple |
+| `.db-bin-note-banner-count` | `"3 Takes · 2 Slates (7 takes)"` | muted small text |
+| `.db-bin-note-banner-body` | Second row: note text + action buttons | flex row |
+| `.db-bin-note-manage-btn` | ⚙ opens bin modal | purple hover |
+| `.db-bin-note-deactivate-btn` | × clears active bin | red hover `#f47067` |
 | `.db-bin-note-export-btn` | Export ↓ button in banner | `#58a6ff` blue |
 | `.bin-conflict-*` | All conflict modal elements | — |
 | `.bin-modal-header` | Title + New Bin button row | — |
