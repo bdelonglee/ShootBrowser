@@ -844,6 +844,80 @@ def api_lidar_preview(file_path):
     return send_file(str(resolved), mimetype='image/png')
 
 
+_LIDAR_BADGE_EXTS = {'.e57', '.abc', '.obj'}
+_LIDAR_CAT_DIR    = '33_Lidar'
+
+def _parse_lidar_assets() -> list:
+    """Scan ASSETS_SHOOT_DIR for 33_Lidar subdirs and return one entry per lidar dir."""
+    root = Path(ASSETS_SHOOT_DIR)
+    if not root.exists():
+        return []
+    entries = []
+    for type_dir in sorted(root.iterdir()):
+        if not type_dir.is_dir() or type_dir.name.startswith('.'):
+            continue
+        type_label = re.sub(r'^\d+_', '', type_dir.name)
+        for asset_dir in sorted(type_dir.iterdir()):
+            if not asset_dir.is_dir() or asset_dir.name.startswith('.'):
+                continue
+            lidar_cat = asset_dir / _LIDAR_CAT_DIR
+            if not lidar_cat.is_dir():
+                continue
+            for lidar_dir in sorted(lidar_cat.iterdir()):
+                if not lidar_dir.is_dir() or lidar_dir.name.startswith('.'):
+                    continue
+                files, previews, badge_exts, has_blk = [], [], set(), False
+                try:
+                    for item in sorted(lidar_dir.iterdir()):
+                        if item.is_dir():
+                            if item.name.lower() == 'blk':
+                                has_blk = True
+                        elif item.is_file() and not item.name.startswith('.'):
+                            ext = item.suffix.lower()
+                            if item.name.startswith('preview_') and ext == '.png':
+                                previews.append(item.name)
+                            else:
+                                if ext in _LIDAR_BADGE_EXTS:
+                                    badge_exts.add(ext.lstrip('.'))
+                                files.append({'name': item.name, 'ext': ext.lstrip('.')})
+                except PermissionError:
+                    pass
+                entries.append({
+                    'asset_type': type_label,
+                    'asset_name': asset_dir.name,
+                    'lidar_name': lidar_dir.name,
+                    'path':       str(lidar_dir),
+                    'rel_path':   str(lidar_dir.relative_to(root)),
+                    'files':      files,
+                    'previews':   previews,
+                    'has_blk':    has_blk,
+                    'badges':     sorted(badge_exts),
+                })
+    return entries
+
+
+@app.route("/api/lidar-assets")
+def api_lidar_assets():
+    """Return lidar entries scanned from 33_Lidar dirs in ASSETS_SHOOT_DIR."""
+    try:
+        return jsonify({"success": True, "entries": _parse_lidar_assets()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/asset-preview/<path:file_path>")
+def api_asset_preview(file_path):
+    """Serve a preview image from within ASSETS_SHOOT_DIR (security checked)."""
+    from flask import send_file
+    assets_root = Path(ASSETS_SHOOT_DIR).resolve()
+    resolved    = (assets_root / file_path).resolve()
+    if not str(resolved).startswith(str(assets_root)):
+        return jsonify({"error": "Forbidden"}), 403
+    if not resolved.is_file():
+        return jsonify({"error": "Not found"}), 404
+    return send_file(str(resolved))
+
+
 @app.route("/api/extract-slates-status")
 def api_extract_slates_status():
     """Check whether slate extraction is up to date with the current DB JSON."""

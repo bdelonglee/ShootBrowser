@@ -2226,14 +2226,21 @@ class HTMLGenerator:
             display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
             cursor: pointer; margin-bottom: 6px;
         }}
-        .lidar-code {{
-            font-family: 'Monaco','Courier New',monospace; font-size: 0.8em; font-weight: 700;
+        .lidar-type-badge {{
+            font-size: 0.72em; font-weight: 700; letter-spacing: .04em; flex-shrink: 0;
             background: rgba(57,197,207,0.12); color: #39c5cf;
-            border: 1px solid rgba(57,197,207,0.2); padding: 3px 9px; border-radius: 6px;
+            border: 1px solid rgba(57,197,207,0.25); padding: 2px 8px; border-radius: 5px;
+        }}
+        .lidar-asset-name {{
+            font-size: 0.88em; font-weight: 600; color: var(--text-muted); flex-shrink: 0;
+        }}
+        .lidar-sep {{
+            font-size: 0.82em; color: var(--text-muted); opacity: 0.4; flex-shrink: 0;
         }}
         .lidar-name {{
             font-size: 0.95em; font-weight: 600; color: var(--text); flex: 1;
         }}
+        .lidar-badges {{ display: flex; gap: 4px; align-items: center; }}
         .lidar-card:hover .finder-btn,
         .lidar-card:hover .open-folder,
         .lidar-card:hover .toggle-btn {{ opacity: 0.7; }}
@@ -2273,15 +2280,15 @@ class HTMLGenerator:
             padding: 6px 0 3px; margin-top: 4px;
             border-top: 1px solid var(--border);
         }}
-        .lidar-summary {{
-            display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px;
-        }}
-        .lidar-card.expanded .lidar-summary {{ display: none; }}
         .lidar-ext-tag {{
-            font-family: 'Monaco','Courier New',monospace; font-size: 0.75em;
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.73em; font-weight: 600;
             color: var(--text-muted); background: var(--surface-2);
-            border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px;
+            border: 1px solid var(--border); padding: 2px 7px; border-radius: 4px;
         }}
+        .lidar-badge-e57 {{ background: rgba(99,179,237,0.15); color: #63b3ed; border-color: rgba(99,179,237,0.3); }}
+        .lidar-badge-abc {{ background: rgba(154,117,234,0.15); color: #9a75ea; border-color: rgba(154,117,234,0.3); }}
+        .lidar-badge-obj {{ background: rgba(246,173,85,0.15);  color: #f6ad55; border-color: rgba(246,173,85,0.3); }}
+        .lidar-badge-blk {{ background: rgba(57,197,207,0.15);  color: #39c5cf; border-color: rgba(57,197,207,0.3); }}
         .lidar-details {{
             display: none;
             padding-top: 10px; margin-top: 6px; border-top: 1px solid var(--border);
@@ -2418,8 +2425,8 @@ class HTMLGenerator:
       <button class="tab-btn active" onclick="setView('browse')" id="tab-browse">📂 Browse</button>
       <button class="tab-btn" onclick="setView('database')" id="tab-database">🗄️ Database</button>
       <button class="tab-btn" onclick="setView('queries')" id="tab-queries">🔎 Queries</button>
-      <button class="tab-btn" onclick="setView('lidar')" id="tab-lidar">📡 Lidar</button>
       <button class="tab-btn" onclick="setView('assets')" id="tab-assets">🗂️ Assets</button>
+      <button class="tab-btn" onclick="setView('lidar')" id="tab-lidar">📡 Lidar</button>
       <button class="tab-btn" onclick="setView('queue')" id="tab-queue">📋 Queue</button>
       <button class="tab-btn" onclick="setView('delivered')" id="tab-delivered">✅ Delivered</button>
     </nav>
@@ -2607,16 +2614,17 @@ class HTMLGenerator:
 
     <div id="view-lidar" style="display:none">
       <div class="controls">
-        <button class="mode-button active" onclick="setLidarGroup('code')" id="lidar-grp-code">🏷️ Group by Code</button>
+        <button class="mode-button" onclick="setLidarGroup('type')" id="lidar-grp-type">🏷️ Group by Type</button>
         <select id="lidar-sort-select" class="db-sort-select" onchange="setLidarSort(this.value)">
-          <option value="name">Sort: Name</option>
-          <option value="code">Sort: Code</option>
+          <option value="lidar_name">Sort: Lidar Name</option>
+          <option value="asset_name">Sort: Asset Name</option>
+          <option value="asset_type">Sort: Type</option>
         </select>
         <button id="lidar-sort-dir" class="db-sort-dir" onclick="toggleLidarSortDir()" title="Toggle sort direction">↑</button>
         <div class="search-wrapper">
           <span class="search-icon">🔍</span>
           <input id="lidar-search-input" type="text"
-                 placeholder="Search code, name…"
+                 placeholder="Search type, asset, lidar name…"
                  oninput="setLidarQuery(this.value)">
           <button id="lidar-search-clear" onclick="clearLidarSearch()" title="Clear">✕</button>
         </div>
@@ -2865,12 +2873,12 @@ function _restoreUiState() {{
             if (el) {{ el.value = s.deliveredQuery; document.getElementById('del-search-clear').style.display = 'flex'; }}
         }}
         // Lidar
-        if (s.lidarGroup && ['code','none'].includes(s.lidarGroup)) {{
+        if (s.lidarGroup && ['type','none'].includes(s.lidarGroup)) {{
             lidarGroupMode = s.lidarGroup;
-            const btn = document.getElementById('lidar-grp-code');
-            if (btn) btn.classList.toggle('active', s.lidarGroup === 'code');
+            const btn = document.getElementById('lidar-grp-type');
+            if (btn) btn.classList.toggle('active', s.lidarGroup === 'type');
         }}
-        if (s.lidarSort && ['name','code'].includes(s.lidarSort)) {{
+        if (s.lidarSort && ['lidar_name','asset_name','asset_type'].includes(s.lidarSort)) {{
             lidarSortKey = s.lidarSort;
             const sel = document.getElementById('lidar-sort-select');
             if (sel) sel.value = s.lidarSort;
@@ -5457,21 +5465,70 @@ function _removeItemFromBin(binId, item) {{
     _updateBinSelect();
     closeBinMenu();
 }}
+function _doRemoveJustTake(binId, slate, take, camera) {{
+    closeBinMenu();
+    const bin = bins[binId];
+    if (!bin) return;
+    bin.items = bin.items.filter(i => !(i.type === 'slate' && i.slate === slate));
+    dbRows.filter(r => r['Slate'] === slate).forEach(r => {{
+        if (r['Take'] === take && (r['Camera'] || '') === camera) return;
+        const ti = {{type:'take', slate, take: r['Take']||'', camera: r['Camera']||''}};
+        if (!bin.items.some(i => i.type==='take' && i.slate===ti.slate && i.take===ti.take && i.camera===ti.camera))
+            bin.items.push(ti);
+    }});
+    _saveBins();
+    renderDatabase();
+    _updateBinSelect();
+}}
+function _doRemoveWholeSlate(binId, slate) {{
+    closeBinMenu();
+    const bin = bins[binId];
+    if (!bin) return;
+    bin.items = bin.items.filter(i => i.slate !== slate);
+    _saveBins();
+    renderDatabase();
+    _updateBinSelect();
+}}
+function _openSlateRemoveChoice(btn, binId, slate, take, cam, slateCount) {{
+    const menu = document.getElementById('bin-menu');
+    const si = escHtml(slate), ti = escHtml(take), ci = escHtml(cam), bi = escHtml(binId);
+    menu.innerHTML =
+        '<div class="bin-menu-section-label">SLATE ' + si + ' — IN BIN AS WHOLE SLATE</div>' +
+        '<div class="bin-menu-item" onclick="_doRemoveJustTake(&#39;' + bi + '&#39;,&#39;' + si + '&#39;,&#39;' + ti + '&#39;,&#39;' + ci + '&#39;)">' +
+        '<span class="bin-menu-icon">−</span>Just this take' +
+        '</div>' +
+        '<div class="bin-menu-item" onclick="_doRemoveWholeSlate(&#39;' + bi + '&#39;,&#39;' + si + '&#39;)">' +
+        '<span class="bin-menu-icon">−</span>All ' + slateCount + ' takes from slate ' + si +
+        '</div>';
+    menu.style.display = 'block';
+    const rect = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth  || 240;
+    const mh = menu.offsetHeight || 100;
+    let top  = rect.bottom + 6;
+    let left = rect.left;
+    if (left + mw > window.innerWidth  - 8) left = window.innerWidth  - mw - 8;
+    if (top  + mh > window.innerHeight - 8) top  = rect.top - mh - 6;
+    menu.style.top  = top  + 'px';
+    menu.style.left = left + 'px';
+}}
 function _confirmRemoveFromBin(e, btn) {{
     e.stopPropagation();
     const slate = btn.dataset.slate || '';
     const take  = btn.dataset.take  || '';
     const cam   = btn.dataset.cam   || '';
-    const item  = {{type:'take', slate, take, camera: cam}};
     if (activeBinId && bins[activeBinId]) {{
-        // Inside a bin — confirm then remove directly
-        const bin   = bins[activeBinId];
-        const label = 'T' + take + (cam ? '  Cam ' + cam : '') + '  Slate ' + slate;
-        if (!confirm('Remove ' + label + ' from bin "' + bin.name + '"?')) return;
-        _removeItemFromBin(activeBinId, item);
+        const bin = bins[activeBinId];
+        const hasSlateItem = bin.items.some(i => i.type === 'slate' && i.slate === slate);
+        if (hasSlateItem) {{
+            const slateCount = dbRows.filter(r => r['Slate'] === slate).length;
+            _openSlateRemoveChoice(btn, activeBinId, slate, take, cam, slateCount);
+        }} else {{
+            const label = 'T' + take + (cam ? '  Cam ' + cam : '') + '  Slate ' + slate;
+            if (!confirm('Remove ' + label + ' from bin "' + bin.name + '"?')) return;
+            _removeItemFromBin(activeBinId, {{type:'take', slate, take, camera: cam}});
+        }}
     }} else {{
-        // Outside any bin — show menu of bins containing this take
-        _openRemoveMenu(e, btn, item);
+        _openRemoveMenu(e, btn, {{type:'take', slate, take, camera: cam}});
     }}
 }}
 function _openRemoveMenu(e, btn, item) {{
@@ -5481,18 +5538,25 @@ function _openRemoveMenu(e, btn, item) {{
     if (!containing.length) return;
     const menu = document.getElementById('bin-menu');
     const label = 'T' + item.take + (item.camera ? '  Cam ' + item.camera : '') + '  Slate ' + item.slate;
+    const si = escHtml(item.slate), ti = escHtml(item.take), ci = escHtml(item.camera);
     menu.innerHTML =
         '<div class="bin-menu-section-label">REMOVE ' + escHtml(label) + ' FROM</div>' +
-        containing.map(b =>
-            '<div class="bin-menu-item" onclick="_doRemoveFromBin(' +
-            '&#39;' + b.id + '&#39;,' +
-            '&#39;' + escHtml(item.slate)  + '&#39;,' +
-            '&#39;' + escHtml(item.take)   + '&#39;,' +
-            '&#39;' + escHtml(item.camera) + '&#39;' +
-            ')">' +
-            '<span class="bin-menu-icon">−</span>' + escHtml(b.name) +
-            '</div>'
-        ).join('');
+        containing.map(b => {{
+            const bi = escHtml(b.id);
+            const hasSlateItem = b.items.some(i => i.type === 'slate' && i.slate === item.slate);
+            if (hasSlateItem) {{
+                const slateCount = dbRows.filter(r => r['Slate'] === item.slate).length;
+                return '<div class="bin-menu-item" onclick="_doRemoveJustTake(&#39;' + bi + '&#39;,&#39;' + si + '&#39;,&#39;' + ti + '&#39;,&#39;' + ci + '&#39;)">' +
+                    '<span class="bin-menu-icon">−</span>' + escHtml(b.name) + ' — just this take' +
+                    '</div>' +
+                    '<div class="bin-menu-item" onclick="_doRemoveWholeSlate(&#39;' + bi + '&#39;,&#39;' + si + '&#39;)">' +
+                    '<span class="bin-menu-icon">−</span>' + escHtml(b.name) + ' — all ' + slateCount + ' takes' +
+                    '</div>';
+            }}
+            return '<div class="bin-menu-item" onclick="_doRemoveFromBin(&#39;' + bi + '&#39;,&#39;' + si + '&#39;,&#39;' + ti + '&#39;,&#39;' + ci + '&#39;)">' +
+                '<span class="bin-menu-icon">−</span>' + escHtml(b.name) +
+                '</div>';
+        }}).join('');
     menu.style.display = 'block';
     const rect = btn.getBoundingClientRect();
     const mw   = menu.offsetWidth  || 220;
@@ -6420,8 +6484,8 @@ async function generateOfflineHtml() {{
 
 // ── Lidar ─────────────────────────────────────────────────────────────────────
 let lidarEntries        = [];
-let lidarGroupMode      = 'code';
-let lidarSortKey        = 'name';
+let lidarGroupMode      = 'none';
+let lidarSortKey        = 'lidar_name';
 let lidarSortAsc        = true;
 let lidarQuery          = '';
 let _lidarLoaded        = false;
@@ -6429,11 +6493,11 @@ const expandedLidarDirs = new Set();
 
 function loadLidar() {{
     if (_lidarLoaded) {{ renderLidar(); return; }}
-    fetch('/api/lidar')
+    fetch('/api/lidar-assets')
         .then(r => r.json())
         .then(d => {{
-            lidarEntries  = d.entries || [];
-            _lidarLoaded  = true;
+            lidarEntries = d.entries || [];
+            _lidarLoaded = true;
             renderLidar();
         }})
         .catch(() => {{
@@ -6444,7 +6508,7 @@ function loadLidar() {{
 
 function setLidarGroup(mode) {{
     lidarGroupMode = (lidarGroupMode === mode) ? 'none' : mode;
-    document.getElementById('lidar-grp-code').classList.toggle('active', lidarGroupMode === 'code');
+    document.getElementById('lidar-grp-type').classList.toggle('active', lidarGroupMode === 'type');
     renderLidar();
     _saveUiState();
 }}
@@ -6478,11 +6542,11 @@ function clearLidarSearch() {{
     _saveUiState();
 }}
 
-function toggleLidarCard(dirName) {{
-    if (expandedLidarDirs.has(dirName)) expandedLidarDirs.delete(dirName);
-    else expandedLidarDirs.add(dirName);
-    const card = document.querySelector('.lidar-card[data-dir="' + dirName + '"]');
-    if (card) card.classList.toggle('expanded', expandedLidarDirs.has(dirName));
+function toggleLidarCard(path) {{
+    if (expandedLidarDirs.has(path)) expandedLidarDirs.delete(path);
+    else expandedLidarDirs.add(path);
+    const card = document.querySelector('.lidar-card[data-path="' + CSS.escape(path) + '"]');
+    if (card) card.classList.toggle('expanded', expandedLidarDirs.has(path));
     const btn = document.getElementById('lidar-expand-all');
     if (btn) {{
         const cards = document.querySelectorAll('#lidar-content .lidar-card');
@@ -6496,8 +6560,8 @@ function toggleAllLidar() {{
     const anyCollapsed = Array.from(cards).some(c => !c.classList.contains('expanded'));
     cards.forEach(c => {{
         c.classList.toggle('expanded', anyCollapsed);
-        if (anyCollapsed) expandedLidarDirs.add(c.dataset.dir);
-        else expandedLidarDirs.delete(c.dataset.dir);
+        if (anyCollapsed) expandedLidarDirs.add(c.dataset.path);
+        else expandedLidarDirs.delete(c.dataset.path);
     }});
     const btn = document.getElementById('lidar-expand-all');
     if (btn) btn.textContent = anyCollapsed ? '⊖ Collapse All' : '⊕ Expand All';
@@ -6508,32 +6572,33 @@ function renderLidar() {{
     if (!el) return;
     let entries = lidarEntries.filter(e =>
         !lidarQuery ||
-        (e.code || '').toLowerCase().includes(lidarQuery) ||
-        (e.name || '').toLowerCase().includes(lidarQuery)
+        (e.asset_type || '').toLowerCase().includes(lidarQuery) ||
+        (e.asset_name || '').toLowerCase().includes(lidarQuery) ||
+        (e.lidar_name || '').toLowerCase().includes(lidarQuery)
     );
     entries = entries.slice().sort((a, b) => {{
-        const av = lidarSortKey === 'code' ? (a.code || '') : (a.name || '');
-        const bv = lidarSortKey === 'code' ? (b.code || '') : (b.name || '');
+        const av = (a[lidarSortKey] || '').toLowerCase();
+        const bv = (b[lidarSortKey] || '').toLowerCase();
         return lidarSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
     }});
     if (!entries.length) {{
         el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📡</div><p>No Lidar entries found</p></div>';
         return;
     }}
-    if (lidarGroupMode === 'code') {{
+    if (lidarGroupMode === 'type') {{
         const groups = {{}};
         for (const e of entries) {{
-            if (!groups[e.code]) groups[e.code] = [];
-            groups[e.code].push(e);
+            const key = e.asset_type || '—';
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(e);
         }}
-        const codes = Object.keys(groups).sort((a, b) => lidarSortAsc ? a.localeCompare(b) : b.localeCompare(a));
+        const keys = Object.keys(groups).sort((a, b) => lidarSortAsc ? a.localeCompare(b) : b.localeCompare(a));
         let html = '';
-        for (const code of codes) {{
-            const items = groups[code];
+        for (const key of keys) {{
             html += '<div class="group">' +
-                '<div class="group-header"><span>' + code + '</span>' +
-                '<span class="group-count">' + items.length + '</span></div>';
-            for (const entry of items) html += renderLidarCard(entry);
+                '<div class="group-header"><span>' + escHtml(key) + '</span>' +
+                '<span class="group-count">' + groups[key].length + '</span></div>';
+            for (const entry of groups[key]) html += renderLidarCard(entry);
             html += '</div>';
         }}
         el.innerHTML = html;
@@ -6543,7 +6608,18 @@ function renderLidar() {{
 }}
 
 function renderLidarCard(entry) {{
-    const extOrder = ['abc', 'e57', 'obj', 'png'];
+    const p = entry.path;
+
+    // File badges: e57, abc, obj + blk
+    const badgeOrder = ['e57', 'abc', 'obj'];
+    const fileBadges = badgeOrder
+        .filter(b => (entry.badges || []).includes(b))
+        .map(b => '<span class="lidar-ext-tag lidar-badge-' + b + '">.' + b + '</span>')
+        .join('');
+    const blkBadge = entry.has_blk ? '<span class="lidar-ext-tag lidar-badge-blk">blk</span>' : '';
+
+    // File listing grouped by extension (for expanded view)
+    const extOrder = ['e57', 'abc', 'obj'];
     const byExt = {{}};
     for (const f of (entry.files || [])) {{
         if (!byExt[f.ext]) byExt[f.ext] = [];
@@ -6551,63 +6627,58 @@ function renderLidarCard(entry) {{
     }}
     const allExts = [
         ...extOrder.filter(e => byExt[e]),
-        ...Object.keys(byExt).filter(e => !extOrder.includes(e))
+        ...Object.keys(byExt).filter(e => !extOrder.includes(e)),
     ];
-    // Summary: one tag per extension type
-    const summaryHtml = allExts.map(ext => '<span class="lidar-ext-tag">.' + ext + '</span>').join('');
-    // Details: full file listing per extension
     let filesHtml = '';
     for (const ext of allExts) {{
         filesHtml += '<div class="lidar-ext-group">' +
             '<span class="lidar-ext-label">.' + ext + '</span>' +
             '<div class="lidar-file-chips">' +
-            (byExt[ext] || []).map(n => '<span class="lidar-file-chip">' + n + '</span>').join('') +
+            (byExt[ext] || []).map(n => '<span class="lidar-file-chip">' + escHtml(n) + '</span>').join('') +
             '</div></div>';
     }}
+
     // Preview strip
     const previews = entry.previews || [];
     let previewHtml = '';
     if (previews.length) {{
         previewHtml = '<div class="lidar-preview-strip">' +
-            previews.map((p, i) =>
+            previews.map((pv, i) =>
                 '<img class="lidar-preview-thumb"' +
-                ' data-dir="' + entry.dir_name + '"' +
+                ' data-path="' + escHtml(p) + '"' +
                 ' data-pidx="' + i + '"' +
-                ' src="/api/lidar-preview/' + entry.dir_name + '/' + p + '"' +
-                ' onclick="event.stopPropagation();openLidarLightbox(this.dataset.dir,+this.dataset.pidx)"' +
-                ' title="' + p + '">'
+                ' src="/api/asset-preview/' + escHtml(entry.rel_path + '/' + pv) + '"' +
+                ' onclick="event.stopPropagation();openLidarLightbox(this.dataset.path,+this.dataset.pidx)"' +
+                ' title="' + escHtml(pv) + '">'
             ).join('') +
             '</div>';
     }}
-    const inCart      = cartLidars.has(entry.dir_name);
-    const expandedClass = expandedLidarDirs.has(entry.dir_name) ? ' expanded' : '';
-    const inCartClass   = inCart ? ' in-cart' : '';
+
+    const expandedClass = expandedLidarDirs.has(p) ? ' expanded' : '';
     const chevron = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
-    const vendors = deliveredByLidar[entry.dir_name] || [];
-    const vendorBadges = vendors.map(v => '<span class="vendor-badge">✓ ' + escHtml(v) + '</span>').join('');
-    return '<div class="lidar-card' + expandedClass + inCartClass + '" data-dir="' + entry.dir_name + '">' +
-        '<div class="lidar-card-header" data-dir="' + entry.dir_name + '" onclick="toggleLidarCard(this.dataset.dir)">' +
-        '<input type="checkbox" class="lidar-cb" data-dir="' + entry.dir_name + '"' +
-        ' onclick="event.stopPropagation();toggleLidarCart(this.dataset.dir)"' +
-        (inCart ? ' checked' : '') + '>' +
-        '<span class="lidar-code">' + entry.code + '</span>' +
-        '<span class="lidar-name">' + entry.name + '</span>' +
-        vendorBadges +
-        '<button class="finder-btn" data-path="' + entry.path + '"' +
+    const ep = escHtml(p);
+
+    return '<div class="lidar-card' + expandedClass + '" data-path="' + ep + '">' +
+        '<div class="lidar-card-header" data-path="' + ep + '" onclick="toggleLidarCard(this.dataset.path)">' +
+        '<span class="lidar-type-badge">' + escHtml(entry.asset_type) + '</span>' +
+        '<span class="lidar-asset-name">' + escHtml(entry.asset_name) + '</span>' +
+        '<span class="lidar-sep">›</span>' +
+        '<span class="lidar-name">' + escHtml(entry.lidar_name) + '</span>' +
+        '<span class="lidar-badges">' + fileBadges + blkBadge + '</span>' +
+        '<button class="finder-btn" data-path="' + ep + '"' +
         ' onclick="event.stopPropagation();openInFinder(this.dataset.path)" title="Open in Finder">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>' +
         '</svg></button>' +
-        '<button class="open-folder" data-path="' + entry.path + '"' +
+        '<button class="open-folder" data-path="' + ep + '"' +
         ' onclick="event.stopPropagation();copyPath(this,this.dataset.path)" title="Copy path">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
         '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' +
         '</svg></button>' +
-        '<button class="toggle-btn" data-dir="' + entry.dir_name + '" onclick="event.stopPropagation();toggleLidarCard(this.dataset.dir)">' +
+        '<button class="toggle-btn" data-path="' + ep + '" onclick="event.stopPropagation();toggleLidarCard(this.dataset.path)">' +
         chevron + '</button>' +
         '</div>' +
-        '<div class="lidar-summary">' + summaryHtml + '</div>' +
         '<div class="lidar-details">' + filesHtml + previewHtml + '</div>' +
         '</div>';
 }}
@@ -7445,10 +7516,10 @@ function openLightbox(slate, idx) {{
     document.getElementById('lightbox').classList.add('open');
 }}
 
-function openLidarLightbox(dirName, idx) {{
-    const entry = lidarEntries.find(e => e.dir_name === dirName);
+function openLidarLightbox(path, idx) {{
+    const entry = lidarEntries.find(e => e.path === path);
     if (!entry || !entry.previews.length) return;
-    _lbUrls = entry.previews.map(p => '/api/lidar-preview/' + entry.dir_name + '/' + p);
+    _lbUrls = entry.previews.map(p => '/api/asset-preview/' + entry.rel_path + '/' + p);
     _lbIdx  = idx;
     _lbUpdate();
     document.getElementById('lightbox').classList.add('open');
