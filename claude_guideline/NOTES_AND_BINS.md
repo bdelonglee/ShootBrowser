@@ -135,11 +135,124 @@ if (activeBinId && bins[activeBinId]) {
 
 ---
 
-## 3. Bin Export / Import
+## 3. Bin Modal UI
+
+### Layout
+The modal is opened via `openBinModal()` and injected into the DOM by an IIFE at page init.
+
+```
+┌─────────────────────────────────────────────┐
+│ Bins                           [+ New Bin]  │
+├─────────────────────────────────────────────┤
+│ ● Bin Name A              ✎  [Export ↓] [Delete] │
+│   3 Takes · 2 Slates (7 takes)             │
+│   first line of note…                      │
+├─────────────────────────────────────────────┤
+│ ● Bin Name B (active, purple highlight) ✎  │
+│   5 Takes                                  │
+├─────────────────────────────────────────────┤
+│ [⬆ Import Bin…]                            │
+├─────────────────────────────────────────────┤
+│ [Close]                                    │
+└─────────────────────────────────────────────┘
+```
+
+### Functions
+
+| Function | Action |
+|---|---|
+| `openBinModal()` | Calls `_renderBinModal()`, shows overlay |
+| `closeBinModal()` | Hides overlay |
+| `_renderBinModal()` | Rebuilds `#bin-modal-list` HTML |
+| `_binCountLabel(bin)` | Returns `"3 Takes · 2 Slates (7 takes)"` string |
+| `_modalToggleActive(binId)` | Activates/deactivates bin without closing modal, re-renders modal |
+| `_startRenameBin(binId)` | Replaces `.bin-modal-name-row` with inline input + ✓/✕ |
+| `_doRenameBin(binId)` | Saves rename, re-renders modal + select + database |
+| `_cancelRenameBin()` | Re-renders modal (restores name display) |
+| `_newBinFromModal()` | Inserts a temp input row at top of list for inline bin creation |
+| `_doCreateBinModal()` | Creates empty bin from the inline input, re-renders |
+| `deleteBin(binId)` | Confirm then delete, deactivates if was active |
+
+### Active bin indicator
+Each row has a `.bin-active-dot` button (circle). Filled purple when `activeBinId === b.id`.
+Clicking it calls `_modalToggleActive(binId)` — activates if inactive, deactivates if active —
+then re-renders the modal in place. The whole row also gets `.active` background tint.
+
+### Inline rename
+Clicking ✎ calls `_startRenameBin(binId)`. This:
+1. Finds the row via `document.querySelector('.bin-modal-row[data-bin-id="..."]')`.
+2. Replaces `.bin-modal-name-row` innerHTML with an `<input>` + ✓/✕ buttons.
+3. Focuses and selects the input. Enter → save, Escape → cancel.
+
+### Count label (`_binCountLabel`)
+```js
+// Example output: "3 Takes · 2 Slates (7 takes)"
+// For slate items, counts matching dbRows to get actual take coverage.
+const total = sItems.reduce((s, si) =>
+    s + dbRows.filter(r => r['Slate'] === si.slate).length, 0);
+```
+If only takes: `"3 Takes"`. If only slates: `"2 Slates (7 takes)"`. If empty: `"Empty"`.
+
+### Note snippet
+First line of `b.note` shown as `.bin-modal-note-snippet` (italic, muted) if the note is non-empty.
+
+---
+
+## 4. Removing Items from Bins
+
+### The `−` button
+Shown on each take card when the take belongs to at least one bin (`_inAnyBin`).
+`_rowInBin(row, bin)` matches both `type:'take'` items (exact match) and `type:'slate'`
+items (any take from that slate). So the button can appear even when the take was added
+as part of a whole-slate addition.
+
+### Remove flow
+
+**When inside an active bin (`activeBinId` is set):**
+
+- If the take is in the bin via an **individual take item** → confirm dialog → `_removeItemFromBin`.
+- If the take is in the bin via a **slate item** → dropdown menu appears with two choices:
+  - `− Just this take` → calls `_doRemoveJustTake`
+  - `− All N takes from slate X` → calls `_doRemoveWholeSlate`
+
+**When outside any active bin:**
+
+- `_openRemoveMenu` shows a list of bins containing the take.
+- For each bin that holds the take via a **slate item**, two sub-entries are shown
+  (`"BinName — just this take"` and `"BinName — all N takes"`).
+- For bins that hold the take directly as a take item, one entry is shown as before.
+
+### Key functions
+
+| Function | Action |
+|---|---|
+| `_confirmRemoveFromBin(e, btn)` | Entry point from the `−` button |
+| `_openSlateRemoveChoice(btn, binId, slate, take, cam, slateCount)` | Shows `#bin-menu` with just/all choice |
+| `_openRemoveMenu(e, btn, item)` | Shows `#bin-menu` listing bins (with per-bin choice when slate item) |
+| `_removeItemFromBin(binId, item)` | Exact-match filter: removes the item matching `{type, slate, take, camera}` |
+| `_doRemoveJustTake(binId, slate, take, camera)` | Removes slate item, re-adds all other takes of that slate as individual items |
+| `_doRemoveWholeSlate(binId, slate)` | Removes all items (slate or take) for that slate |
+| `_doRemoveFromBin(binId, slate, take, camera)` | Removes an exact take item (used from outside-bin menu when no slate item) |
+
+### `_doRemoveJustTake` — slate expansion logic
+```js
+// Remove the slate-level item
+bin.items = bin.items.filter(i => !(i.type === 'slate' && i.slate === slate));
+// Re-add all other takes of that slate as individual take items
+dbRows.filter(r => r['Slate'] === slate).forEach(r => {
+    if (r['Take'] === take && (r['Camera'] || '') === camera) return; // skip the removed one
+    const ti = {type:'take', slate, take: r['Take']||'', camera: r['Camera']||''};
+    if (!bin.items.some(i => i.type==='take' && ...)) bin.items.push(ti);
+});
+```
+
+---
+
+## 5. Bin Export / Import
 
 ### Export
 
-**Trigger:** Export button on each bin row in the Edit Bins modal, or Export ↓ button in
+**Trigger:** `Export ↓` button on each bin row in the modal, or `Export ↓` button in
 the active bin's note banner.
 
 **Function: `_exportBin(binId)`**
@@ -171,7 +284,7 @@ file is portable across database versions and machines.
 
 ### Import
 
-**Trigger:** `⬆ Import Bin…` button at the bottom of the Edit Bins modal →
+**Trigger:** `⬆ Import Bin…` button at the bottom of the modal →
 triggers a hidden `<input type="file" id="bin-import-input" accept=".json">`.
 
 **Flow:**
@@ -215,7 +328,7 @@ The incoming note is always appended after the existing note, prefixed with the 
 
 ---
 
-## 4. CSS class reference
+## 6. CSS class reference
 
 | Class | Element | Color |
 |---|---|---|
@@ -227,12 +340,27 @@ The incoming note is always appended after the existing note, prefixed with the 
 | `.db-bin-note-banner` | Full-width banner strip when bin is active | purple `#a371f7` |
 | `.db-bin-note-export-btn` | Export ↓ button in banner | `#58a6ff` blue |
 | `.bin-conflict-*` | All conflict modal elements | — |
-| `.bin-modal-btn.export` | Export button in modal rows | `#58a6ff` blue |
+| `.bin-modal-header` | Title + New Bin button row | — |
+| `.bin-new-btn` | `+ New Bin` button in modal header | accent color |
+| `.bin-modal-row` | One row per bin | — |
+| `.bin-modal-row.active` | Highlighted row for active bin | purple tint |
+| `.bin-active-dot` | Circle toggle button (left of row) | border only when inactive |
+| `.bin-active-dot.active` | Active state | `#a371f7` filled |
+| `.bin-modal-info` | Column: name + count + note snippet | flex column |
+| `.bin-modal-name-row` | Name + pencil icon | flex row |
+| `.bin-modal-rename-btn` | Pencil icon (✎) for inline rename | muted, 0.4 opacity |
+| `.bin-modal-count` | `"3 Takes · 2 Slates (7 takes)"` | muted small text |
+| `.bin-modal-note-snippet` | First line of bin note | italic, muted |
+| `.bin-modal-rename-input` | Inline rename `<input>` | purple border |
+| `.bin-modal-rename-ok` | ✓ confirm rename | green hover |
+| `.bin-modal-rename-x` | ✕ cancel rename / delete new-bin row | red hover |
+| `.bin-modal-btn.export` | Export ↓ button in modal rows | `#58a6ff` blue |
 | `.bin-modal-btn.import` | Import Bin… button at modal bottom | `#3fb950` green |
+| `.bin-remove-btn` | `−` button on take card | red hover |
 
 ---
 
-## 5. Important implementation notes
+## 7. Important implementation notes
 
 ### Python f-string escaping (critical)
 The entire HTML/JS lives in a Python triple-double-quoted f-string.
@@ -271,3 +399,7 @@ This avoids collapsing an expanded card or discarding the photo strip scroll pos
 When `OFFLINE_MODE` is true (offline HTML export), the note box is suppressed entirely
 (`noteBox = ''`). No server calls are attempted. The export/import UI is still present
 but will fail silently on the save step since there is no server.
+
+### `data-bin-id` attribute on modal rows
+`_startRenameBin` finds the row via `document.querySelector('.bin-modal-row[data-bin-id="' + binId + '"]')`.
+Bin IDs are always `bin_<timestamp>` so no CSS escaping is needed.
