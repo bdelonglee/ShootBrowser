@@ -1670,6 +1670,25 @@ class HTMLGenerator:
         .delivered-active .tab-btn.active {{
             color: #4ac26b; border-bottom-color: #4ac26b;
         }}
+        #view-delivered .group {{ margin-bottom: 0; }}
+        #view-delivered .group-header {{
+            background: none; border: none; border-radius: 0;
+            padding: 18px 0 7px; margin-bottom: 4px;
+            font-size: .78rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1.4px; color: var(--accent);
+            justify-content: flex-start; gap: 10px;
+            position: static;
+        }}
+        #view-delivered .group-header::after {{
+            content: ''; flex: 1; height: 1px;
+            background: linear-gradient(to right, var(--accent), transparent);
+            opacity: .45;
+        }}
+        #view-delivered .group-count {{
+            background: none; border: none; padding: 0; border-radius: 0;
+            font-size: .72rem; font-weight: 500; color: var(--text-muted);
+            order: 2;
+        }}
 
         /* ── Delivered view controls ── */
         #del-search-input {{
