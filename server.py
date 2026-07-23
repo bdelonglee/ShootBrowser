@@ -1333,7 +1333,7 @@ PDF_TAKE_COL_WEIGHTS = {
     'Shutter': 1.5, 'FPS': 1.0, 'F-Stop': 1.0, 'VFX Pass / Ref': 1.5,
     'Body': 1.5, 'Camera Move': 2.0, 'Resolution': 1.3, 'Focus': 1.1,
     'Tilt': 1.1, 'Height': 1.1, 'WB': 1.1, 'ISO': 1.1, 'Filter': 1.3,
-    'Take Notes': 3.0, '_note': 3.0,
+    'Take Notes': 3.0, '_shared_note': 3.0, '_note': 3.0,
 }
 PDF_TAKE_COL_STYLES = {
     'Take': 'center', 'Camera': 'center', 'Focal': 'center',

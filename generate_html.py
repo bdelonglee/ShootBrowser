@@ -4746,7 +4746,11 @@ function _csvDefaultCols() {{
     const all  = Object.keys(dbRows[0]).filter(c => !c.startsWith('_'));
     const ord  = CSV_ORDERED.filter(c => all.includes(c));
     const rest = all.filter(c => !CSV_ORDERED.includes(c));
-    return [...ord, ...rest].map(f => ({{ field: f, on: true }}));
+    const CSV_LABELS = {{ 'Take Notes': 'Take note' }};
+    const cols = [...ord, ...rest].map(f => ({{ field: f, on: true, ...(CSV_LABELS[f] ? {{label: CSV_LABELS[f]}} : {{}}) }}));
+    cols.push({{ field: '_shared_note', label: 'Shared Note', on: false }});
+    cols.push({{ field: '_note',        label: 'Internal Note', on: false }});
+    return cols;
 }}
 
 async function openCsvExportModal(extractMode) {{
@@ -4777,7 +4781,7 @@ function _renderCsvModal() {{
         '<div class="csv-col-row">' +
         '<input type="checkbox" id="csv-c-' + i + '"' + (c.on ? ' checked' : '') +
             ' onchange="_csvToggleCol(' + i + ',this.checked)">' +
-        '<label for="csv-c-' + i + '">' + escHtml(c.field) + '</label>' +
+        '<label for="csv-c-' + i + '">' + escHtml(c.label || c.field) + '</label>' +
         '<button class="csv-col-arrow" onclick="_csvColUp(' + i + ')" ' + (i === 0 ? 'disabled' : '') + '>↑</button>' +
         '<button class="csv-col-arrow" onclick="_csvColDown(' + i + ')" ' + (i === csvModalCols.length - 1 ? 'disabled' : '') + '>↓</button>' +
         '</div>'
@@ -5200,9 +5204,9 @@ const PDF_TAKE_AVAIL = [
     {{field:'WB',             label:'WB'}},
     {{field:'ISO',            label:'ISO'}},
     {{field:'Filter',         label:'Filter'}},
-    {{field:'Take Notes',     label:'Take Notes'}},
-    {{field:'_note',          label:'My Note'}},
+    {{field:'Take Notes',     label:'Take note'}},
     {{field:'_shared_note',   label:'Shared Note'}},
+    {{field:'_note',          label:'Internal Note'}},
 ];
 
 let pdfPresets      = {{}};
@@ -6482,7 +6486,7 @@ function renderDbDetails(row) {{
     const noteText       = (row['_note'] || '').trim();
     const noteBox        = OFFLINE_MODE ? '' : _noteBoxHtml(overrideKey, noteText, false);
     const sharedNoteText = (row['_shared_note'] || '').trim();
-    const sharedNoteBox  = OFFLINE_MODE ? '' : _sharedNoteBoxHtml(overrideKey, sharedNoteText, false);
+    const sharedNoteBox  = _sharedNoteBoxHtml(overrideKey, sharedNoteText, false);
     const editActions = OFFLINE_MODE ? '' : `
         <div class="db-edit-actions">
             <button class="db-edit-btn" onclick="openEditPanel('${{escHtml(overrideKey)}}')" title="Edit fields for this take">&#9998; Edit</button>
@@ -6494,7 +6498,9 @@ function renderDbDetails(row) {{
             <button class="db-edit-btn" style="margin-left:auto"
                 onclick="copyCardFull('${{escHtml(overrideKey)}}',event)" title="Copy all fields">&#9112; Copy all</button>
         </div>`;
-    const notesSection = OFFLINE_MODE ? '' : `<div class="db-note-section">${{noteBox}}${{sharedNoteBox}}</div>`;
+    const notesSection = (OFFLINE_MODE && !sharedNoteBox)
+        ? ''
+        : `<div class="db-note-section">${{OFFLINE_MODE ? '' : noteBox}}${{sharedNoteBox}}</div>`;
     return `<div class="db-details">${{notesSection}}${{photoStrip}}${{sections}}${{editActions}}</div>`;
 }}
 
@@ -7402,7 +7408,7 @@ function _noteBoxHtml(overrideKey, note, editing) {{
             '</div></div>';
     }}
     return '<div class="db-note-box empty" ' + dk + '>' +
-        '<button class="db-note-add-btn" ' + dk + ' onclick="_doEditNote(this);event.stopPropagation()">⚑ Add note…</button>' +
+        '<button class="db-note-add-btn" ' + dk + ' onclick="_doEditNote(this);event.stopPropagation()">⚑ Add internal note…</button>' +
         '</div>';
 }}
 
@@ -7510,6 +7516,12 @@ function _sharedNoteBoxHtml(overrideKey, note, editing) {{
             '</div></div>';
     }}
     if (note) {{
+        if (OFFLINE_MODE) {{
+            return '<div class="db-shared-note-box" ' + dk + '>' +
+                '<span class="db-shared-note-box-icon">⚑</span>' +
+                '<span class="db-shared-note-text">' + escHtml(note) + '</span>' +
+                '</div>';
+        }}
         return '<div class="db-shared-note-box" ' + dk + '>' +
             '<span class="db-shared-note-box-icon">⚑</span>' +
             '<span class="db-shared-note-text">' + escHtml(note) + '</span>' +
@@ -7518,6 +7530,7 @@ function _sharedNoteBoxHtml(overrideKey, note, editing) {{
             '<button class="db-shared-note-clear-btn" ' + dk + ' onclick="_doClearSharedNote(this);event.stopPropagation()">×</button>' +
             '</div></div>';
     }}
+    if (OFFLINE_MODE) return '';
     return '<div class="db-shared-note-box empty" ' + dk + '>' +
         '<button class="db-shared-note-add-btn" ' + dk + ' onclick="_doEditSharedNote(this);event.stopPropagation()">⚑ Add shared note…</button>' +
         '</div>';
