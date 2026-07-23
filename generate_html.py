@@ -690,6 +690,35 @@ class HTMLGenerator:
             font-weight: 500;
         }}
 
+        /* ── Browse page: text+line group header (overrides card style) ── */
+        #view-browse .group {{ margin-bottom: 0; }}
+        #view-browse .group-header {{
+            background: none; border: none; border-radius: 0;
+            padding: 18px 0 7px; margin-bottom: 4px;
+            font-size: .78rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1.4px; color: var(--accent);
+            justify-content: flex-start; gap: 10px;
+            position: static;
+        }}
+        #view-browse .group-header::after {{
+            content: ''; flex: 1; height: 1px;
+            background: linear-gradient(to right, var(--accent), transparent);
+            opacity: .45;
+        }}
+        #view-browse .group-count {{
+            background: none; border: none; padding: 0; border-radius: 0;
+            font-size: .72rem; font-weight: 500; color: var(--text-muted);
+            order: 2;
+        }}
+
+        /* ── Browse page: compact folded cards ── */
+        #view-browse .entry {{
+            padding: 7px 14px; margin-bottom: 5px; border-radius: 7px;
+        }}
+        #view-browse .entry.expanded {{ margin-bottom: 14px; }}
+        #view-browse .entry-title-line {{ margin-bottom: 0; }}
+        #view-browse .entry.expanded .entry-title-line {{ margin-bottom: 10px; }}
+
         /* ── Entry cards ── */
         .entry {{
             background: var(--surface);
@@ -2415,8 +2444,8 @@ class HTMLGenerator:
         .asset-card {{
             background: var(--surface); border: 1px solid var(--border);
             border-left: 3px solid transparent;
-            padding: 12px 16px; margin-bottom: 8px;
-            border-radius: 8px; transition: all 0.15s;
+            padding: 7px 14px; margin-bottom: 5px;
+            border-radius: 7px; transition: all 0.15s;
         }}
         .asset-card:hover {{ background: var(--surface-2); border-color: var(--border-hover); border-left-color: var(--accent); }}
         .asset-card.in-cart {{ border-left-color: var(--accent); background: var(--accent-glow); }}
@@ -2471,18 +2500,18 @@ class HTMLGenerator:
         #assets-search-clear:hover {{ color: var(--text); }}
         .cart-section-label {{ font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .6px; padding: 4px 0 2px; }}
         .assets-type-header {{
-            display: flex; align-items: center; gap: 12px;
-            padding: 28px 2px 10px; margin-bottom: 6px;
-            font-size: .82rem; font-weight: 800; text-transform: uppercase;
-            letter-spacing: 1.6px; color: var(--accent);
+            display: flex; align-items: center; gap: 10px;
+            padding: 18px 0 7px; margin-bottom: 4px;
+            font-size: .78rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1.4px; color: var(--accent);
         }}
         .assets-type-header::after {{
             content: ''; flex: 1; height: 1px;
-            background: linear-gradient(to right, var(--accent), var(--border));
-            opacity: .5;
+            background: linear-gradient(to right, var(--accent), transparent);
+            opacity: .45;
         }}
         .assets-type-header .assets-type-count {{
-            font-size: .75rem; font-weight: 500; color: var(--text-muted);
+            font-size: .72rem; font-weight: 500; color: var(--text-muted);
             white-space: nowrap; order: 2;
         }}
     </style>
