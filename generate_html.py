@@ -2340,6 +2340,29 @@ class HTMLGenerator:
             padding: 14px 16px; margin-bottom: 8px;
             border-radius: 8px; transition: all 0.15s;
         }}
+        #view-lidar .group {{ margin-bottom: 0; }}
+        #view-lidar .group-header {{
+            background: none; border: none; border-radius: 0;
+            padding: 18px 0 7px; margin-bottom: 4px;
+            font-size: .78rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1.4px; color: var(--accent);
+            justify-content: flex-start; gap: 10px;
+            position: static;
+        }}
+        #view-lidar .group-header::after {{
+            content: ''; flex: 1; height: 1px;
+            background: linear-gradient(to right, var(--accent), transparent);
+            opacity: .45;
+        }}
+        #view-lidar .group-count {{
+            background: none; border: none; padding: 0; border-radius: 0;
+            font-size: .72rem; font-weight: 500; color: var(--text-muted);
+            order: 2;
+        }}
+        #view-lidar .lidar-card {{ padding: 7px 14px; margin-bottom: 5px; border-radius: 7px; }}
+        #view-lidar .lidar-card.expanded {{ margin-bottom: 14px; }}
+        #view-lidar .lidar-card-header {{ margin-bottom: 0; }}
+        #view-lidar .lidar-card.expanded .lidar-card-header {{ margin-bottom: 6px; }}
         .lidar-card:hover {{
             background: var(--surface-2); border-color: var(--border-hover);
             border-left-color: var(--accent); transform: translateX(3px);
