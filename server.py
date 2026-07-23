@@ -431,6 +431,7 @@ def api_database():
         rows = _apply_overrides(rows, _load_overrides())
         rows = _apply_omissions(rows, _load_omissions())
         rows = _apply_notes(rows, _load_notes())
+        rows = _apply_shared_notes(rows, _load_shared_notes())
         return jsonify({"success": True, "rows": rows})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -615,7 +616,55 @@ def api_save_note():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-_DB_JSON_EXCLUDED = {"extraction_meta.json", "overrides.json", "omissions.json", "notes.json"}
+def _shared_notes_path() -> Path:
+    return Path(DATA_DIR) / "__DATABASE" / "shared_notes.json"
+
+
+def _load_shared_notes() -> dict:
+    p = _shared_notes_path()
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {"version": 1, "takes": {}}
+
+
+def _save_shared_notes(n: dict) -> None:
+    p = _shared_notes_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(n, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _apply_shared_notes(rows: list, notes: dict) -> list:
+    """Attach shared note text to each row from shared_notes.json."""
+    take_notes = notes.get("takes", {})
+    for row in rows:
+        key = row.get("_override_key", "")
+        row["_shared_note"] = take_notes.get(key, "")
+    return rows
+
+
+@app.route("/api/shared-notes/save", methods=["POST"])
+def api_save_shared_note():
+    """Save or delete a shared note for a specific take."""
+    try:
+        body = request.json or {}
+        key  = body.get("key", "")
+        text = (body.get("text") or "").strip()
+        if not key:
+            return jsonify({"success": False, "error": "key required"}), 400
+        n     = _load_shared_notes()
+        takes = n.setdefault("takes", {})
+        if text:
+            takes[key] = text
+        else:
+            takes.pop(key, None)
+        _save_shared_notes(n)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+_DB_JSON_EXCLUDED = {"extraction_meta.json", "overrides.json", "omissions.json", "notes.json", "shared_notes.json"}
 
 
 def _load_db_json() -> dict:
@@ -1105,6 +1154,7 @@ def api_extract_slates_export():
         rows = _denormalize_json_to_rows(data)
         rows = _apply_overrides(rows, _load_overrides())
         rows = _apply_notes(rows, _load_notes())
+        rows = _apply_shared_notes(rows, _load_shared_notes())
     except Exception as e:
         return jsonify({"success": False, "error": f"Could not parse JSON: {e}"}), 500
     if not rows:
@@ -1776,6 +1826,7 @@ def api_export_pdf():
         all_rows         = _denormalize_json_to_rows(data)
         all_rows         = _apply_overrides(all_rows, _load_overrides())
         all_rows         = _apply_notes(all_rows, _load_notes())
+        all_rows         = _apply_shared_notes(all_rows, _load_shared_notes())
         records_by_slate = {r["slateId"]: r for r in data.get("records", [])}
         project_name     = (data.get("project") or {}).get("name", "VFX Shoot")
 

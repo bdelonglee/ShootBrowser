@@ -1128,6 +1128,62 @@ class HTMLGenerator:
             font-size: 0.78em; cursor: pointer; padding: 0; transition: color 0.15s;
         }}
         .db-note-add-btn:hover {{ color: #f0a500; }}
+        /* ── Note section wrapper (internal + shared) ── */
+        .db-note-section {{
+            display: flex; flex-direction: column; gap: 5px; margin-bottom: 0;
+        }}
+        .db-note-section .db-note-box,
+        .db-note-section .db-shared-note-box {{ margin-bottom: 0; }}
+        /* ── Shared note box (blue, vendor-facing) ── */
+        .db-shared-note-box {{
+            background: rgba(88,166,255,0.08);
+            border: 1px solid rgba(88,166,255,0.28);
+            border-left: 3px solid #58a6ff;
+            border-radius: 6px; padding: 8px 12px; margin-bottom: 12px;
+            display: flex; align-items: flex-start; gap: 8px;
+        }}
+        .db-shared-note-box.empty {{
+            background: none; border: 1px dashed rgba(88,166,255,0.2);
+            border-left: 1px dashed rgba(88,166,255,0.2); padding: 5px 12px;
+        }}
+        .db-shared-note-box-icon {{ color: #58a6ff; font-size: 0.9em; flex-shrink: 0; margin-top: 2px; }}
+        .db-shared-note-text {{
+            flex: 1; font-size: 0.85em; color: var(--text);
+            white-space: pre-wrap; word-break: break-word;
+        }}
+        .db-shared-note-textarea {{
+            flex: 1; background: var(--surface-2); border: 1px solid rgba(88,166,255,0.4);
+            border-radius: 5px; color: var(--text); font-size: 0.85em;
+            padding: 5px 8px; resize: vertical; min-height: 52px;
+            outline: none; font-family: inherit;
+        }}
+        .db-shared-note-textarea:focus {{ border-color: #58a6ff; }}
+        .db-shared-note-save-btn {{
+            background: #58a6ff; border: none; color: #0d1117;
+            border-radius: 5px; padding: 3px 10px; font-size: 0.78em;
+            font-weight: 700; cursor: pointer; transition: opacity 0.15s;
+        }}
+        .db-shared-note-save-btn:hover {{ opacity: 0.85; }}
+        .db-shared-note-cancel-btn, .db-shared-note-clear-btn {{
+            background: var(--surface-2); border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: 5px; padding: 3px 10px;
+            font-size: 0.78em; cursor: pointer; transition: all 0.15s;
+        }}
+        .db-shared-note-cancel-btn:hover, .db-shared-note-clear-btn:hover {{ color: var(--text); }}
+        .db-shared-note-edit-btn {{
+            background: none; border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: 5px; padding: 3px 8px;
+            font-size: 0.78em; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+        }}
+        .db-shared-note-edit-btn:hover {{ border-color: #58a6ff; color: #58a6ff; }}
+        .db-shared-note-add-btn {{
+            background: none; border: none; color: rgba(88,166,255,0.45);
+            font-size: 0.78em; cursor: pointer; padding: 0; transition: color 0.15s;
+        }}
+        .db-shared-note-add-btn:hover {{ color: #58a6ff; }}
+        .db-shared-note-flag {{
+            color: #58a6ff; font-size: 0.88em; flex-shrink: 0; display: inline-block;
+        }}
         /* ── Bin note banner ── */
         .db-bin-note-banner {{
             margin-top: 8px; padding: 8px 14px;
@@ -2057,7 +2113,7 @@ class HTMLGenerator:
         .db-field-value:not(.empty):hover {{ background: var(--surface-2); }}
         .db-details {{ display: flex; flex-direction: column; gap: 16px; }}
         .db-photo-strip {{
-            display: flex; flex-wrap: wrap; gap: 8px;
+            display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
         }}
         .db-photo-thumb {{
             height: 120px; width: auto;
@@ -5146,6 +5202,7 @@ const PDF_TAKE_AVAIL = [
     {{field:'Filter',         label:'Filter'}},
     {{field:'Take Notes',     label:'Take Notes'}},
     {{field:'_note',          label:'My Note'}},
+    {{field:'_shared_note',   label:'Shared Note'}},
 ];
 
 let pdfPresets      = {{}};
@@ -6314,8 +6371,10 @@ function renderDbCard(row, idx) {{
     const edited      = new Set(row['_edited_fields'] || []);
     const ec          = f => edited.has(f) ? ' edited-val' : '';
     const omitBadge   = isOmitted ? '<span class="db-omit-badge">omitted</span>' : '';
-    const hasNote     = !!(row['_note'] || '').trim();
+    const hasNote       = !!(row['_note'] || '').trim();
+    const hasSharedNote = !!(row['_shared_note'] || '').trim();
     const noteFlagSlot = '<span class="db-note-flag-slot">' + (hasNote ? '<span class="db-note-flag" title="Has note">⚑</span>' : '') + '</span>';
+    const sharedNoteFlagSlot = '<span class="db-shared-note-flag-slot">' + (hasSharedNote ? '<span class="db-shared-note-flag" title="Has shared note">⚑</span>' : '') + '</span>';
     // Quick-copy text (title line)
     const quickParts  = [
         slate  !== '—' ? 'Slate: ' + slate : '',
@@ -6343,6 +6402,7 @@ function renderDbCard(row, idx) {{
             ${{tag('db-focal', 'focal', focal, ec('Focal'))}}
             ${{tilt   ? `<span class="db-tilt">${{escHtml(tilt)}}</span>` : ''}}
             ${{noteFlagSlot}}
+            ${{sharedNoteFlagSlot}}
             ${{omitBadge}}
             ${{photoBadge}}
             ${{binBadge}}
@@ -6419,8 +6479,10 @@ function renderDbDetails(row) {{
     const recordId    = row['_record_id']    || '';
     const hasEdits    = (row['_edited_fields'] || []).length > 0;
     const isOmitted   = !!row['_omitted'];
-    const noteText    = (row['_note'] || '').trim();
-    const noteBox     = OFFLINE_MODE ? '' : _noteBoxHtml(overrideKey, noteText, false);
+    const noteText       = (row['_note'] || '').trim();
+    const noteBox        = OFFLINE_MODE ? '' : _noteBoxHtml(overrideKey, noteText, false);
+    const sharedNoteText = (row['_shared_note'] || '').trim();
+    const sharedNoteBox  = OFFLINE_MODE ? '' : _sharedNoteBoxHtml(overrideKey, sharedNoteText, false);
     const editActions = OFFLINE_MODE ? '' : `
         <div class="db-edit-actions">
             <button class="db-edit-btn" onclick="openEditPanel('${{escHtml(overrideKey)}}')" title="Edit fields for this take">&#9998; Edit</button>
@@ -6432,7 +6494,8 @@ function renderDbDetails(row) {{
             <button class="db-edit-btn" style="margin-left:auto"
                 onclick="copyCardFull('${{escHtml(overrideKey)}}',event)" title="Copy all fields">&#9112; Copy all</button>
         </div>`;
-    return `<div class="db-details">${{noteBox}}${{photoStrip}}${{sections}}${{editActions}}</div>`;
+    const notesSection = OFFLINE_MODE ? '' : `<div class="db-note-section">${{noteBox}}${{sharedNoteBox}}</div>`;
+    return `<div class="db-details">${{notesSection}}${{photoStrip}}${{sections}}${{editActions}}</div>`;
 }}
 
 function _injectPhotoStrip(entry, photos) {{
@@ -7430,6 +7493,123 @@ async function _doClearNote(btn) {{
         }}
     }} catch(e) {{
         alert('Note clear error: ' + e.message);
+        btn.disabled = false;
+    }}
+}}
+
+// ── Shared note box (vendor-facing) ──────────────────────────────────────────
+function _sharedNoteBoxHtml(overrideKey, note, editing) {{
+    const dk = 'data-shared-note-key="' + escHtml(overrideKey) + '"';
+    if (editing) {{
+        return '<div class="db-shared-note-box" ' + dk + '>' +
+            '<span class="db-shared-note-box-icon">⚑</span>' +
+            '<textarea class="db-shared-note-textarea" rows="2">' + escHtml(note) + '</textarea>' +
+            '<div class="db-note-actions">' +
+            '<button class="db-shared-note-save-btn" ' + dk + ' onclick="_doSaveSharedNote(this);event.stopPropagation()">Save</button>' +
+            '<button class="db-shared-note-cancel-btn" ' + dk + ' onclick="_doCancelSharedNote(this);event.stopPropagation()">Cancel</button>' +
+            '</div></div>';
+    }}
+    if (note) {{
+        return '<div class="db-shared-note-box" ' + dk + '>' +
+            '<span class="db-shared-note-box-icon">⚑</span>' +
+            '<span class="db-shared-note-text">' + escHtml(note) + '</span>' +
+            '<div class="db-note-actions">' +
+            '<button class="db-shared-note-edit-btn" ' + dk + ' onclick="_doEditSharedNote(this);event.stopPropagation()">Edit</button>' +
+            '<button class="db-shared-note-clear-btn" ' + dk + ' onclick="_doClearSharedNote(this);event.stopPropagation()">×</button>' +
+            '</div></div>';
+    }}
+    return '<div class="db-shared-note-box empty" ' + dk + '>' +
+        '<button class="db-shared-note-add-btn" ' + dk + ' onclick="_doEditSharedNote(this);event.stopPropagation()">⚑ Add shared note…</button>' +
+        '</div>';
+}}
+
+function _entryBySharedNoteKey(key) {{
+    for (const el of document.querySelectorAll('[data-override-key]')) {{
+        if (el.dataset.overrideKey === key) return el;
+    }}
+    return null;
+}}
+
+function _doEditSharedNote(btn) {{
+    const key  = btn.dataset.sharedNoteKey;
+    const row  = dbRows.find(r => r['_override_key'] === key);
+    const note = row ? (row['_shared_note'] || '') : '';
+    const box  = btn.closest('.db-shared-note-box');
+    if (box) {{
+        box.outerHTML = _sharedNoteBoxHtml(key, note, true);
+        const entry = _entryBySharedNoteKey(key);
+        if (entry) {{
+            const ta = entry.querySelector('.db-shared-note-textarea');
+            if (ta) {{ ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }}
+        }}
+    }}
+}}
+
+function _doCancelSharedNote(btn) {{
+    const key  = btn.dataset.sharedNoteKey;
+    const row  = dbRows.find(r => r['_override_key'] === key);
+    const note = row ? (row['_shared_note'] || '') : '';
+    const box  = btn.closest('.db-shared-note-box');
+    if (box) box.outerHTML = _sharedNoteBoxHtml(key, note, false);
+}}
+
+async function _doSaveSharedNote(btn) {{
+    if (OFFLINE_MODE) return;
+    const key  = btn.dataset.sharedNoteKey;
+    const box  = btn.closest('.db-shared-note-box');
+    const ta   = box ? box.querySelector('.db-shared-note-textarea') : null;
+    const text = ta ? ta.value.trim() : '';
+    btn.disabled    = true;
+    btn.textContent = '…';
+    try {{
+        const res  = await fetch('/api/shared-notes/save', {{
+            method:  'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body:    JSON.stringify({{ key, text }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{
+            alert('Shared note save failed: ' + (data.error || ''));
+            btn.disabled = false; btn.textContent = 'Save'; return;
+        }}
+        const row = dbRows.find(r => r['_override_key'] === key);
+        if (row) row['_shared_note'] = text;
+        if (box) box.outerHTML = _sharedNoteBoxHtml(key, text, false);
+        const entry = _entryBySharedNoteKey(key);
+        if (entry) {{
+            const slot = entry.querySelector('.entry-title-line .db-shared-note-flag-slot');
+            if (slot) slot.innerHTML = text ? '<span class="db-shared-note-flag" title="Has shared note">⚑</span>' : '';
+        }}
+    }} catch(e) {{
+        alert('Shared note save error: ' + e.message);
+        btn.disabled = false; btn.textContent = 'Save';
+    }}
+}}
+
+async function _doClearSharedNote(btn) {{
+    if (OFFLINE_MODE) return;
+    const key = btn.dataset.sharedNoteKey;
+    if (!confirm('Delete this shared note?')) return;
+    btn.disabled = true;
+    try {{
+        const res  = await fetch('/api/shared-notes/save', {{
+            method:  'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body:    JSON.stringify({{ key, text: '' }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Shared note delete failed: ' + (data.error || '')); btn.disabled = false; return; }}
+        const row = dbRows.find(r => r['_override_key'] === key);
+        if (row) row['_shared_note'] = '';
+        const box = btn.closest('.db-shared-note-box');
+        if (box) box.outerHTML = _sharedNoteBoxHtml(key, '', false);
+        const entry = _entryBySharedNoteKey(key);
+        if (entry) {{
+            const slot = entry.querySelector('.entry-title-line .db-shared-note-flag-slot');
+            if (slot) slot.innerHTML = '';
+        }}
+    }} catch(e) {{
+        alert('Shared note clear error: ' + e.message);
         btn.disabled = false;
     }}
 }}
