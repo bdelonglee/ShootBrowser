@@ -1758,6 +1758,25 @@ class HTMLGenerator:
         .database-active .entry:not(.expanded) .entry-title-line {{
             margin-bottom: 0;
         }}
+        #view-database .group {{ margin-bottom: 0; }}
+        #view-database .group-header {{
+            background: none; border: none; border-radius: 0;
+            padding: 18px 0 7px; margin-bottom: 4px;
+            font-size: .78rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1.4px; color: var(--accent);
+            justify-content: flex-start; gap: 10px;
+            position: static;
+        }}
+        #view-database .group-header::after {{
+            content: ''; flex: 1; height: 1px;
+            background: linear-gradient(to right, var(--accent), transparent);
+            opacity: .45;
+        }}
+        #view-database .group-count {{
+            background: none; border: none; padding: 0; border-radius: 0;
+            font-size: .72rem; font-weight: 500; color: var(--text-muted);
+            order: 2;
+        }}
         .db-filter-row {{
             display: flex; flex-wrap: wrap; gap: 8px 12px;
             margin-top: 12px; align-items: flex-end;
@@ -6196,21 +6215,7 @@ function renderDatabase() {{
         const countLabel = `${{rows.length}} take${{rows.length === 1 ? '' : 's'}}`;
         let headerLeft;
         if (dbGroupMode === 'slate') {{
-            const first  = rows[0];
-            const slate  = first['Slate'] || key;
-            const vfxId  = first['VFX ID']    || '';
-            const date   = first['Date']       || '';
-            const day    = first['Shoot Day']  || '';
-            const sceneM = slate.match(/^(\\d+)/);
-            const scene  = sceneM ? `Scene ${{sceneM[1]}}` : '';
-            headerLeft =
-                `<span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">` +
-                (scene ? `<span class="db-slate">${{escHtml(scene)}}</span>` : '') +
-                `<span class="db-slate">${{escHtml(slate)}}</span>` +
-                (vfxId ? `<span class="db-vfxid">${{escHtml(vfxId)}}</span>` : '') +
-                (date  ? `<span class="db-date">${{escHtml(date)}}</span>`  : '') +
-                (day   ? `<span class="db-day">${{escHtml(day)}}</span>`    : '') +
-                `</span>`;
+            headerLeft = `<span>${{escHtml(rows[0]['Slate'] || key)}}</span>`;
         }} else {{
             headerLeft = `<span>🎬 ${{escHtml(key)}}</span>`;
         }}
