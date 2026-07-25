@@ -15,7 +15,8 @@ Browse entries come from `/api/browse` and are structured as:
   scenes:      ["12", "12A"],  // one or more scene strings
   code:        "EXT_NIGHT",    // underscore-separated codes → split into pills
   description: "Rooftop...",   // plain text label
-  slate_count: 7,              // total number of slates under this entry
+  slate_count: 7,              // number of unique slates in the block's CSV
+  take_count:  34,             // total number of takes (rows) in the block's CSV
   has_data:    true,           // whether any raw data exists
   subdirs:     [...]           // nested sub-entries (same shape)
 }
@@ -48,7 +49,7 @@ function updateStats(total, groups, slates) {
 
 - **Entries**: number of visible entries after filtering.
 - **Groups**: number of non-empty groups (0 in ungrouped mode).
-- **Slates**: sum of `entry.slate_count` across all matched entries.
+- **Slates**: sum of `entry.slate_count` (unique slates) across all matched entries.
 
 ---
 
@@ -226,6 +227,8 @@ _updateInfo(totalShown, grandTotal);
 | `.title-scene.filter-active` | Active scene filter | brighter cyan bg + solid border |
 | `.title-code.filter-active` | Active code filter | brighter amber bg + solid border |
 | `.entry-description` | Description text | font-weight 600, flex:1, no bg |
+| `.summary-slates` | Slate/take count badge (clickable) | muted surface pill, accent on hover |
+| `.summary-slates-unit` | The "S" / "T" unit letters inside the badge | opacity 0.55 so numbers read clearly |
 | `.browse-filter-chip` | Active filter dismissal chip in info bar | — |
 | `.browse-filter-chip.chip-day` | Day filter chip | `#56d364` green |
 | `.browse-filter-chip.chip-scene` | Scene filter chip | `#39c5cf` cyan |
@@ -252,6 +255,21 @@ pattern used elsewhere in the codebase.
 The `#search-info` element is updated with `.innerHTML` (not `.textContent`) so the filter
 chip HTML is rendered. Any user-visible strings inside are `escHtml()`-escaped first.
 
-### Slates stat scope
-`stat-slates` counts `slate_count` from **matched** entries only — it reflects the current
+### Slate and take counts
+
+`ShootEntry` carries two separate fields populated by `_count_block_slates()` in `generate_html.py`:
+
+- `slate_count` — number of **unique** `Slate` values in the block's `slates_*.csv`
+- `take_count` — total number of rows (takes) in that CSV
+
+**Why two fields?** One take per row in the CSV; a slate with 10 retakes = 10 rows. The old
+code used raw `sum(1 for _ in f)` which also inflated the count whenever notes contained
+embedded newlines inside quoted CSV fields. The fix uses `csv.DictReader` which is newline-safe,
+and collects unique `Slate` values into a `set` for the true slate count.
+
+The badge in `renderEntry` shows both: `5S 23T` (5 slates, 23 takes). The unit letters `S`/`T`
+are wrapped in `.summary-slates-unit` (opacity 0.55) so they don't visually merge with the
+adjacent digits. A `title` attribute on the badge reads `"5 Slates, 23 Takes"` as a tooltip.
+
+`stat-slates` sums `slate_count` from **matched** entries only — it reflects the current
 search + filter scope, not all available slates.
