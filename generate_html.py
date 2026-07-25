@@ -8,6 +8,7 @@ import os
 import re
 import csv
 import json
+import tomllib
 from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
@@ -125,12 +126,14 @@ class HTMLGenerator:
     CONFIG_PATH    = '__SB_SETUP__/Config/sanity_check.json'
     PROJECT_CONFIG = '__SB_SETUP__/Config/project_config.json'
 
-    # Subdirectory display modes (matched against non-__ subdir names)
-    HDR_DIRS         = {'20_HDR'}
-    NESTED_FLAT_DIRS = {'32_Photog_Photos', '40_Photos', '50_Videos',
-                        '30_Photog_Polycam', '31_Photog_Scale', '70_Temoin_Videos'}
-    COUNT_ONLY_DIRS  = {'60_Temoin_Photos'}
-    LIST_FILES_DIRS  = {'10_Infos', '00_Database', '80_References'}
+    SUBDIR_MODES_CONFIG = '__SB_SETUP__/Config/subdir_modes.toml'
+
+    # Fallback subdir display modes — used when subdir_modes.toml is absent or unreadable
+    DEFAULT_HDR_DIRS         = {'20_HDR'}
+    DEFAULT_NESTED_FLAT_DIRS = {'32_Photog_Photos', '40_Photos', '50_Videos',
+                                '30_Photog_Polycam', '31_Photog_Scale', '70_Temoin_Videos'}
+    DEFAULT_COUNT_ONLY_DIRS  = {'60_Temoin_Photos'}
+    DEFAULT_LIST_FILES_DIRS  = {'10_Infos', '00_Database', '80_References'}
 
     def __init__(self, project_root: str, data_dir: str = None, delivery_dir: str = None):
         self.data_path    = Path(project_root).resolve()  # project root
@@ -168,6 +171,42 @@ class HTMLGenerator:
         delivery_cfg = project_cfg.get('delivery', {})
         self.vendors            = delivery_cfg.get('vendors', [])
         self.default_output_dir = str(self.delivery_dir)
+        self._load_subdir_modes()
+
+    def _load_subdir_modes(self) -> None:
+        path = self.data_path / self.SUBDIR_MODES_CONFIG
+        self.hdr_dirs         = set(self.DEFAULT_HDR_DIRS)
+        self.nested_flat_dirs = set(self.DEFAULT_NESTED_FLAT_DIRS)
+        self.count_only_dirs  = set(self.DEFAULT_COUNT_ONLY_DIRS)
+        self.list_files_dirs  = set(self.DEFAULT_LIST_FILES_DIRS)
+        if not path.exists():
+            return
+        try:
+            with open(path, 'rb') as f:
+                data = tomllib.load(f)
+            dirs = data.get('dirs', {})
+            self.hdr_dirs         = set()
+            self.nested_flat_dirs = set()
+            self.count_only_dirs  = set()
+            self.list_files_dirs  = set()
+            for dirname, mode in dirs.items():
+                if mode == 'hdr':
+                    self.hdr_dirs.add(dirname)
+                elif mode == 'nested':
+                    self.nested_flat_dirs.add(dirname)
+                elif mode == 'count':
+                    self.count_only_dirs.add(dirname)
+                elif mode == 'files':
+                    self.list_files_dirs.add(dirname)
+                else:
+                    print(f"⚠️  Unknown subdir mode '{mode}' for '{dirname}' in subdir_modes.toml")
+            print(f"⚙️  Subdir modes loaded: {path}")
+        except Exception as e:
+            print(f"⚠️  Could not load subdir modes ({e}), using defaults")
+            self.hdr_dirs         = set(self.DEFAULT_HDR_DIRS)
+            self.nested_flat_dirs = set(self.DEFAULT_NESTED_FLAT_DIRS)
+            self.count_only_dirs  = set(self.DEFAULT_COUNT_ONLY_DIRS)
+            self.list_files_dirs  = set(self.DEFAULT_LIST_FILES_DIRS)
 
     def default_output_path(self) -> Path:
         return self.data_path / '__SB_SETUP__' / 'vfx_shoot_browser.html'
@@ -286,12 +325,12 @@ class HTMLGenerator:
 
                 name = item.name
 
-                if name in self.HDR_DIRS:
+                if name in self.hdr_dirs:
                     children = self._hdr_children(item)
                     if children:
                         sections.append(SubdirSection(name, 'nested', children, -1))
 
-                elif name in self.NESTED_FLAT_DIRS:
+                elif name in self.nested_flat_dirs:
                     children = self._nested_flat_children(item)
                     if children:
                         sections.append(SubdirSection(name, 'nested', children, -1))
@@ -300,11 +339,11 @@ class HTMLGenerator:
                         fc = self.count_files_direct(item)
                         sections.append(SubdirSection(name, 'count', [], fc))
 
-                elif name in self.COUNT_ONLY_DIRS:
+                elif name in self.count_only_dirs:
                     fc = self.count_files_direct(item)
                     sections.append(SubdirSection(name, 'count', [], fc))
 
-                elif name in self.LIST_FILES_DIRS:
+                elif name in self.list_files_dirs:
                     files = self._list_files(item)
                     if files:
                         sections.append(SubdirSection(name, 'files', files, -1))
