@@ -6,6 +6,7 @@ Generates an interactive HTML page to browse shoot data by days, scenes, or code
 
 import os
 import re
+import csv
 import json
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -109,6 +110,7 @@ class ShootEntry:
     subdirs: List[SubdirSection]
     package_note: str = ''
     slate_count: int = 0
+    take_count: int = 0
 
 
 class HTMLGenerator:
@@ -319,8 +321,12 @@ class HTMLGenerator:
                                           [SubdirChild(n, -1) for n in simple_names], -1))
         return sections
 
-    def _count_block_slates(self, block_path: Path) -> int:
-        """Count rows in the block's slates_*.csv (0 if absent)."""
+    def _count_block_slates(self, block_path: Path) -> tuple:
+        """Count unique slates and total takes from the block's slates_*.csv.
+
+        Returns (slate_count, take_count). Uses csv.DictReader so embedded
+        newlines inside quoted fields do not inflate the row count.
+        """
         for db_name in ("00_Database", "__00_Database"):
             db_dir = block_path / db_name
             if not db_dir.is_dir():
@@ -331,10 +337,18 @@ class HTMLGenerator:
                 continue
             try:
                 with open(csvfiles[0], encoding="utf-8", newline="") as f:
-                    return max(0, sum(1 for _ in f) - 1)  # subtract header row
+                    reader = csv.DictReader(f)
+                    slates = set()
+                    takes  = 0
+                    for row in reader:
+                        slate = (row.get("Slate") or "").strip()
+                        if slate:
+                            slates.add(slate)
+                        takes += 1
+                    return len(slates), takes
             except Exception:
-                return 0
-        return 0
+                return 0, 0
+        return 0, 0
 
     # ── Directory parsing ────────────────────────────────────────────────────
 
@@ -355,6 +369,7 @@ class HTMLGenerator:
             scenes_str = match.group(2)
             code       = match.group(3)
             description = match.group(4)
+            sc, tc     = self._count_block_slates(item)
 
             self.entries.append(ShootEntry(
                 path=str(item),
@@ -366,7 +381,8 @@ class HTMLGenerator:
                 has_data=self.check_has_data(item),
                 subdirs=self.get_subdir_sections(item),
                 package_note=self._read_block_package_note(item),
-                slate_count=self._count_block_slates(item),
+                slate_count=sc,
+                take_count=tc,
             ))
 
         print(f"   Found {len(self.entries)} shoot entries")
@@ -854,6 +870,7 @@ class HTMLGenerator:
             cursor: pointer;
         }}
         .summary-slates:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .summary-slates-unit {{ opacity: 0.55; font-size: 0.88em; }}
         .db-pin-banner {{
             display: flex;
             align-items: center;
@@ -3298,9 +3315,9 @@ function renderSubdirs(subdirs, basePath) {{
 
 // ── Entry rendering ───────────────────────────────────────────────────────────
 
-function renderSummary(subdirs, slateCount, day, scenes, entryPath) {{
+function renderSummary(subdirs, slateCount, takeCount, day, scenes, entryPath) {{
     if (!(slateCount > 0 && day)) return '';
-    return `<div class="entry-summary"><span class="summary-slates" data-day="${{escHtml(day)}}" data-scenes="${{escHtml((scenes||[]).join(','))}}" onclick="jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))">Slates (${{slateCount}})</span></div>`;
+    return `<div class="entry-summary"><span class="summary-slates" data-day="${{escHtml(day)}}" data-scenes="${{escHtml((scenes||[]).join(','))}}" onclick="jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))" title="${{slateCount}} Slates, ${{takeCount}} Takes">${{slateCount}}<span class="summary-slates-unit">S</span> ${{takeCount}}<span class="summary-slates-unit">T</span></span></div>`;
 }}
 
 function renderEntry(entry, q) {{
@@ -3349,8 +3366,9 @@ function renderEntry(entry, q) {{
     }}
     const catBadgesHtml = catBadges.join('');
     const sc = entry.slate_count || 0;
+    const tc = entry.take_count  || 0;
     const slatesBadge = (sc > 0 && entry.day)
-        ? `<span class="summary-slates" data-day="${{escHtml(entry.day)}}" data-scenes="${{escHtml((entry.scenes||[]).join(','))}}" onclick="jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))">Slates (${{sc}})</span>`
+        ? `<span class="summary-slates" data-day="${{escHtml(entry.day)}}" data-scenes="${{escHtml((entry.scenes||[]).join(','))}}" onclick="jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))" title="${{sc}} Slates, ${{tc}} Takes">${{sc}}<span class="summary-slates-unit">S</span> ${{tc}}<span class="summary-slates-unit">T</span></span>`
         : '';
     const inCart     = cart.has(entry.path);
     const cb         = `<input type="checkbox" class="entry-cb" ${{inCart ? 'checked' : ''}} onclick="toggleCart(this.closest('.entry').dataset.path)">`;
