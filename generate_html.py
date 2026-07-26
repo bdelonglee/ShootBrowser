@@ -301,7 +301,12 @@ class HTMLGenerator:
                 if f.name.startswith('slates_') and f.name.endswith('.csv'):
                     try:
                         with open(f, encoding='utf-8', newline='') as fh:
-                            count = max(0, sum(1 for _ in fh) - 1)
+                            slates = set()
+                            for row in csv.DictReader(fh):
+                                slate = (row.get('Slate') or '').strip()
+                                if slate:
+                                    slates.add(slate)
+                            count = len(slates)
                     except Exception:
                         pass
                 files.append(SubdirChild(f.name, count))
