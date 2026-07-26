@@ -2221,6 +2221,20 @@ class HTMLGenerator:
             color: var(--accent); font-weight: 700;
             border-bottom: 1px solid var(--border); padding-bottom: 2px;
         }}
+        .db-linked-blocks {{ display: flex; flex-direction: column; gap: 6px; }}
+        .db-linked-row {{ display: flex; flex-wrap: wrap; gap: 5px; }}
+        .db-linked-badge {{
+            padding: 3px 10px; border-radius: 5px; font-size: 0.8em;
+            cursor: pointer; border: 1px solid transparent;
+            transition: filter 0.12s;
+        }}
+        .db-linked-badge:hover {{ filter: brightness(1.2); }}
+        .db-linked-direct {{
+            background: rgba(86,211,100,0.15); border-color: rgba(86,211,100,0.4); color: #56d364;
+        }}
+        .db-linked-potential {{
+            background: rgba(227,179,65,0.12); border-color: rgba(227,179,65,0.35); color: #e3b341;
+        }}
         .db-row {{ display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline; }}
         .db-field {{ display: flex; gap: 5px; align-items: baseline; font-size: 0.8em; }}
         .db-field-label {{ color: var(--text-muted); font-size: 0.88em; white-space: nowrap; }}
@@ -4583,6 +4597,23 @@ function clearDbPin() {{
     renderDatabase();
 }}
 
+function jumpToBrowseEntry(path) {{
+    history.replaceState({{ _jumpNav: true, view: 'database', scrollTop: window.scrollY }}, '');
+    history.pushState({{ _jumpNav: true, view: 'browse', entryPath: path }}, '');
+    setView('browse');
+    requestAnimationFrame(() => {{
+        const all = document.querySelectorAll('#view-browse .entry[data-path]');
+        let target = null;
+        for (const e of all) {{ if (e.dataset.path === path) {{ target = e; break; }} }}
+        if (!target) return;
+        if (!target.classList.contains('expanded')) {{
+            target.classList.add('expanded');
+            expandedPaths.add(path);
+        }}
+        target.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+    }});
+}}
+
 const DB_KEY_FIELDS = ['Slate', 'VFX ID', 'Date', 'Shoot Day', 'Roll', 'Lens', 'Focal'];
 
 const DB_SECTIONS = [
@@ -6493,6 +6524,55 @@ function renderDbField(f, v, row) {{
     </span>`;
 }}
 
+// ── Browse block linking ──────────────────────────────────────────────────────
+
+function parseVfxId(vfxId) {{
+    if (!vfxId || typeof vfxId !== 'string') return null;
+    const parts = vfxId.trim().split('__');
+    if (parts.length < 3) return null;
+    const day    = parts[0];
+    const scenes = parts[1].split('_').filter(Boolean);
+    const codes  = parts[2].split('_').filter(Boolean);
+    if (!day || !scenes.length || !codes.length) return null;
+    return {{ day, scenes, codes }};
+}}
+
+function matchBrowseBlocks(parsed) {{
+    const direct    = [];
+    const potential = [];
+    if (!parsed) return {{ direct, potential }};
+    for (const entry of Object.values(allEntries)) {{
+        if (entry.day !== parsed.day) continue;
+        const entryCodes = (entry.code || '').split('_').filter(Boolean);
+        const sceneMatch = parsed.scenes.some(s => (entry.scenes || []).includes(s));
+        const codeMatch  = parsed.codes.some(c => entryCodes.includes(c));
+        if (sceneMatch && codeMatch)      direct.push(entry);
+        else if (sceneMatch || codeMatch) potential.push(entry);
+    }}
+    return {{ direct, potential }};
+}}
+
+function renderLinkedBlocks(vfxId) {{
+    const parsed  = parseVfxId(vfxId);
+    const matched = matchBrowseBlocks(parsed);
+    if (!matched.direct.length && !matched.potential.length) return '';
+    let html = '<div class="db-linked-blocks"><div class="db-section-label">LINKED BLOCKS</div>';
+    if (matched.direct.length) {{
+        html += '<div class="db-linked-row">' +
+            matched.direct.map(e =>
+                `<span class="db-linked-badge db-linked-direct" data-path="${{escHtml(e.path)}}" onclick="jumpToBrowseEntry(this.dataset.path)" title="Direct link">${{escHtml(e.description)}}</span>`
+            ).join('') + '</div>';
+    }}
+    if (matched.potential.length) {{
+        html += '<div class="db-linked-row">' +
+            matched.potential.map(e =>
+                `<span class="db-linked-badge db-linked-potential" data-path="${{escHtml(e.path)}}" onclick="jumpToBrowseEntry(this.dataset.path)" title="Potential link">${{escHtml(e.description)}}</span>`
+            ).join('') + '</div>';
+    }}
+    html += '</div>';
+    return html;
+}}
+
 function renderDbDetails(row) {{
     const coveredFields = new Set(DB_SECTIONS.flatMap(s =>
         s.tagsField ? [s.tagsField] : s.rows.flat()
@@ -6558,7 +6638,9 @@ function renderDbDetails(row) {{
     const notesSection = (OFFLINE_MODE && !sharedNoteBox)
         ? ''
         : `<div class="db-note-section">${{OFFLINE_MODE ? '' : noteBox}}${{sharedNoteBox}}</div>`;
-    return `<div class="db-details">${{notesSection}}${{photoStrip}}${{sections}}${{editActions}}</div>`;
+    const vfxId = (row['VFX ID'] || '').trim();
+    const linkedBlocks = vfxId ? renderLinkedBlocks(vfxId) : '';
+    return `<div class="db-details">${{notesSection}}${{photoStrip}}${{sections}}${{linkedBlocks}}${{editActions}}</div>`;
 }}
 
 function _injectPhotoStrip(entry, photos) {{
@@ -8172,6 +8254,17 @@ if (OFFLINE_MODE) {{
     checkExtractStatus();
     _loadDeliveredBackground();
 }}
+
+window.addEventListener('popstate', e => {{
+    const state = e.state;
+    if (!state || !state._jumpNav) return;
+    if (state.view === 'database') {{
+        setView('database');
+        if (state.scrollTop != null) {{
+            requestAnimationFrame(() => window.scrollTo(0, state.scrollTop));
+        }}
+    }}
+}});
 </script>
 </body>
 </html>"""
