@@ -794,7 +794,7 @@ class HTMLGenerator:
         /* ── Entry title line ── */
         .entry-title-line {{
             display: flex; align-items: center; gap: 5px;
-            flex-wrap: wrap; margin-bottom: 10px;
+            flex-wrap: wrap; margin-bottom: 10px; cursor: pointer;
         }}
         .title-day, .title-scene, .title-code {{
             display: inline-block; padding: 2px 7px;
@@ -2637,7 +2637,7 @@ class HTMLGenerator:
         .asset-card:hover {{ background: var(--surface-2); border-color: var(--border-hover); border-left-color: var(--accent); }}
         .asset-card.in-cart {{ border-left-color: var(--accent); background: var(--accent-glow); }}
         .asset-card-header {{
-            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap; cursor: pointer;
         }}
         .asset-cb {{ opacity: 0.3; cursor: pointer; width: 15px; height: 15px; flex-shrink: 0; }}
         .asset-card:hover .asset-cb, .asset-card.in-cart .asset-cb, .asset-cb:checked {{ opacity: 1; }}
@@ -3375,59 +3375,59 @@ function renderSummary(subdirs, slateCount, takeCount, day, scenes, entryPath) {
 
 function renderEntry(entry, q) {{
     const dayActive  = (activeFilterType === 'day'   && activeFilterValue === entry.day)  ? ' filter-active' : '';
-    const dayHtml    = `<span class="title-day${{dayActive}}" data-filter-type="day" data-filter-val="${{escHtml(entry.day)}}" onclick="setQuickFilter(this.dataset.filterType, this.dataset.filterVal)" title="Filter by day">${{highlight(entry.day, q)}}</span>`;
+    const dayHtml    = `<span class="title-day${{dayActive}}" data-filter-type="day" data-filter-val="${{escHtml(entry.day)}}" onclick="event.stopPropagation();setQuickFilter(this.dataset.filterType, this.dataset.filterVal)" title="Filter by day">${{highlight(entry.day, q)}}</span>`;
     const descHtml   = `<span class="title-desc">${{highlight(entry.description.replace(/_/g,' '), q)}}</span>`;
 
     const scenesHtml = entry.scenes.map(s => {{
         const active = (activeFilterType === 'scene' && activeFilterValue === s) ? ' filter-active' : '';
-        return `<span class="title-scene${{active}}" data-filter-type="scene" data-filter-val="${{escHtml(s)}}" onclick="setQuickFilter(this.dataset.filterType, this.dataset.filterVal)" title="Filter by scene">${{highlight(s, q)}}</span>`;
+        return `<span class="title-scene${{active}}" data-filter-type="scene" data-filter-val="${{escHtml(s)}}" onclick="event.stopPropagation();setQuickFilter(this.dataset.filterType, this.dataset.filterVal)" title="Filter by scene">${{highlight(s, q)}}</span>`;
     }}).join('');
     const codesHtml  = entry.code.split('_').map(c => {{
         const active = (activeFilterType === 'code' && activeFilterValue === c) ? ' filter-active' : '';
-        return `<span class="title-code${{active}}" data-filter-type="code" data-filter-val="${{escHtml(c)}}" onclick="setQuickFilter(this.dataset.filterType, this.dataset.filterVal)" title="Filter by code">${{highlight(c, q)}}</span>`;
+        return `<span class="title-code${{active}}" data-filter-type="code" data-filter-val="${{escHtml(c)}}" onclick="event.stopPropagation();setQuickFilter(this.dataset.filterType, this.dataset.filterVal)" title="Filter by code">${{highlight(c, q)}}</span>`;
     }}).join('');
 
     const noData     = entry.has_data ? '' : '<span class="badge-no-data">No Data</span>';
-    const copyBtn    = `<button class="open-folder" onclick="copyPath(this, this.closest('.entry').dataset.path)" title="Copy path">
+    const copyBtn    = `<button class="open-folder" onclick="event.stopPropagation();copyPath(this, this.closest('.entry').dataset.path)" title="Copy path">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
         </svg></button>`;
-    const finderBtn  = `<button class="finder-btn" onclick="openInFinder(this.closest('.entry').dataset.path)" title="Open in Finder / Explorer">
+    const finderBtn  = `<button class="finder-btn" onclick="event.stopPropagation();openInFinder(this.closest('.entry').dataset.path)" title="Open in Finder / Explorer">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
         </svg></button>`;
-    const chevron    = `<button class="toggle-btn" onclick="toggleEntry(this)" title="Expand / Collapse">
+    const chevron    = `<button class="toggle-btn" onclick="event.stopPropagation();toggleEntry(this)" title="Expand / Collapse">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"/>
         </svg></button>`;
 
     const vendors      = deliveredByBlock[entry.directory_name] || [];
     const vendorBadges = vendors.map(v =>
-        `<span class="vendor-badge" data-vendor="${{escHtml(v)}}" onclick="jumpToDeliveredVendor(this.dataset.vendor)">✓ ${{escHtml(v)}}</span>`
+        `<span class="vendor-badge" data-vendor="${{escHtml(v)}}" onclick="event.stopPropagation();jumpToDeliveredVendor(this.dataset.vendor)">✓ ${{escHtml(v)}}</span>`
     ).join('');
     const catBadges = [];
     for (const s of (entry.subdirs || [])) {{
         if (s.kind === 'simple') {{
             s.children.forEach(c => {{
                 const info = _assetBadgeInfo(c.name);
-                catBadges.push(`<span class="asset-cat-badge ${{info.cls}} subdir-openable" data-subpath="${{escHtml(entry.path + '/' + c.name)}}" onclick="openInFinder(this.dataset.subpath)" title="${{escHtml(c.name)}}">${{escHtml(info.label)}}</span>`);
+                catBadges.push(`<span class="asset-cat-badge ${{info.cls}} subdir-openable" data-subpath="${{escHtml(entry.path + '/' + c.name)}}" onclick="event.stopPropagation();openInFinder(this.dataset.subpath)" title="${{escHtml(c.name)}}">${{escHtml(info.label)}}</span>`);
             }});
         }} else if (s.name !== '__other__') {{
             const info = _assetBadgeInfo(s.name);
-            catBadges.push(`<span class="asset-cat-badge ${{info.cls}} subdir-openable" data-subpath="${{escHtml(entry.path + '/' + s.name)}}" onclick="openInFinder(this.dataset.subpath)" title="${{escHtml(s.name)}}">📁 ${{escHtml(info.label)}}</span>`);
+            catBadges.push(`<span class="asset-cat-badge ${{info.cls}} subdir-openable" data-subpath="${{escHtml(entry.path + '/' + s.name)}}" onclick="event.stopPropagation();openInFinder(this.dataset.subpath)" title="${{escHtml(s.name)}}">📁 ${{escHtml(info.label)}}</span>`);
         }}
     }}
     const catBadgesHtml = catBadges.join('');
     const sc = entry.slate_count || 0;
     const tc = entry.take_count  || 0;
     const slatesBadge = (sc > 0 && entry.day)
-        ? `<span class="summary-slates" data-day="${{escHtml(entry.day)}}" data-scenes="${{escHtml((entry.scenes||[]).join(','))}}" onclick="jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))" title="${{sc}} Slates, ${{tc}} Takes">${{sc}}<span class="summary-slates-unit">S</span> ${{tc}}<span class="summary-slates-unit">T</span></span>`
+        ? `<span class="summary-slates" data-day="${{escHtml(entry.day)}}" data-scenes="${{escHtml((entry.scenes||[]).join(','))}}" onclick="event.stopPropagation();jumpToSlates(this.dataset.day, this.dataset.scenes.split(','))" title="${{sc}} Slates, ${{tc}} Takes">${{sc}}<span class="summary-slates-unit">S</span> ${{tc}}<span class="summary-slates-unit">T</span></span>`
         : '';
     const inCart     = cart.has(entry.path);
-    const cb         = `<input type="checkbox" class="entry-cb" ${{inCart ? 'checked' : ''}} onclick="toggleCart(this.closest('.entry').dataset.path)">`;
+    const cb         = `<input type="checkbox" class="entry-cb" ${{inCart ? 'checked' : ''}} onclick="event.stopPropagation();toggleCart(this.closest('.entry').dataset.path)">`;
     const isExpanded = expandedPaths.has(entry.path);
     return `<div class="entry${{inCart ? ' in-cart' : ''}}${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(entry.path)}}">
-        <div class="entry-title-line">
+        <div class="entry-title-line" onclick="toggleEntry(this)">
             ${{cb}}${{dayHtml}}${{scenesHtml}}${{codesHtml}}${{descHtml}}${{noData}}${{catBadgesHtml}}${{slatesBadge}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
         </div>
         <div class="entry-details">${{renderSubdirs(entry.subdirs, entry.path)}}</div>
@@ -4180,7 +4180,7 @@ function renderAssetCard(asset, q) {{
     const vendors    = deliveredByAsset[asset.name] || [];
 
     const cb = `<input type="checkbox" class="asset-cb" ${{inCart ? 'checked' : ''}}
-        onclick="toggleAssetCart(this.closest('.asset-card').dataset.path)">`;
+        onclick="event.stopPropagation();toggleAssetCart(this.closest('.asset-card').dataset.path)">`;
 
     const badges = asset.categories.map(cat => {{
         const info    = _assetBadgeInfo(cat);
@@ -4205,14 +4205,14 @@ function renderAssetCard(asset, q) {{
         title="Open in Finder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
         </svg></button>`;
-    const chevron   = `<button class="toggle-btn" onclick="toggleAssetCard(this)" title="Expand / Collapse">
+    const chevron   = `<button class="toggle-btn" onclick="event.stopPropagation();toggleAssetCard(this)" title="Expand / Collapse">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="6 9 12 15 18 9"/></svg></button>`;
 
     const nameHtml = highlight(asset.name.replace(/_/g, ' '), q);
 
     return `<div class="asset-card${{inCart ? ' in-cart' : ''}}${{isExpanded ? ' expanded' : ''}}" data-path="${{escHtml(asset.path)}}">
-        <div class="asset-card-header">
+        <div class="asset-card-header" onclick="toggleAssetCard(this)">
             ${{cb}}<span class="asset-name">${{nameHtml}}</span>
             ${{badges}}${{vendorBadges}}${{copyBtn}}${{finderBtn}}${{chevron}}
         </div>
@@ -6432,7 +6432,7 @@ function renderDbCard(row, idx) {{
     const focal  = row['Focal']     || '—';
     const tilt   = row['Tilt']      || '';
     const chevron = `<button class="toggle-btn" style="margin-left:auto"
-        onclick="toggleDbCard(this)" title="Expand / Collapse">
+        onclick="event.stopPropagation();toggleDbCard(this)" title="Expand / Collapse">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"/>
@@ -6447,13 +6447,13 @@ function renderDbCard(row, idx) {{
         : '';
     const _inAnyBin = rowBinsList.length > 0;
     const addBinBtn =
-        `<button class="bin-add-btn" onclick="openBinMenu(event,this)"
+        `<button class="bin-add-btn" onclick="event.stopPropagation();openBinMenu(event,this)"
             data-slate="${{escHtml(slate)}}" data-take="${{escHtml(row['Take'] || '')}}" data-cam="${{escHtml(row['Camera'] || '')}}"
             title="Add to bin">+</button>` +
         (_inAnyBin
             ? `<button class="bin-remove-btn"
                 data-slate="${{escHtml(slate)}}" data-take="${{escHtml(row['Take']||'')}}" data-cam="${{escHtml(row['Camera']||'')}}"
-                onclick="_confirmRemoveFromBin(event,this)" title="Remove from bin">−</button>`
+                onclick="event.stopPropagation();_confirmRemoveFromBin(event,this)" title="Remove from bin">−</button>`
             : '');
     const takeNum     = row['Take'] || '';
     const vfxPass     = _isVfxPass(row);
@@ -6480,10 +6480,10 @@ function renderDbCard(row, idx) {{
     // Tag helper: make a tag span clickable to set a filter
     const tag = (cls, filterKey, val, extra='') =>
         `<span class="${{cls}}${{extra}} db-tag-clickable" data-v="${{escHtml(val)}}"
-            onclick="setTagFilter('${{filterKey}}',this.dataset.v,event)"
+            onclick="event.stopPropagation();setTagFilter('${{filterKey}}',this.dataset.v,event)"
             title="Filter by ${{filterKey.replace('_',' ')}}">${{escHtml(val)}}</span>`;
     return `<div class="entry${{isExpanded ? ' expanded' : ''}}${{vfxPass ? ' vfx-pass' : ''}}${{hasEdits ? ' db-has-edits' : ''}}${{isOmitted ? ' db-omitted' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}" data-override-key="${{escHtml(overrideKey)}}">
-        <div class="entry-title-line">
+        <div class="entry-title-line" onclick="toggleDbCard(this)">
             ${{tag('db-slate', 'slate', slate, ec('Slate'))}}
             <span class="db-take">T${{escHtml(takeNum)}}</span>
             ${{vfxId  ? tag('db-vfxid', 'vfx_id', vfxId, ec('VFX ID')) : ''}}
