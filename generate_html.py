@@ -2333,6 +2333,7 @@ class HTMLGenerator:
         }}
         .tool-btn:hover {{ opacity: 1; color: var(--text); }}
         .tool-btn:disabled {{ opacity: 0.25; cursor: default; }}
+        #offline-export-menu-btn:disabled {{ opacity: 1; color: #fff; background: #c0392b; font-weight: 700; cursor: default; }}
         .tool-btn.needs-refresh {{ opacity: 1; color: #e3b341; }}
         .export-btn {{
             border: 1px solid var(--border); border-radius: 4px;
