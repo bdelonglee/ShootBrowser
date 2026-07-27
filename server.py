@@ -1813,6 +1813,104 @@ def api_export_readme_pdf():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+def _archive_previous_global_export(export_dir: Path) -> None:
+    """Move the current GLOBAL/Database export into history/ before writing a new one."""
+    markers = sorted(export_dir.glob('exported_*.txt'))
+    if not markers:
+        return
+    archive_name = markers[0].stem
+    archive_dir  = export_dir / 'history' / archive_name
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    for item in export_dir.iterdir():
+        if item.name.startswith('.') or item.name == 'history':
+            continue
+        shutil.move(str(item), str(archive_dir / item.name))
+
+
+@app.route("/api/global-export-all", methods=["POST"])
+def api_global_export_all():
+    """Export all DB rows to CSV + PDF + offline HTML → GLOBAL/Database/ and GLOBAL/Offline/ on disk."""
+    try:
+        body         = request.json or {}
+        csv_cols     = body.get('csv_cols') or []
+        csv_sort_key = body.get('csv_sort_key', 'Slate')
+        csv_sort_asc = body.get('csv_sort_asc', True)
+        pdf_cfg      = body.get('pdf') or {}
+
+        g = make_generator()
+
+        # 1. CSV → GLOBAL/Database/
+        db_dir = Path(g.default_output_dir) / 'GLOBAL' / 'Database'
+        db_dir.mkdir(parents=True, exist_ok=True)
+        _archive_previous_global_export(db_dir)
+
+        stamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+
+        if csv_cols:
+            csv_bytes = g._generate_db_csv(csv_cols, csv_sort_key, csv_sort_asc)
+            (db_dir / 'global_database.csv').write_bytes(csv_bytes)
+
+        # 2. PDF → GLOBAL/Database/
+        data             = _load_db_json()
+        all_rows         = _denormalize_json_to_rows(data)
+        all_rows         = _apply_overrides(all_rows, _load_overrides())
+        all_rows         = _apply_notes(all_rows, _load_notes())
+        all_rows         = _apply_shared_notes(all_rows, _load_shared_notes())
+        records_by_slate = {r["slateId"]: r for r in data.get("records", [])}
+        project_name     = (data.get("project") or {}).get("name", "VFX Shoot")
+
+        def _base(s):
+            return re.sub(r'/\d+$', '', (s or '').strip())
+
+        seen = set()
+        slate_ids = []
+        for row in all_rows:
+            b = _base(row.get("Slate", ""))
+            if b and b not in seen:
+                seen.add(b); slate_ids.append(b)
+
+        slate_rows = {sid: [] for sid in slate_ids}
+        for row in all_rows:
+            b = _base(row.get("Slate", ""))
+            if b in slate_rows:
+                slate_rows[b].append(row)
+
+        info_fields   = pdf_cfg.get("info_fields") or PDF_INFO_FIELD_DEFAULTS
+        take_cols     = pdf_cfg.get("take_cols")   or PDF_TAKE_COL_DEFAULTS
+        show_vfx_work = pdf_cfg.get("show_vfx_work", True)
+        show_notes    = pdf_cfg.get("show_notes",    True)
+        pdf_landscape = pdf_cfg.get("landscape",     True)
+
+        pdf_buf = io.BytesIO()
+        _generate_pdf(pdf_buf, project_name, slate_ids, slate_rows, records_by_slate,
+                      info_fields=info_fields, take_cols=take_cols,
+                      show_vfx_work=show_vfx_work, show_notes=show_notes,
+                      landscape=pdf_landscape)
+        pdf_buf.seek(0)
+        (db_dir / 'global_database.pdf').write_bytes(pdf_buf.read())
+
+        # 3. Marker for GLOBAL/Database/
+        (db_dir / f'exported_{stamp}.txt').write_text(
+            f'Exported: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n'
+            f'CSV: global_database.csv\n'
+            f'PDF: global_database.pdf\n',
+            encoding='utf-8',
+        )
+
+        # 4. Offline HTML → GLOBAL/Offline/ (with its own history management)
+        g.generate_offline_html(
+            lidar_entries=_parse_lidar_assets(),
+            assets_data=_parse_assets_shoot(),
+            assets_shoot_dir=ASSETS_SHOOT_DIR,
+        )
+
+        return jsonify({"success": True, "path": str(db_dir)})
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/export-pdf", methods=["POST"])
 def api_export_pdf():
     """Generate and stream a PDF report for the requested slate IDs."""

@@ -533,6 +533,19 @@ class HTMLGenerator:
             shutil.move(str(item), str(archive_dir / item.name))
         print(f"   Archived previous export → history/{archive_name}/")
 
+    def _generate_db_csv(self, cols: list, sort_key: str = 'Slate', sort_asc: bool = True) -> bytes:
+        """Generate CSV bytes from all DB rows with given columns."""
+        import csv, io
+        rows = self._load_offline_db_rows()
+        if sort_key:
+            rows = sorted(rows, key=lambda r: str(r.get(sort_key, '') or ''), reverse=not sort_asc)
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow(cols)
+        for row in rows:
+            writer.writerow([str(row.get(c, '') or '') for c in cols])
+        return out.getvalue().encode('utf-8-sig')
+
     def _copy_lidar_previews(self, entries: list, export_dir: Path, assets_root: str) -> list:
         """Copy Lidar preview PNGs to lidar_previews/ next to the HTML; return updated entries."""
         import copy
@@ -1468,8 +1481,8 @@ class HTMLGenerator:
         .offline-mode .vendor-badge,
         .offline-mode #extract-slates-btn,
         .offline-mode #extract-status,
-        .offline-mode #offline-html-btn,
-        .offline-mode #offline-html-status {{ display: none !important; }}
+        .offline-mode #offline-export-menu-btn,
+        .offline-mode #offline-export-status {{ display: none !important; }}
         .offline-mode-banner {{
             background: rgba(163, 113, 247, 0.1);
             border: 1px solid rgba(163, 113, 247, 0.3);
@@ -2344,14 +2357,14 @@ class HTMLGenerator:
         .db-html-export-menu button:hover {{ background: var(--surface-2); }}
         .db-export-menu-sep {{ height: 1px; background: var(--border); margin: 3px 4px; }}
         .db-only-mode .tab-bar,
-        .db-only-mode #offline-html-btn,
-        .db-only-mode #offline-html-status {{ display: none !important; }}
+        .db-only-mode #offline-export-menu-btn,
+        .db-only-mode #offline-export-status {{ display: none !important; }}
         /* Export All modal */
-        #export-all-overlay, #extract-all-overlay {{
+        #export-all-overlay, #extract-all-overlay, #global-export-all-overlay {{
             display: none; position: fixed; inset: 0; z-index: 3000;
             background: rgba(0,0,0,0.55); align-items: center; justify-content: center;
         }}
-        #export-all-modal, #extract-all-modal {{
+        #export-all-modal, #extract-all-modal, #global-export-all-modal {{
             background: var(--surface); border: 1px solid var(--border);
             border-radius: 10px; padding: 22px 24px; min-width: 340px; max-width: 460px;
             width: 90vw;
@@ -2811,8 +2824,8 @@ class HTMLGenerator:
         <button class="tool-btn" id="extract-slates-btn" onclick="_openExtractMenu(event)"
             title="Extract slate data from the database and write files into each block&#39;s 00_Database folder">📊 Extract Slates</button>
         <span id="extract-status" class="extract-status"></span>
-        <button class="tool-btn" id="offline-html-btn" onclick="generateOfflineHtml()">💾 Offline HTML</button>
-        <span id="offline-html-status" class="extract-status"></span>
+        <button class="tool-btn" id="offline-export-menu-btn" onclick="_openOfflineExportMenu(event)">⬇ Export</button>
+        <span id="offline-export-status" class="extract-status"></span>
 
         <div class="stats">
             <div class="stat">
@@ -4890,7 +4903,8 @@ const CSV_ORDERED = [
 let csvPresets     = {{}};
 let csvModalCols   = [];   // [{{field, on}}]
 let csvModalSort   = {{ key: 'Slate', asc: true }};
-let _csvExtractMode = false;
+let _csvExtractMode  = false;
+let _globalExportMode = false;
 
 async function _loadCsvPresets() {{
     try {{ csvPresets = await fetch('/api/ui-presets/csv_presets').then(r => r.json()); }}
@@ -4923,6 +4937,7 @@ async function openCsvExportModal(extractMode) {{
     if (ov) {{ _renderCsvModal(); ov.style.display = 'flex'; }}
 }}
 function closeCsvExportModal() {{
+    _globalExportMode = false;
     const ov = document.getElementById('csv-modal-overlay');
     if (ov) ov.style.display = 'none';
 }}
@@ -4957,7 +4972,7 @@ function _renderCsvModal() {{
     ).join('');
 
     modal.innerHTML =
-        '<div class="csv-modal-title">' + (_csvExtractMode ? 'Extract Slates — CSV' : 'Export CSV') + '</div>' +
+        '<div class="csv-modal-title">' + (_csvExtractMode ? 'Extract Slates — CSV' : _globalExportMode ? 'Global Export — CSV' : 'Export CSV') + '</div>' +
 
         '<div>' +
         '<div class="csv-modal-section-label">Presets</div>' +
@@ -5092,7 +5107,7 @@ function _doExportCsv(downloadName) {{
     const cols = csvModalCols.filter(c => c.on).map(c => c.field);
     if (!cols.length) {{ if (!downloadName) alert('Select at least one column.'); return; }}
 
-    const filtered = dbRows.filter(dbRowMatches);
+    const filtered = _globalExportMode ? [...dbRows] : dbRows.filter(dbRowMatches);
     if (!filtered.length) return;
 
     const sortKey = csvModalSort.key;
@@ -5406,10 +5421,13 @@ async function openPdfExportModal(extractMode) {{
     await _loadPdfPresets();
     if (!pdfInfoCols.length) pdfInfoCols = _pdfDefaultInfoCols();
     if (!pdfTakeCols.length) pdfTakeCols = _pdfDefaultTakeCols();
+    const titleEl = document.querySelector('#pdf-modal .pdf-modal-title');
+    if (titleEl) titleEl.textContent = _globalExportMode ? 'Global Export — PDF' : 'Export PDF';
     const ov = document.getElementById('pdf-modal-overlay');
     if (ov) {{ _renderPdfModal(); ov.style.display = 'flex'; }}
 }}
 function closePdfExportModal() {{
+    _globalExportMode = false;
     const ov = document.getElementById('pdf-modal-overlay');
     if (ov) ov.style.display = 'none';
 }}
@@ -5624,7 +5642,7 @@ async function _doPdfExport(downloadName) {{
     const takeCols = pdfTakeCols.filter(c => c.on).map(c => ({{field: c.field, label: c.label}}));
     if (!takeCols.length) {{ if (!downloadName) alert('Select at least one takes table column.'); return; }}
 
-    const filtered = dbRows.filter(dbRowMatches);
+    const filtered = _globalExportMode ? [...dbRows] : dbRows.filter(dbRowMatches);
     if (!filtered.length) {{ alert('No rows to export.'); return; }}
 
     const sorted = [...filtered].sort((a, b) => {{
@@ -7019,8 +7037,8 @@ async function runExtractSlates() {{
 }}
 
 async function generateOfflineHtml() {{
-    const btn    = document.getElementById('offline-html-btn');
-    const status = document.getElementById('offline-html-status');
+    const btn    = document.getElementById('offline-export-menu-btn');
+    const status = document.getElementById('offline-export-status');
     // Open blank tab now while we're still in the click-handler gesture context.
     // Navigating it after an await would be blocked as a popup.
     const newTab = window.open('', '_blank');
@@ -7041,7 +7059,113 @@ async function generateOfflineHtml() {{
         if (newTab) newTab.close();
         if (status) {{ status.textContent = '✗ Network error'; status.className = 'extract-status err'; }}
     }} finally {{
-        if (btn) {{ btn.disabled = false; btn.textContent = '💾 Export Offline HTML'; }}
+        if (btn) {{ btn.disabled = false; btn.textContent = '⬇ Export'; }}
+    }}
+}}
+
+// ── Browse global export menu ─────────────────────────────────────────────────
+
+function _openOfflineExportMenu(e) {{
+    e.stopPropagation();
+    document.getElementById('offline-export-menu')?.remove();
+    const btn  = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.id = 'offline-export-menu';
+    menu.className = 'db-html-export-menu';
+    menu.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+    menu.style.left = rect.left + 'px';
+    menu.innerHTML =
+        '<button onclick="_closeOfflineExportMenu();generateOfflineHtml()">💾 Global Offline HTML</button>' +
+        '<div class="db-export-menu-sep"></div>' +
+        '<button onclick="_closeOfflineExportMenu();_openGlobalCsvModal()">⬇ Global .csv</button>' +
+        '<button onclick="_closeOfflineExportMenu();_openGlobalPdfModal()">⬇ Global .pdf</button>' +
+        '<div class="db-export-menu-sep"></div>' +
+        '<button onclick="_closeOfflineExportMenu();_openGlobalExportAllModal()">⬇ All…</button>';
+    document.body.appendChild(menu);
+    setTimeout(() => document.addEventListener('click', _closeOfflineExportMenu, {{once: true}}), 0);
+}}
+function _closeOfflineExportMenu() {{
+    document.getElementById('offline-export-menu')?.remove();
+}}
+
+function _openGlobalCsvModal() {{
+    _globalExportMode = true;
+    openCsvExportModal();
+}}
+function _openGlobalPdfModal() {{
+    _globalExportMode = true;
+    openPdfExportModal();
+}}
+
+async function _openGlobalExportAllModal() {{
+    await Promise.all([_loadCsvPresets(), _loadPdfPresets()]);
+    const noPreset = '<option value="">&#9472; current settings &#9472;</option>';
+    const csvSel = document.getElementById('global-export-csv-preset');
+    if (csvSel) {{
+        csvSel.innerHTML = noPreset + Object.values(csvPresets).map(p =>
+            '<option value="' + escHtml(p.id) + '">' + escHtml(p.name) + '</option>'
+        ).join('');
+    }}
+    const pdfSel = document.getElementById('global-export-pdf-preset');
+    if (pdfSel) {{
+        pdfSel.innerHTML = noPreset + Object.values(pdfPresets).map(p =>
+            '<option value="' + escHtml(p.id) + '">' + escHtml(p.name) + '</option>'
+        ).join('');
+    }}
+    document.getElementById('global-export-all-overlay').style.display = 'flex';
+}}
+function _closeGlobalExportAllModal() {{
+    document.getElementById('global-export-all-overlay').style.display = 'none';
+}}
+
+async function _doGlobalExportAll() {{
+    const csvPresetId = document.getElementById('global-export-csv-preset')?.value;
+    const pdfPresetId = document.getElementById('global-export-pdf-preset')?.value;
+
+    if (!csvModalCols.length) csvModalCols = _csvDefaultCols();
+    if (csvPresetId && csvPresets[csvPresetId]) _csvApplyConfig(csvPresets[csvPresetId]);
+    if (!pdfInfoCols.length) pdfInfoCols = _pdfDefaultInfoCols();
+    if (!pdfTakeCols.length) pdfTakeCols = _pdfDefaultTakeCols();
+    if (pdfPresetId && pdfPresets[pdfPresetId]) _pdfApplyConfig(pdfPresets[pdfPresetId]);
+
+    _closeGlobalExportAllModal();
+
+    const btn    = document.getElementById('offline-export-menu-btn');
+    const status = document.getElementById('offline-export-status');
+    if (btn)    {{ btn.disabled = true; btn.textContent = '⏳ Exporting…'; }}
+    if (status) {{ status.textContent = ''; status.className = 'extract-status'; }}
+
+    try {{
+        const csvCols = csvModalCols.filter(c => c.on).map(c => c.field);
+        const pdfCfg  = _pdfCurrentConfig();
+        const res = await fetch('/api/global-export-all', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{
+                csv_cols:     csvCols,
+                csv_sort_key: csvModalSort.key,
+                csv_sort_asc: csvModalSort.asc,
+                pdf: {{
+                    info_fields:   pdfCfg.infoCols.filter(c => c.on).map(c => c.field),
+                    take_cols:     pdfCfg.takeCols.filter(c => c.on).map(c => ({{field: c.field, label: c.label}})),
+                    show_vfx_work: pdfCfg.showVfxWork,
+                    show_notes:    pdfCfg.showNotes,
+                    landscape:     pdfCfg.landscape,
+                }},
+            }}),
+        }});
+        const data = await res.json();
+        if (data.success) {{
+            if (status) {{ status.textContent = '✓ Saved'; status.className = 'extract-status ok'; }}
+            setTimeout(() => {{ if (status) {{ status.textContent = ''; status.className = 'extract-status'; }} }}, 5000);
+        }} else {{
+            if (status) {{ status.textContent = '✗ ' + (data.error || 'Failed'); status.className = 'extract-status err'; }}
+        }}
+    }} catch(e) {{
+        if (status) {{ status.textContent = '✗ Network error'; status.className = 'extract-status err'; }}
+    }} finally {{
+        if (btn) {{ btn.disabled = false; btn.textContent = '⬇ Export'; }}
     }}
 }}
 
@@ -8187,6 +8311,30 @@ async function _applyBinImport(pending) {{
         '</div>' +
         '</div>';
     document.body.appendChild(xaov);
+
+    const geaov = document.createElement('div');
+    geaov.id = 'global-export-all-overlay';
+    geaov.addEventListener('click', e => {{ if (e.target === geaov) _closeGlobalExportAllModal(); }});
+    geaov.innerHTML =
+        '<div id="global-export-all-modal">' +
+        '<div class="export-all-title">Global Export All</div>' +
+        '<div class="export-all-sub">CSV · PDF · Offline HTML saved to GLOBAL/Database/ and GLOBAL/Offline/.</div>' +
+        '<div class="export-all-preset-section" style="border-top:none;margin-top:0;padding-top:0">' +
+        '<div class="export-all-preset-row">' +
+        '<span class="export-all-preset-lbl">CSV preset:</span>' +
+        '<select id="global-export-csv-preset" class="export-all-preset-sel"></select>' +
+        '</div>' +
+        '<div class="export-all-preset-row">' +
+        '<span class="export-all-preset-lbl">PDF preset:</span>' +
+        '<select id="global-export-pdf-preset" class="export-all-preset-sel"></select>' +
+        '</div>' +
+        '</div>' +
+        '<div class="export-all-footer">' +
+        '<button class="export-all-cancel" onclick="_closeGlobalExportAllModal()">Cancel</button>' +
+        '<button class="export-all-go" onclick="_doGlobalExportAll()">Export All</button>' +
+        '</div>' +
+        '</div>';
+    document.body.appendChild(geaov);
 }})();
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
