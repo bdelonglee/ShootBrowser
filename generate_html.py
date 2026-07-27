@@ -606,17 +606,58 @@ class HTMLGenerator:
         return result
 
     def _load_offline_db_rows(self) -> list:
-        """Load database rows from JSON for embedding in offline HTML."""
+        """Load database rows with overrides, notes, and shared notes applied."""
         jsonfiles = self._db_jsonfiles()
         if not jsonfiles:
             return []
         for encoding in ('utf-8-sig', 'utf-8', 'mac_roman', 'latin-1'):
             try:
                 data = json.loads(jsonfiles[0].read_text(encoding=encoding))
-                return _denormalize_json_to_rows(data)
+                rows = _denormalize_json_to_rows(data)
+                self._apply_overlays(rows)
+                return rows
             except (UnicodeDecodeError, json.JSONDecodeError):
                 pass
         return []
+
+    def _apply_overlays(self, rows: list) -> None:
+        """Apply overrides + notes + shared notes in-place (mirrors server.py helpers)."""
+        db_dir = self.data_dir / '__DATABASE'
+
+        def _load(name):
+            try:
+                return json.loads((db_dir / name).read_text(encoding='utf-8'))
+            except Exception:
+                return {}
+
+        # 1. Overrides — must run first to stamp _override_key on every row
+        ov_map = _load('overrides.json').get('overrides', {})
+        for row in rows:
+            key = row.get('_record_id', '') + '::' + row.get('_take_id', '')
+            row['_override_key'] = key
+            if key in ov_map:
+                edited, originals = [], {}
+                for field, val in ov_map[key].get('fields', {}).items():
+                    originals[field] = row.get(field, '')
+                    row[field] = val
+                    edited.append(field)
+                row['_edited_fields'] = edited
+                row['_originals']     = originals
+                row['_edited_at']     = ov_map[key].get('edited_at', '')
+            else:
+                row['_edited_fields'] = []
+                row['_originals']     = {}
+                row['_edited_at']     = ''
+
+        # 2. Internal notes
+        take_notes = _load('notes.json').get('takes', {})
+        for row in rows:
+            row['_note'] = take_notes.get(row['_override_key'], '')
+
+        # 3. Shared notes
+        take_shared = _load('shared_notes.json').get('takes', {})
+        for row in rows:
+            row['_shared_note'] = take_shared.get(row['_override_key'], '')
 
     def _load_offline_delivered(self) -> list:
         """Load delivered package manifests for embedding in offline HTML."""
@@ -5056,6 +5097,10 @@ function _csvCurrentConfig() {{
 function _csvApplyConfig(cfg) {{
     if (cfg.cols && cfg.cols.length) csvModalCols = cfg.cols.map(c => ({{...c}}));
     csvModalSort  = {{ key: cfg.sortKey || 'Slate', asc: cfg.sortAsc !== false }};
+    for (const [f, lbl] of [['_shared_note', 'Shared Note'], ['_note', 'Internal Note']]) {{
+        if (!csvModalCols.some(c => c.field === f))
+            csvModalCols.push({{ field: f, label: lbl, on: false }});
+    }}
 }}
 
 function _onCsvPresetChange() {{}}   // selection only — user must click Load
@@ -5574,6 +5619,10 @@ function _pdfApplyConfig(cfg) {{
     if (cfg.takeCols && cfg.takeCols.length) pdfTakeCols = cfg.takeCols.map(c=>({{...c}}));
     pdfShowVfxWork = cfg.showVfxWork !== false;
     pdfShowNotes   = cfg.showNotes   !== false;
+    for (const [f, lbl] of [['_shared_note', 'Shared Note'], ['_note', 'Internal Note']]) {{
+        if (!pdfTakeCols.some(c => c.field === f))
+            pdfTakeCols.push({{ field: f, label: lbl, on: false }});
+    }}
 }}
 function _pdfLoadPreset() {{
     const sel = document.getElementById('pdf-preset-sel');
