@@ -6615,12 +6615,13 @@ function renderDbDetails(row) {{
             ${{rowsHtml}}
         </div>`;
     }}).join('');
-    const photos = photosBySlate[row['Slate'] || ''] || [];
+    const _slate = row['Slate'] || '';
+    const photos = photosBySlate[_slate] || [];
     const photoStrip = photos.length ? `<div class="db-photo-strip">${{
-        photos.map(src =>
-            `<a href="${{src}}" target="_blank" rel="noopener">
-                <img class="db-photo-thumb" src="${{src}}" alt="Set ref">
-            </a>`
+        photos.map((src, i) =>
+            `<img class="db-photo-thumb" src="${{src}}" alt="Set ref"
+                data-slate="${{escHtml(_slate)}}" data-idx="${{i}}"
+                onclick="openLightbox(this.dataset.slate,+this.dataset.idx)">`
         ).join('')
     }}</div>` : '';
 
