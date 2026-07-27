@@ -478,7 +478,8 @@ class HTMLGenerator:
     }
 
     def generate_offline_html(self, output_path: Optional[str] = None,
-                              lidar_entries: list = None, assets_data: list = None):
+                              lidar_entries: list = None, assets_data: list = None,
+                              assets_shoot_dir: str = None):
         print("🎨 Generating offline HTML page...")
 
         if output_path:
@@ -492,11 +493,15 @@ class HTMLGenerator:
             self._archive_previous_offline_export(export_dir)
             out = export_dir / 'vfx_shoot_browser_offline.html'
 
+        resolved_lidar = lidar_entries or []
+        if export_dir is not None and assets_shoot_dir and resolved_lidar:
+            resolved_lidar = self._copy_lidar_previews(resolved_lidar, export_dir, assets_shoot_dir)
+
         offline_data = {
             'db_rows':       self._load_offline_db_rows(),
             'delivered':     self._load_offline_delivered(),
             'photos':        self._load_offline_photos(),
-            'lidar_entries': lidar_entries or [],
+            'lidar_entries': resolved_lidar,
             'assets_data':   assets_data or [],
         }
         with open(out, 'w', encoding='utf-8') as f:
@@ -527,6 +532,36 @@ class HTMLGenerator:
                 continue
             shutil.move(str(item), str(archive_dir / item.name))
         print(f"   Archived previous export → history/{archive_name}/")
+
+    def _copy_lidar_previews(self, entries: list, export_dir: Path, assets_root: str) -> list:
+        """Copy Lidar preview PNGs to lidar_previews/ next to the HTML; return updated entries."""
+        import copy
+        root = Path(assets_root).resolve()
+        dest_base = export_dir / 'lidar_previews'
+        updated = []
+        copied = 0
+        for entry in entries:
+            e = copy.deepcopy(entry)
+            previews = e.get('previews') or []
+            if not previews:
+                updated.append(e)
+                continue
+            rel_path = e.get('rel_path', '')
+            dest_dir = dest_base / rel_path
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            new_previews = []
+            for pv in previews:
+                src = root / rel_path / pv
+                if src.exists():
+                    shutil.copy2(str(src), str(dest_dir / pv))
+                    new_previews.append('./lidar_previews/' + rel_path + '/' + pv)
+                    copied += 1
+                else:
+                    new_previews.append(pv)
+            e['previews'] = new_previews
+            updated.append(e)
+        print(f"   Copied {copied} Lidar preview(s) → lidar_previews/")
+        return updated
 
     def _db_jsonfiles(self) -> list:
         db_dir = self.data_dir / '__DATABASE'
@@ -1435,7 +1470,6 @@ class HTMLGenerator:
         .offline-mode #extract-status,
         .offline-mode #offline-html-btn,
         .offline-mode #offline-html-status {{ display: none !important; }}
-        .offline-mode .lidar-preview-strip {{ display: none; }}
         .offline-mode-banner {{
             background: rgba(163, 113, 247, 0.1);
             border: 1px solid rgba(163, 113, 247, 0.3);
@@ -7182,9 +7216,9 @@ function renderLidarCard(entry) {{
                 '<img class="lidar-preview-thumb"' +
                 ' data-path="' + escHtml(p) + '"' +
                 ' data-pidx="' + i + '"' +
-                ' src="/api/asset-preview/' + escHtml(entry.rel_path + '/' + pv) + '"' +
+                ' src="' + (pv.startsWith('./') ? pv : '/api/asset-preview/' + escHtml(entry.rel_path + '/' + pv)) + '"' +
                 ' onclick="event.stopPropagation();openLidarLightbox(this.dataset.path,+this.dataset.pidx)"' +
-                ' title="' + escHtml(pv) + '">'
+                ' title="' + escHtml(pv.startsWith('./') ? pv.split('/').pop() : pv) + '">'
             ).join('') +
             '</div>';
     }}
@@ -8199,7 +8233,7 @@ function openLightbox(slate, idx) {{
 function openLidarLightbox(path, idx) {{
     const entry = lidarEntries.find(e => e.path === path);
     if (!entry || !entry.previews.length) return;
-    _lbUrls = entry.previews.map(p => '/api/asset-preview/' + entry.rel_path + '/' + p);
+    _lbUrls = entry.previews.map(p => p.startsWith('./') ? p : '/api/asset-preview/' + entry.rel_path + '/' + p);
     _lbIdx  = idx;
     _lbUpdate();
     document.getElementById('lightbox').classList.add('open');

@@ -128,6 +128,7 @@ def api_generate_offline_html():
     out = g.generate_offline_html(
         lidar_entries=_parse_lidar_assets(),
         assets_data=_parse_assets_shoot(),
+        assets_shoot_dir=ASSETS_SHOOT_DIR,
     )
     return jsonify({"success": True, "path": out})
 
