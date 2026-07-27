@@ -471,6 +471,11 @@ class HTMLGenerator:
             f.write(self._build_html(self.build_data()))
         print(f"   Saved to: {out}")
 
+    _DB_JSON_EXCLUDED = {
+        'extraction_meta.json', 'overrides.json', 'omissions.json',
+        'notes.json', 'shared_notes.json',
+    }
+
     def generate_offline_html(self, output_path: Optional[str] = None):
         print("🎨 Generating offline HTML page...")
         pages_dir = self.data_path / '__SB_SETUP__' / 'OfflineSite'
@@ -478,64 +483,48 @@ class HTMLGenerator:
         out = Path(output_path) if output_path else (
             pages_dir / 'vfx_shoot_browser_offline.html'
         )
-        photos_dir = pages_dir / 'photos'
         offline_data = {
             'db_rows':   self._load_offline_db_rows(),
             'delivered': self._load_offline_delivered(),
-            'photos':    self._extract_offline_photos(photos_dir),
+            'photos':    self._load_offline_photos(),
         }
         with open(out, 'w', encoding='utf-8') as f:
             f.write(self._build_html(self.build_data(), offline_data=offline_data))
         print(f"   Saved to: {out}")
         return str(out)
 
-    def _extract_offline_photos(self, photos_dir: Path) -> dict:
-        """Decode base64 photos from JSON DB to JPEG files; return {slate_id: [rel_path,...]}."""
-        import base64 as _b64
+    def _db_jsonfiles(self) -> list:
         db_dir = self.data_dir / '__DATABASE'
         if not db_dir.exists():
-            return {}
-        jsonfiles = sorted(
+            return []
+        return sorted(
             [f for f in db_dir.glob('*.json')
-             if not f.name.startswith('.') and f.name != 'extraction_meta.json'],
+             if not f.name.startswith('.') and f.name not in self._DB_JSON_EXCLUDED],
             key=lambda f: f.stat().st_mtime, reverse=True,
         )
+
+    def _load_offline_photos(self) -> dict:
+        """Return {slate_id: [data_uri, ...]} for embedding as inline images in offline HTML."""
+        jsonfiles = self._db_jsonfiles()
         if not jsonfiles:
             return {}
         try:
             db = json.loads(jsonfiles[0].read_text(encoding='utf-8'))
         except Exception:
             return {}
-        photos_dir.mkdir(parents=True, exist_ok=True)
         result = {}
-        count = 0
         for record in db.get('records', []):
             slate_id = record.get('slateId', '')
-            photos   = record.get('referencePictures', [])
-            if not slate_id or not photos:
-                continue
-            safe_id = slate_id.replace('/', '_').replace(' ', '_')
-            paths = []
-            for i, src in enumerate(photos):
-                b64_data = src.split(',', 1)[1] if ',' in src else src
-                filename = f"{safe_id}_{i}.jpg"
-                (photos_dir / filename).write_bytes(_b64.b64decode(b64_data))
-                paths.append(f"./photos/{filename}")
-                count += 1
-            result[slate_id] = paths
-        print(f"   Extracted {count} photo(s) for {len(result)} slate(s) → {photos_dir}")
+            pics     = record.get('referencePictures') or []
+            if slate_id and pics:
+                result[slate_id] = pics
+        count = sum(len(v) for v in result.values())
+        print(f"   Embedded {count} photo(s) for {len(result)} slate(s)")
         return result
 
     def _load_offline_db_rows(self) -> list:
         """Load database rows from JSON for embedding in offline HTML."""
-        db_dir = self.data_dir / '__DATABASE'
-        if not db_dir.exists():
-            return []
-        jsonfiles = sorted(
-            [f for f in db_dir.glob('*.json')
-             if not f.name.startswith('.') and f.name != 'extraction_meta.json'],
-            key=lambda f: f.stat().st_mtime, reverse=True,
-        )
+        jsonfiles = self._db_jsonfiles()
         if not jsonfiles:
             return []
         for encoding in ('utf-8-sig', 'utf-8', 'mac_roman', 'latin-1'):
@@ -1405,6 +1394,7 @@ class HTMLGenerator:
         .offline-mode #cart-panel,
         .offline-mode .entry-cb,
         .offline-mode .finder-btn,
+        .offline-mode .vendor-badge,
         .offline-mode #extract-slates-btn,
         .offline-mode #extract-status,
         .offline-mode #offline-html-btn,
