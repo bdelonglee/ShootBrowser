@@ -476,7 +476,8 @@ class HTMLGenerator:
         'notes.json', 'shared_notes.json',
     }
 
-    def generate_offline_html(self, output_path: Optional[str] = None):
+    def generate_offline_html(self, output_path: Optional[str] = None,
+                              lidar_entries: list = None, assets_data: list = None):
         print("🎨 Generating offline HTML page...")
         pages_dir = self.data_path / '__SB_SETUP__' / 'OfflineSite'
         pages_dir.mkdir(parents=True, exist_ok=True)
@@ -484,9 +485,11 @@ class HTMLGenerator:
             pages_dir / 'vfx_shoot_browser_offline.html'
         )
         offline_data = {
-            'db_rows':   self._load_offline_db_rows(),
-            'delivered': self._load_offline_delivered(),
-            'photos':    self._load_offline_photos(),
+            'db_rows':       self._load_offline_db_rows(),
+            'delivered':     self._load_offline_delivered(),
+            'photos':        self._load_offline_photos(),
+            'lidar_entries': lidar_entries or [],
+            'assets_data':   assets_data or [],
         }
         with open(out, 'w', encoding='utf-8') as f:
             f.write(self._build_html(self.build_data(), offline_data=offline_data))
@@ -557,9 +560,11 @@ class HTMLGenerator:
         generated_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         offline_mode         = offline_data is not None or db_only
         db_only_mode         = db_only
-        offline_db_json      = json.dumps(offline_data['db_rows']   if offline_data else [])
-        offline_del_json     = json.dumps(offline_data['delivered']  if offline_data else [])
-        offline_photos_json  = json.dumps(offline_data['photos']    if offline_data else {})
+        offline_db_json      = json.dumps(offline_data['db_rows']       if offline_data else [])
+        offline_del_json     = json.dumps(offline_data['delivered']     if offline_data else [])
+        offline_photos_json  = json.dumps(offline_data['photos']        if offline_data else {})
+        offline_lidar_json   = json.dumps(offline_data['lidar_entries'] if offline_data else [])
+        offline_assets_json  = json.dumps(offline_data['assets_data']   if offline_data else [])
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -1389,16 +1394,16 @@ class HTMLGenerator:
         /* ── Offline / read-only mode ── */
         .offline-mode #tab-queue,
         .offline-mode #tab-delivered,
-        .offline-mode #tab-lidar,
-        .offline-mode #tab-assets,
         .offline-mode #cart-panel,
         .offline-mode .entry-cb,
+        .offline-mode .asset-cb,
         .offline-mode .finder-btn,
         .offline-mode .vendor-badge,
         .offline-mode #extract-slates-btn,
         .offline-mode #extract-status,
         .offline-mode #offline-html-btn,
         .offline-mode #offline-html-status {{ display: none !important; }}
+        .offline-mode .lidar-preview-strip {{ display: none; }}
         .offline-mode-banner {{
             background: rgba(163, 113, 247, 0.1);
             border: 1px solid rgba(163, 113, 247, 0.3);
@@ -3034,9 +3039,11 @@ const data           = {data_json};
 const deliveryCfg    = {delivery_cfg_json};
 const OFFLINE_MODE   = {'true' if offline_mode else 'false'};
 const DB_ONLY_MODE   = {'true' if db_only_mode else 'false'};
-const offlineDbRows    = {offline_db_json};
-const offlineDelivered = {offline_del_json};
-const offlinePhotos    = {offline_photos_json};
+const offlineDbRows      = {offline_db_json};
+const offlineDelivered   = {offline_del_json};
+const offlinePhotos      = {offline_photos_json};
+const offlineLidarEntries = {offline_lidar_json};
+const offlineAssetsData   = {offline_assets_json};
 
 // Flat index: path → entry object (for cart lookups)
 const allEntries = {{}};
@@ -4305,6 +4312,12 @@ function renderAssets() {{
 
 async function loadAssets() {{
     if (assetsData !== null) {{ renderAssets(); return; }}
+    if (OFFLINE_MODE) {{
+        assetsData = offlineAssetsData;
+        _renderAssetsTypeFilters();
+        renderAssets();
+        return;
+    }}
     const el = document.getElementById('assets-content');
     if (el) el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🗂️</div><p>Loading…</p></div>';
     try {{
@@ -6976,6 +6989,12 @@ const expandedLidarDirs = new Set();
 
 function loadLidar() {{
     if (_lidarLoaded) {{ renderLidar(); return; }}
+    if (OFFLINE_MODE) {{
+        lidarEntries = offlineLidarEntries;
+        _lidarLoaded = true;
+        renderLidar();
+        return;
+    }}
     fetch('/api/lidar-assets')
         .then(r => r.json())
         .then(d => {{
