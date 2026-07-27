@@ -8,6 +8,7 @@ import os
 import re
 import csv
 import json
+import shutil
 import tomllib
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -479,11 +480,18 @@ class HTMLGenerator:
     def generate_offline_html(self, output_path: Optional[str] = None,
                               lidar_entries: list = None, assets_data: list = None):
         print("🎨 Generating offline HTML page...")
-        pages_dir = self.data_path / '__SB_SETUP__' / 'OfflineSite'
-        pages_dir.mkdir(parents=True, exist_ok=True)
-        out = Path(output_path) if output_path else (
-            pages_dir / 'vfx_shoot_browser_offline.html'
-        )
+
+        if output_path:
+            # Explicit path (CLI) — write directly, no history management.
+            out = Path(output_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            export_dir = None
+        else:
+            export_dir = Path(self.default_output_dir) / 'GLOBAL' / 'Offline'
+            export_dir.mkdir(parents=True, exist_ok=True)
+            self._archive_previous_offline_export(export_dir)
+            out = export_dir / 'vfx_shoot_browser_offline.html'
+
         offline_data = {
             'db_rows':       self._load_offline_db_rows(),
             'delivered':     self._load_offline_delivered(),
@@ -494,7 +502,31 @@ class HTMLGenerator:
         with open(out, 'w', encoding='utf-8') as f:
             f.write(self._build_html(self.build_data(), offline_data=offline_data))
         print(f"   Saved to: {out}")
+
+        if export_dir is not None:
+            stamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+            marker = export_dir / f'exported_{stamp}.txt'
+            marker.write_text(
+                f'Exported: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n'
+                f'File: {out.name}\n',
+                encoding='utf-8',
+            )
+
         return str(out)
+
+    def _archive_previous_offline_export(self, export_dir: Path) -> None:
+        """Move the current export into history/ before writing a new one."""
+        markers = sorted(export_dir.glob('exported_*.txt'))
+        if not markers:
+            return
+        archive_name = markers[0].stem          # e.g. 'exported_2026-07-21_10-30'
+        archive_dir  = export_dir / 'history' / archive_name
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        for item in export_dir.iterdir():
+            if item.name.startswith('.') or item.name == 'history':
+                continue
+            shutil.move(str(item), str(archive_dir / item.name))
+        print(f"   Archived previous export → history/{archive_name}/")
 
     def _db_jsonfiles(self) -> list:
         db_dir = self.data_dir / '__DATABASE'

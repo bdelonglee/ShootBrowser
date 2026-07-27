@@ -167,8 +167,8 @@ def api_export_db_html():
 
 @app.route("/offline-site/<path:filename>")
 def offline_site_file(filename):
-    """Serve the generated OfflineSite directory (HTML + photos)."""
-    directory = Path(PROJECT_ROOT) / "__SB_SETUP__" / "OfflineSite"
+    """Serve the offline export directory (DELIVERY_PACKAGES/GLOBAL/Offline/)."""
+    directory = Path(DELIVERY_DIR) / "GLOBAL" / "Offline"
     return send_from_directory(str(directory), filename)
 
 
