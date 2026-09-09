@@ -436,6 +436,7 @@ def api_database():
         rows = _apply_omissions(rows, _load_omissions())
         rows = _apply_notes(rows, _load_notes())
         rows = _apply_shared_notes(rows, _load_shared_notes())
+        rows = _apply_take_extras(rows, _load_take_extras())
         return jsonify({"success": True, "rows": rows})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -668,7 +669,127 @@ def api_save_shared_note():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-_DB_JSON_EXCLUDED = {"extraction_meta.json", "overrides.json", "omissions.json", "notes.json", "shared_notes.json"}
+# ── Take extras (Shot Name + Linked Take) ────────────────────────────────────
+# User-authored per-take fields. The source DB JSON is never touched — these
+# live in a sidecar beside notes.json / overrides.json, keyed by _override_key.
+
+def _take_extras_path() -> Path:
+    return Path(DATA_DIR) / "__DATABASE" / "take_extras.json"
+
+
+def _load_take_extras() -> dict:
+    p = _take_extras_path()
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {"version": 1, "takes": {}}
+
+
+def _save_take_extras(x: dict) -> None:
+    p = _take_extras_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(x, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _take_label(row: dict) -> str:
+    """Short human label for a take, used for linked-take display — slate + roll."""
+    slate = (row.get("Slate") or "").strip()
+    take  = (row.get("Take") or "").strip()
+    roll  = (row.get("Roll") or "").strip()
+    left  = f"Slate {slate}/T{take}" if take else (f"Slate {slate}" if slate else "?")
+    return f"{left} · Roll {roll}" if roll else left
+
+
+def _extras_parent(ext: dict) -> str:
+    """Parent-take key from an extras entry (accepts the legacy 'linked_take')."""
+    return (ext.get("parent_take") or ext.get("linked_take") or "").strip()
+
+
+def _apply_take_extras(rows: list, extras: dict) -> list:
+    """Attach Shot Name, Parent Take (+ resolved label) and the derived
+    Children Takes list to each row."""
+    take_map = extras.get("takes", {})
+    by_key   = {r.get("_override_key", ""): r for r in rows}
+
+    children: dict = {}
+    for row in rows:
+        k   = row.get("_override_key", "")
+        ext = take_map.get(k, {})
+        row["_shot_name"]   = (ext.get("shot_name") or "").strip()
+        parent             = _extras_parent(ext)
+        row["_parent_take"] = parent
+        if parent:
+            children.setdefault(parent, []).append(k)
+
+    for row in rows:
+        k      = row.get("_override_key", "")
+        parent = row["_parent_take"]
+        ptgt   = by_key.get(parent) if parent else None
+        row["_parent_take_label"] = _take_label(ptgt) if ptgt else ""
+        row["_children_takes"] = sorted(
+            ({"key": ck, "label": _take_label(by_key[ck])}
+             for ck in children.get(k, []) if ck in by_key),
+            key=lambda d: d["label"],
+        )
+    return rows
+
+
+def _would_cycle(takes: dict, child_key: str, new_parent: str) -> bool:
+    """True if making new_parent the parent of child_key introduces a loop."""
+    seen = {child_key}
+    cur  = new_parent
+    while cur:
+        if cur in seen:
+            return True
+        seen.add(cur)
+        cur = _extras_parent(takes.get(cur, {}))
+    return False
+
+
+@app.route("/api/take-extras/save", methods=["POST"])
+def api_save_take_extras():
+    """Merge-update Shot Name and/or Parent Take for one take. Only the keys
+    present in the request body are touched; an entry left empty is removed."""
+    try:
+        body = request.json or {}
+        key  = body.get("key", "")
+        if not key:
+            return jsonify({"success": False, "error": "key required"}), 400
+
+        x     = _load_take_extras()
+        takes = x.setdefault("takes", {})
+        entry = dict(takes.get(key, {}))
+
+        if "shot_name" in body:
+            sn = (body.get("shot_name") or "").strip()
+            if sn:
+                entry["shot_name"] = sn
+            else:
+                entry.pop("shot_name", None)
+
+        if "parent_take" in body or "linked_take" in body:
+            parent = (body.get("parent_take") or body.get("linked_take") or "").strip()
+            if parent == key:
+                return jsonify({"success": False, "error": "a take cannot be its own parent"}), 400
+            if parent and _would_cycle(takes, key, parent):
+                return jsonify({"success": False, "error": "that would create a parent loop"}), 400
+            entry.pop("linked_take", None)   # drop legacy key on write
+            if parent:
+                entry["parent_take"] = parent
+            else:
+                entry.pop("parent_take", None)
+
+        if entry:
+            takes[key] = entry
+        else:
+            takes.pop(key, None)
+        _save_take_extras(x)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+_DB_JSON_EXCLUDED = {"extraction_meta.json", "overrides.json", "omissions.json", "notes.json", "shared_notes.json", "take_extras.json"}
 
 
 def _load_db_json() -> dict:
@@ -1159,6 +1280,7 @@ def api_extract_slates_export():
         rows = _apply_overrides(rows, _load_overrides())
         rows = _apply_notes(rows, _load_notes())
         rows = _apply_shared_notes(rows, _load_shared_notes())
+        rows = _apply_take_extras(rows, _load_take_extras())
     except Exception as e:
         return jsonify({"success": False, "error": f"Could not parse JSON: {e}"}), 500
     if not rows:
@@ -1856,6 +1978,7 @@ def api_global_export_all():
         all_rows         = _apply_overrides(all_rows, _load_overrides())
         all_rows         = _apply_notes(all_rows, _load_notes())
         all_rows         = _apply_shared_notes(all_rows, _load_shared_notes())
+        all_rows         = _apply_take_extras(all_rows, _load_take_extras())
         records_by_slate = {r["slateId"]: r for r in data.get("records", [])}
         project_name     = (data.get("project") or {}).get("name", "VFX Shoot")
 
@@ -1929,6 +2052,7 @@ def api_export_pdf():
         all_rows         = _apply_overrides(all_rows, _load_overrides())
         all_rows         = _apply_notes(all_rows, _load_notes())
         all_rows         = _apply_shared_notes(all_rows, _load_shared_notes())
+        all_rows         = _apply_take_extras(all_rows, _load_take_extras())
         records_by_slate = {r["slateId"]: r for r in data.get("records", [])}
         project_name     = (data.get("project") or {}).get("name", "VFX Shoot")
 

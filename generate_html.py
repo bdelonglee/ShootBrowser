@@ -659,6 +659,37 @@ class HTMLGenerator:
         for row in rows:
             row['_shared_note'] = take_shared.get(row['_override_key'], '')
 
+        # 4. Take extras — Shot Name + Parent Take (+ derived Children Takes)
+        take_extras = _load('take_extras.json').get('takes', {})
+        by_key = {r.get('_override_key', ''): r for r in rows}
+
+        def _tk_label(r):
+            if not r:
+                return ''
+            slate = (r.get('Slate') or '').strip()
+            take  = (r.get('Take') or '').strip()
+            roll  = (r.get('Roll') or '').strip()
+            left  = ('Slate ' + slate + '/T' + take) if take else (('Slate ' + slate) if slate else '?')
+            return (left + ' · Roll ' + roll) if roll else left
+
+        kids = {}
+        for row in rows:
+            k   = row['_override_key']
+            ext = take_extras.get(k, {})
+            row['_shot_name']   = (ext.get('shot_name') or '').strip()
+            parent             = (ext.get('parent_take') or ext.get('linked_take') or '').strip()
+            row['_parent_take'] = parent
+            if parent:
+                kids.setdefault(parent, []).append(k)
+        for row in rows:
+            k = row['_override_key']
+            p = row['_parent_take']
+            row['_parent_take_label'] = _tk_label(by_key.get(p)) if p else ''
+            row['_children_takes'] = sorted(
+                ({'key': ck, 'label': _tk_label(by_key.get(ck))}
+                 for ck in kids.get(k, []) if by_key.get(ck)),
+                key=lambda d: d['label'])
+
     def _load_offline_delivered(self) -> list:
         """Load delivered package manifests for embedding in offline HTML."""
         packages_dir = Path(self.default_output_dir) / '__packages_infos'
@@ -2355,6 +2386,108 @@ class HTMLGenerator:
         .db-linked-potential {{
             background: rgba(227,179,65,0.12); border-color: rgba(227,179,65,0.35); color: #e3b341;
         }}
+        /* ── Take extras: Shot Name + Parent Take + Children ──────────────── */
+        .db-extras {{
+            display: flex; flex-direction: column; gap: 6px;
+            padding: 8px 10px; border-radius: 7px;
+            background: rgba(88,166,255,0.06); border: 1px solid rgba(88,166,255,0.18);
+        }}
+        .db-extra-row {{ display: flex; align-items: center; gap: 8px; min-height: 24px; }}
+        .db-extra-row-children {{ align-items: flex-start; }}
+        .db-child-list {{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }}
+        .db-child-badge {{
+            background: rgba(86,211,100,0.14); border-color: rgba(86,211,100,0.4); color: #56d364;
+        }}
+        .db-children-flag {{
+            color: #56d364; font-size: 0.8em; font-weight: 700;
+            background: rgba(86,211,100,0.14); border: 1px solid rgba(86,211,100,0.4);
+            padding: 1px 6px; border-radius: 6px; white-space: nowrap;
+        }}
+        .db-extra-label {{
+            font-size: 0.68em; letter-spacing: 0.05em; text-transform: uppercase;
+            font-weight: 700; color: #58a6ff; flex-shrink: 0; width: 74px;
+        }}
+        .db-extra-input {{
+            flex: 1; min-width: 0; font: inherit; font-size: 0.82em;
+            padding: 3px 7px; border-radius: 5px;
+            border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+        }}
+        .db-extra-input:focus {{ outline: none; border-color: #58a6ff; }}
+        .db-extra-value {{ font-size: 0.82em; color: var(--text); font-weight: 500; }}
+        .db-extra-value.empty {{ color: var(--text-muted); font-style: italic; }}
+        .db-linktake-badge {{
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 2px 8px; border-radius: 5px; font-size: 0.8em; cursor: pointer;
+            background: rgba(163,113,247,0.14); border: 1px solid rgba(163,113,247,0.4); color: #a371f7;
+            transition: filter 0.12s;
+        }}
+        .db-linktake-badge:hover {{ filter: brightness(1.25); }}
+        .db-extra-btn {{
+            background: none; border: 1px solid var(--border); border-radius: 5px;
+            color: var(--text-muted); cursor: pointer; font: inherit; font-size: 0.76em;
+            padding: 3px 9px; transition: all 0.15s;
+        }}
+        .db-extra-btn:hover {{ border-color: #58a6ff; color: #58a6ff; }}
+        .db-extra-x {{
+            background: none; border: none; color: var(--text-muted); cursor: pointer;
+            font-size: 1em; line-height: 1; padding: 0 2px;
+        }}
+        .db-extra-x:hover {{ color: #e05c5c; }}
+        /* Shot Name + Linked Take, pinned to the right of the collapsed title line */
+        .db-title-right {{
+            margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+        }}
+        .db-shotname-slot:empty, .db-linktake-slot:empty {{ display: none; }}
+        .db-shotname-pill {{
+            font-size: 0.78em; color: #58a6ff; font-weight: 700; letter-spacing: 0.02em;
+            background: rgba(88,166,255,0.16); border: 1px solid rgba(88,166,255,0.45);
+            padding: 2px 9px; border-radius: 6px; white-space: nowrap;
+        }}
+        .db-linktake-flag {{ color: #a371f7; font-size: 0.95em; }}
+        /* Linked-take picker modal */
+        .linktake-picker-overlay {{
+            position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            z-index: 600; display: none; align-items: flex-start; justify-content: center;
+            padding-top: 8vh;
+        }}
+        .linktake-picker {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; width: 520px; max-width: 94vw; max-height: 78vh;
+            display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }}
+        .linktake-picker-head {{ padding: 16px 18px 10px; }}
+        .linktake-picker-title {{ font-weight: 700; font-size: 0.9em; color: var(--text); margin-bottom: 8px; }}
+        .linktake-picker-input {{
+            width: 100%; font: inherit; font-size: 0.85em; padding: 7px 10px;
+            border-radius: 6px; border: 1px solid var(--border);
+            background: var(--surface-2); color: var(--text);
+        }}
+        .linktake-picker-input:focus {{ outline: none; border-color: #a371f7; }}
+        .linktake-picker-list {{ overflow-y: auto; padding: 6px 10px 12px; }}
+        .linktake-opt {{
+            display: flex; flex-direction: column; gap: 2px;
+            padding: 7px 10px; border-radius: 6px; cursor: pointer;
+            border: 1px solid transparent;
+        }}
+        .linktake-opt:hover {{ background: var(--surface-2); border-color: rgba(163,113,247,0.4); }}
+        .linktake-opt-main {{ display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 0.84em; color: var(--text); font-weight: 600; }}
+        .linktake-opt-chip {{
+            font-size: 0.82em; font-weight: 600; padding: 1px 7px; border-radius: 5px;
+            border: 1px solid transparent; white-space: nowrap;
+        }}
+        .linktake-opt-chip.chip-slate {{ color: #58a6ff; background: rgba(88,166,255,0.12); border-color: rgba(88,166,255,0.3); }}
+        .linktake-opt-chip.chip-roll  {{ color: #e3b341; background: rgba(227,179,65,0.12); border-color: rgba(227,179,65,0.3); }}
+        .linktake-opt-chip.chip-take  {{
+            font-family: 'Monaco','Courier New',monospace; font-size: 0.76em;
+            color: var(--text-muted); background: var(--surface-2); border-color: var(--border);
+        }}
+        .linktake-opt-sub {{ font-size: 0.74em; color: var(--text-muted); }}
+        .linktake-picker-empty {{ padding: 18px 10px; text-align: center; color: var(--text-muted); font-size: 0.82em; }}
+        @keyframes dbJumpFlash {{
+            0%, 100% {{ background: transparent; }}
+            30%      {{ background: rgba(163,113,247,0.18); }}
+        }}
+        .db-jump-flash {{ animation: dbJumpFlash 1.1s ease; }}
         .db-row {{ display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline; }}
         .db-field {{ display: flex; gap: 5px; align-items: baseline; font-size: 0.8em; }}
         .db-field-label {{ color: var(--text-muted); font-size: 0.88em; white-space: nowrap; }}
@@ -2905,6 +3038,8 @@ class HTMLGenerator:
         <button class="mode-button"        onclick="setDbGroup('shoot_day')" id="db-grp-shoot_day">🎬 Shoot Day</button>
         <button class="mode-button"        onclick="setDbGroup('lens')"      id="db-grp-lens">🔭 Lens</button>
         <button class="mode-button"        onclick="setDbGroup('focal')"     id="db-grp-focal">📐 Focal</button>
+        <button class="mode-button"        onclick="setDbGroup('shot_name')" id="db-grp-shot_name">🎯 Shot Name</button>
+        <button class="mode-button"        onclick="setDbGroup('parent_take')" id="db-grp-parent_take">🔗 Parent Take</button>
         <select id="db-sort-select" class="db-sort-select" onchange="setDbSort(this.value)">
           <option value="scene">Sort: Scene</option>
           <option value="slate">Sort: Slate</option>
@@ -2914,6 +3049,8 @@ class HTMLGenerator:
           <option value="lens">Sort: Lens</option>
           <option value="focal">Sort: Focal</option>
           <option value="roll">Sort: Roll (Clipname)</option>
+          <option value="shot_name">Sort: Shot Name</option>
+          <option value="parent_take">Sort: Parent Take</option>
         </select>
         <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
         <span id="db-stats-bar" class="db-stats-bar"></span>
@@ -2955,6 +3092,16 @@ class HTMLGenerator:
                  oninput="setDbFilter('focal', this.value)" placeholder="35mm">
         </div>
         <div class="db-filter-field">
+          <label>Shot Name</label>
+          <input class="db-filter-input" type="text" id="dbf-shot_name"
+                 oninput="setDbFilter('shot_name', this.value)" placeholder="">
+        </div>
+        <div class="db-filter-field">
+          <label>Parent Take</label>
+          <input class="db-filter-input" type="text" id="dbf-parent_take"
+                 oninput="setDbFilter('parent_take', this.value)" placeholder="slate / roll">
+        </div>
+        <div class="db-filter-field">
           <label>VFX Pass</label>
           <button id="vfx-filter-btn" class="vfx-filter-btn" onclick="cycleVfxFilter()" title="Cycle VFX Pass filter">All</button>
         </div>
@@ -2988,6 +3135,24 @@ class HTMLGenerator:
           <label class="show-omitted-toggle" title="Show only takes with edited fields">
             <input type="checkbox" id="show-edited-cb" onchange="setShowEditedOnly(this.checked)">
             <span style="line-height:1.2;text-align:left">EDITED<br>ONLY</span>
+          </label>
+        </div>
+        <div class="db-filter-field" style="justify-content:flex-end">
+          <label class="show-omitted-toggle" title="Show only takes that have a Shot Name">
+            <input type="checkbox" id="show-shotname-cb" onchange="setShowShotNameOnly(this.checked)">
+            <span style="line-height:1.2;text-align:left">SHOT NAME<br>ONLY</span>
+          </label>
+        </div>
+        <div class="db-filter-field" style="justify-content:flex-end">
+          <label class="show-omitted-toggle" title="Show only takes that have a Parent Take">
+            <input type="checkbox" id="show-parent-cb" onchange="setShowParentOnly(this.checked)">
+            <span style="line-height:1.2;text-align:left">PARENT<br>ONLY</span>
+          </label>
+        </div>
+        <div class="db-filter-field" style="justify-content:flex-end">
+          <label class="show-omitted-toggle" title="Show only takes that have at least one child take">
+            <input type="checkbox" id="show-children-cb" onchange="setShowChildrenOnly(this.checked)">
+            <span style="line-height:1.2;text-align:left">CHILDREN<br>ONLY</span>
           </label>
         </div>
         <div class="db-filter-field db-export-btns">
@@ -3209,6 +3374,9 @@ function _saveUiState() {{
             lidarQuery:     lidarQuery,
             showOmitted:    showOmitted,
             showEditedOnly: showEditedOnly,
+            showShotNameOnly: showShotNameOnly,
+            showParentOnly:   showParentOnly,
+            showChildrenOnly: showChildrenOnly,
         }}));
     }} catch(e) {{}}
 }}
@@ -3239,9 +3407,9 @@ function _restoreUiState() {{
             if (el) {{ el.value = s.browseQuery; document.getElementById('search-clear').style.display = 'block'; }}
         }}
         // Database
-        if (s.dbGroup && ['scene','vfx_id','date','shoot_day','lens','focal','slate','none'].includes(s.dbGroup)) {{
+        if (s.dbGroup && DB_GROUP_MODES.concat('none').includes(s.dbGroup)) {{
             dbGroupMode = s.dbGroup;
-            ['scene','vfx_id','date','shoot_day','lens','focal','slate'].forEach(m => {{
+            DB_GROUP_MODES.forEach(m => {{
                 const btn = document.getElementById(`db-grp-${{m}}`);
                 if (btn) btn.classList.toggle('active', m === s.dbGroup);
             }});
@@ -3321,6 +3489,15 @@ function _restoreUiState() {{
             const cb = document.getElementById('show-edited-cb');
             if (cb) cb.checked = true;
         }}
+        [['showShotNameOnly','show-shotname-cb'], ['showParentOnly','show-parent-cb'], ['showChildrenOnly','show-children-cb']]
+            .forEach(([flag, id]) => {{
+                if (!s[flag]) return;
+                if (flag === 'showShotNameOnly') showShotNameOnly = true;
+                if (flag === 'showParentOnly')   showParentOnly   = true;
+                if (flag === 'showChildrenOnly') showChildrenOnly = true;
+                const cb = document.getElementById(id);
+                if (cb) cb.checked = true;
+            }});
         // Active tab — restore last (skip in db-only exports)
         if (!DB_ONLY_MODE && s.view && ['browse','database','queries','lidar','assets','queue','delivered'].includes(s.view)) {{
             setView(s.view);
@@ -4665,7 +4842,7 @@ let photosBySlate     = {{}};       // cache: slateId → [base64, ...]
 let dbGroupMode    = 'scene';
 let dbSortKey      = 'scene';
 let dbSortAsc      = true;
-let dbFilters      = {{ slate: '', vfx_id: '', date: '', shoot_day: '', roll: '', lens: '', focal: '' }};
+let dbFilters      = {{ slate: '', vfx_id: '', date: '', shoot_day: '', roll: '', lens: '', focal: '', shot_name: '', parent_take: '' }};
 let dbQuery        = '';
 let dbVfxFilter    = 'all'; // 'all' | 'yes' | 'no'
 let dbPinnedKeys   = null;  // Set of scene keys when filtering from Browse badge
@@ -4691,6 +4868,9 @@ let querySortByCount = true;
 let dbQueryFilter    = null; // {{ field, label, value }} — set from Queries page
 let showOmitted      = false;
 let showEditedOnly   = false;
+let showShotNameOnly = false;   // only takes that have a Shot Name
+let showParentOnly   = false;   // only takes that have a Parent Take
+let showChildrenOnly = false;   // only takes that have at least one child
 
 function _slateSceneKey(slate) {{
     const s = (slate || '').trim();
@@ -4772,14 +4952,21 @@ const DB_SECTIONS = [
     ], includeOthers: true }},
 ];
 
+const DB_GROUP_MODES = ['scene','vfx_id','date','shoot_day','lens','focal','slate','shot_name','parent_take'];
+
 function setDbGroup(mode) {{
     dbGroupMode = (dbGroupMode === mode) ? 'none' : mode;
-    ['scene','vfx_id','date','shoot_day','lens','focal','slate'].forEach(m => {{
-        document.getElementById(`db-grp-${{m}}`).classList.toggle('active', m === dbGroupMode);
+    DB_GROUP_MODES.forEach(m => {{
+        const btn = document.getElementById(`db-grp-${{m}}`);
+        if (btn) btn.classList.toggle('active', m === dbGroupMode);
     }});
     renderDatabase();
     _saveUiState();
 }}
+
+function setShowShotNameOnly(v) {{ showShotNameOnly = v; _saveUiState(); renderDatabase(); }}
+function setShowParentOnly(v)   {{ showParentOnly   = v; _saveUiState(); renderDatabase(); }}
+function setShowChildrenOnly(v) {{ showChildrenOnly = v; _saveUiState(); renderDatabase(); }}
 
 function setDbSort(key) {{
     dbSortKey = key;
@@ -6369,6 +6556,11 @@ function dbRowMatches(row) {{
     if (f.roll      && !(row['Roll']       || '').toLowerCase().includes(f.roll))       return false;
     if (f.lens      && !(row['Lens']       || '').toLowerCase().includes(f.lens))       return false;
     if (f.focal     && !(row['Focal']      || '').toLowerCase().includes(f.focal))      return false;
+    if (f.shot_name   && !(row['_shot_name']        || '').toLowerCase().includes(f.shot_name))   return false;
+    if (f.parent_take && !(row['_parent_take_label'] || '').toLowerCase().includes(f.parent_take)) return false;
+    if (showShotNameOnly && !(row['_shot_name']  || '').trim())    return false;
+    if (showParentOnly   && !(row['_parent_take'] || '').trim())   return false;
+    if (showChildrenOnly && !((row['_children_takes'] || []).length)) return false;
     if (dbVfxFilter !== 'all') {{
         const isPass = _isVfxPass(row);
         if (dbVfxFilter === 'yes' && !isPass) return false;
@@ -6404,6 +6596,8 @@ function dbGroupKey(row) {{
         case 'lens':      return row['Lens']       || '—';
         case 'focal':     return row['Focal']      || '—';
         case 'slate':     return row['Slate']      || '—';
+        case 'shot_name':   return (row['_shot_name'] || '').trim() || '(no shot name)';
+        case 'parent_take': return (row['_parent_take_label'] || '').trim() || '(no parent take)';
         default:          return '—';
     }}
 }}
@@ -6429,6 +6623,9 @@ function dbSortValue(row) {{
             const m = (row['Focal'] || '').match(/(\\d+)/);
             return m ? parseInt(m[1]) : 9999;
         }}
+        // empty values sort last (both directions read naturally)
+        case 'shot_name':   return (row['_shot_name'] || '').toLowerCase() || '\\uffff';
+        case 'parent_take': return (row['_parent_take_label'] || '').toLowerCase() || '\\uffff';
         default: return '';
     }}
 }}
@@ -6550,7 +6747,8 @@ function renderDatabase() {{
         if (dbGroupMode === 'slate') {{
             headerLeft = `<span>${{escHtml(rows[0]['Slate'] || key)}}</span>`;
         }} else {{
-            headerLeft = `<span>🎬 ${{escHtml(key)}}</span>`;
+            const icon = {{ shot_name: '🎯', parent_take: '🔗' }}[dbGroupMode] || '🎬';
+            headerLeft = `<span>${{icon}} ${{escHtml(key)}}</span>`;
         }}
         return `<div class="group">
             <div class="group-header">
@@ -6609,6 +6807,9 @@ function renderDbCard(row, idx) {{
     const hasSharedNote = !!(row['_shared_note'] || '').trim();
     const noteFlagSlot = '<span class="db-note-flag-slot">' + (hasNote ? '<span class="db-note-flag" title="Has note">⚑</span>' : '') + '</span>';
     const sharedNoteFlagSlot = '<span class="db-shared-note-flag-slot">' + (hasSharedNote ? '<span class="db-shared-note-flag" title="Has shared note">⚑</span>' : '') + '</span>';
+    const shotName    = (row['_shot_name'] || '').trim();
+    const shotNameSlot = '<span class="db-shotname-slot">' + _shotNamePillHtml(shotName) + '</span>';
+    const linkTakeSlot = '<span class="db-linktake-slot">' + _titleRelSlotInner(row) + '</span>';
     // Quick-copy text (title line)
     const quickParts  = [
         slate  !== '—' ? 'Slate: ' + slate : '',
@@ -6642,6 +6843,7 @@ function renderDbCard(row, idx) {{
             ${{binBadge}}
             ${{addBinBtn}}
             ${{copyBtn}}
+            <span class="db-title-right">${{shotNameSlot}}${{linkTakeSlot}}</span>
             ${{chevron}}
         </div>
         <div class="entry-details">${{isExpanded ? renderDbDetails(row) : ''}}</div>
@@ -6781,9 +6983,10 @@ function renderDbDetails(row) {{
     const notesSection = (OFFLINE_MODE && !sharedNoteBox)
         ? ''
         : `<div class="db-note-section">${{OFFLINE_MODE ? '' : noteBox}}${{sharedNoteBox}}</div>`;
+    const extrasSection = _extrasBoxHtml(row);
     const vfxId = (row['VFX ID'] || '').trim();
     const linkedBlocks = vfxId ? renderLinkedBlocks(vfxId) : '';
-    return `<div class="db-details">${{notesSection}}${{photoStrip}}${{sections}}${{linkedBlocks}}${{editActions}}</div>`;
+    return `<div class="db-details">${{extrasSection}}${{notesSection}}${{photoStrip}}${{sections}}${{linkedBlocks}}${{editActions}}</div>`;
 }}
 
 function _injectPhotoStrip(entry, photos) {{
@@ -8018,6 +8221,342 @@ async function _doClearSharedNote(btn) {{
     }} catch(e) {{
         alert('Shared note clear error: ' + e.message);
         btn.disabled = false;
+    }}
+}}
+
+// ── Take extras: Shot Name + Linked Take ─────────────────────────────────────
+// User-authored per-take fields, stored server-side in __DATABASE/take_extras.json
+// (sidecar — never touches the source DB JSON). Keyed by _override_key.
+
+function _dbRowByKey(key) {{
+    return dbRows.find(r => r['_override_key'] === key) || null;
+}}
+
+function _takeLabelJs(r) {{
+    if (!r) return '';
+    const slate = (r['Slate'] || '').trim();
+    const take  = (r['Take'] || '').trim();
+    const roll  = (r['Roll'] || '').trim();
+    const left  = take ? ('Slate ' + slate + '/T' + take) : (slate ? ('Slate ' + slate) : '?');
+    return roll ? (left + ' · Roll ' + roll) : left;
+}}
+
+function _entryByOverrideKey(key) {{
+    for (const el of document.querySelectorAll('[data-override-key]')) {{
+        if (el.dataset.overrideKey === key) return el;
+    }}
+    return null;
+}}
+
+// Clickable Shot Name pill for the collapsed title line (sets the shot_name filter).
+function _shotNamePillHtml(name) {{
+    name = (name || '').trim();
+    if (!name) return '';
+    return '<span class="db-shotname-pill db-tag-clickable" data-v="' + escHtml(name) + '"'
+        + ' onclick="event.stopPropagation();setTagFilter(&#39;shot_name&#39;,this.dataset.v,event)"'
+        + ' title="Filter by shot name">' + escHtml(name) + '</span>';
+}}
+
+// Title-line indicator: 🔗 = has a parent take, ⇊N = has N children.
+function _titleRelSlotInner(row) {{
+    const p = (row['_parent_take'] || '').trim();
+    const kids = row['_children_takes'] || [];
+    return (p ? '<span class="db-linktake-flag" title="Child of ' + escHtml(row['_parent_take_label'] || 'a take') + '">🔗</span>' : '')
+        + (kids.length ? '<span class="db-children-flag" title="' + kids.length + ' child take' + (kids.length > 1 ? 's' : '') + '">⇊' + kids.length + '</span>' : '');
+}}
+
+function _extrasBoxHtml(row) {{
+    const key       = row['_override_key'] || '';
+    const shotName  = (row['_shot_name'] || '').trim();
+    const parent    = (row['_parent_take'] || '').trim();
+    const parentLbl = (row['_parent_take_label'] || '').trim() || parent;
+    const kids      = row['_children_takes'] || [];
+    const dk        = 'data-extra-key="' + escHtml(key) + '"';
+
+    if (OFFLINE_MODE && !shotName && !parent && !kids.length) return '';
+
+    let shotRow;
+    if (OFFLINE_MODE) {{
+        shotRow = '<div class="db-extra-row"><span class="db-extra-label">Shot Name</span>'
+            + '<span class="db-extra-value' + (shotName ? '' : ' empty') + '">'
+            + escHtml(shotName || '—') + '</span></div>';
+    }} else {{
+        shotRow = '<div class="db-extra-row"><span class="db-extra-label">Shot Name</span>'
+            + '<input class="db-extra-input" ' + dk + ' type="text" maxlength="120"'
+            + ' value="' + escHtml(shotName) + '" placeholder="optional shot name"'
+            + ' onclick="event.stopPropagation()"'
+            + ' onkeydown="if(event.key===&#39;Enter&#39;)this.blur()"'
+            + ' onchange="_saveShotName(this)"></div>';
+    }}
+
+    // Parent Take
+    let parentRow = '';
+    if (parent) {{
+        parentRow = '<div class="db-extra-row"><span class="db-extra-label">Parent Take</span>'
+            + '<span class="db-linktake-badge" data-linked-key="' + escHtml(parent) + '"'
+            + ' onclick="event.stopPropagation();jumpToDbTake(this.dataset.linkedKey)"'
+            + ' title="Go to parent take">🔗 ' + escHtml(parentLbl) + '</span>'
+            + (OFFLINE_MODE ? '' :
+                ('<button class="db-extra-btn" ' + dk + ' onclick="event.stopPropagation();openParentPicker(this.dataset.extraKey)">Change</button>'
+                 + '<button class="db-extra-x" ' + dk + ' onclick="event.stopPropagation();_clearParentTake(this.dataset.extraKey)" title="Remove parent">×</button>'))
+            + '</div>';
+    }} else if (!OFFLINE_MODE) {{
+        parentRow = '<div class="db-extra-row"><span class="db-extra-label">Parent Take</span>'
+            + '<button class="db-extra-btn" ' + dk + ' onclick="event.stopPropagation();openParentPicker(this.dataset.extraKey)">+ Set parent take…</button></div>';
+    }}
+
+    // Children (derived — every take whose parent is this one)
+    let childRow = '';
+    if (kids.length || !OFFLINE_MODE) {{
+        const badges = kids.map(c =>
+            '<span class="db-linktake-badge db-child-badge" data-linked-key="' + escHtml(c.key) + '"'
+            + ' onclick="event.stopPropagation();jumpToDbTake(this.dataset.linkedKey)" title="Go to child take">🔗 ' + escHtml(c.label) + '</span>'
+            + (OFFLINE_MODE ? '' : '<button class="db-extra-x" data-child-key="' + escHtml(c.key) + '" onclick="event.stopPropagation();_detachChild(this.dataset.childKey)" title="Remove from children">×</button>')
+        ).join('');
+        childRow = '<div class="db-extra-row db-extra-row-children"><span class="db-extra-label">Children</span>'
+            + '<span class="db-child-list">'
+            + (badges || '<span class="db-extra-value empty">none</span>')
+            + (OFFLINE_MODE ? '' : '<button class="db-extra-btn" ' + dk + ' onclick="event.stopPropagation();openChildPicker(this.dataset.extraKey)">+ Add child…</button>')
+            + '</span></div>';
+    }}
+
+    return '<div class="db-extras" onclick="event.stopPropagation()">' + shotRow + parentRow + childRow + '</div>';
+}}
+
+async function _saveTakeExtras(key, patch) {{
+    const res = await fetch('/api/take-extras/save', {{
+        method:  'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body:    JSON.stringify(Object.assign({{ key: key }}, patch)),
+    }});
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'save failed');
+}}
+
+function _computeChildrenFor(parentKey) {{
+    return dbRows
+        .filter(r => (r['_parent_take'] || '') === parentKey)
+        .map(r => ({{ key: r['_override_key'], label: _takeLabelJs(r) }}))
+        .sort((a, b) => a.label.localeCompare(b.label));
+}}
+
+function _descendants(key) {{
+    const out = new Set();
+    const stack = [key];
+    while (stack.length) {{
+        const cur = stack.pop();
+        const r = _dbRowByKey(cur);
+        for (const c of (r && r['_children_takes'] || [])) {{
+            if (!out.has(c.key)) {{ out.add(c.key); stack.push(c.key); }}
+        }}
+    }}
+    return out;
+}}
+
+function _ancestors(key) {{
+    const out = new Set();
+    let cur = key;
+    while (cur) {{
+        const r = _dbRowByKey(cur);
+        const p = r && (r['_parent_take'] || '');
+        if (!p || out.has(p)) break;
+        out.add(p);
+        cur = p;
+    }}
+    return out;
+}}
+
+// Update local dbRows model for a parent change, then refresh every affected card.
+function _applyParentChange(childKey, newParentKey) {{
+    const child = _dbRowByKey(childKey);
+    if (!child) return;
+    const oldParent = child['_parent_take'] || '';
+    child['_parent_take'] = newParentKey || '';
+    child['_parent_take_label'] = newParentKey ? _takeLabelJs(_dbRowByKey(newParentKey)) : '';
+    [oldParent, newParentKey].forEach(pk => {{
+        if (!pk) return;
+        const p = _dbRowByKey(pk);
+        if (p) p['_children_takes'] = _computeChildrenFor(pk);
+    }});
+    [childKey, oldParent, newParentKey].forEach(k => {{ if (k) _refreshExtrasUI(k); }});
+}}
+
+function _refreshExtrasUI(key) {{
+    const row = _dbRowByKey(key);
+    const entry = _entryByOverrideKey(key);
+    if (!row || !entry) return;
+    const box = entry.querySelector('.db-extras');
+    if (box) box.outerHTML = _extrasBoxHtml(row);
+    const sn = entry.querySelector('.entry-title-line .db-shotname-slot');
+    if (sn) sn.innerHTML = _shotNamePillHtml(row['_shot_name']);
+    const lt = entry.querySelector('.entry-title-line .db-linktake-slot');
+    if (lt) lt.innerHTML = _titleRelSlotInner(row);
+}}
+
+async function _saveShotName(inp) {{
+    if (OFFLINE_MODE) return;
+    const key = inp.dataset.extraKey;
+    const row = _dbRowByKey(key);
+    if (!row) return;
+    const val = inp.value.trim();
+    if (val === (row['_shot_name'] || '').trim()) return;
+    inp.disabled = true;
+    try {{
+        await _saveTakeExtras(key, {{ shot_name: val }});
+        row['_shot_name'] = val;
+        _refreshExtrasUI(key);
+    }} catch(e) {{
+        alert('Shot name save error: ' + e.message);
+        inp.disabled = false;
+    }}
+}}
+
+async function _clearParentTake(key) {{
+    if (OFFLINE_MODE) return;
+    try {{
+        await _saveTakeExtras(key, {{ parent_take: '' }});
+        _applyParentChange(key, '');
+    }} catch(e) {{
+        alert('Remove parent error: ' + e.message);
+    }}
+}}
+
+async function _detachChild(childKey) {{
+    if (OFFLINE_MODE) return;
+    try {{
+        await _saveTakeExtras(childKey, {{ parent_take: '' }});
+        _applyParentChange(childKey, '');
+    }} catch(e) {{
+        alert('Detach child error: ' + e.message);
+    }}
+}}
+
+function jumpToDbTake(targetKey) {{
+    if (!targetKey) return;
+    const entry = _entryByOverrideKey(targetKey);
+    if (!entry) {{
+        alert('That take is not in the current view (filtered out, omitted, or on another page).');
+        return;
+    }}
+    if (!entry.classList.contains('expanded')) {{
+        const titleLine = entry.querySelector('.entry-title-line');
+        if (titleLine) toggleDbCard(titleLine);
+    }}
+    entry.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+    entry.classList.remove('db-jump-flash');
+    void entry.offsetWidth;
+    entry.classList.add('db-jump-flash');
+    setTimeout(() => entry.classList.remove('db-jump-flash'), 1200);
+}}
+
+// ── Parent / child take picker modal ───────────────────────────────────────
+let _pickerKey  = null;        // the take the picker was opened from
+let _pickerMode = 'parent';    // 'parent' → pick this take's parent
+                               // 'child'  → pick a take to become this take's child
+
+(function () {{
+    const ov = document.createElement('div');
+    ov.id = 'linktake-picker-overlay';
+    ov.className = 'linktake-picker-overlay';
+    ov.innerHTML =
+        '<div class="linktake-picker">' +
+        '<div class="linktake-picker-head">' +
+        '<div class="linktake-picker-title" id="linktake-picker-title">Link a take</div>' +
+        '<input class="linktake-picker-input" id="linktake-picker-input" type="text" ' +
+        'placeholder="Search by slate or roll…" oninput="_linkPickerRender()">' +
+        '</div>' +
+        '<div class="linktake-picker-list" id="linktake-picker-list"></div>' +
+        '</div>';
+    ov.addEventListener('click', e => {{ if (e.target === ov) closeLinkTakePicker(); }});
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', e => {{
+        if (e.key === 'Escape' && _pickerKey !== null) closeLinkTakePicker();
+    }});
+}})();
+
+function openParentPicker(key) {{ _openPicker(key, 'parent'); }}
+function openChildPicker(key)  {{ _openPicker(key, 'child'); }}
+
+function _openPicker(key, mode) {{
+    if (OFFLINE_MODE) return;
+    _pickerKey  = key;
+    _pickerMode = mode;
+    const row = _dbRowByKey(key);
+    const anchor = row ? _takeLabelJs(row) : key;
+    document.getElementById('linktake-picker-title').textContent =
+        mode === 'parent' ? ('Set parent of ' + anchor) : ('Add a child to ' + anchor);
+    const inp = document.getElementById('linktake-picker-input');
+    inp.value = '';
+    document.getElementById('linktake-picker-overlay').style.display = 'flex';
+    _linkPickerRender();
+    inp.focus();
+}}
+
+function closeLinkTakePicker() {{
+    document.getElementById('linktake-picker-overlay').style.display = 'none';
+    _pickerKey = null;
+}}
+
+function _linkPickerRender() {{
+    const listEl = document.getElementById('linktake-picker-list');
+    const q = (document.getElementById('linktake-picker-input').value || '').trim().toLowerCase();
+    // Exclude choices that would create a loop.
+    const forbidden = _pickerMode === 'parent' ? _descendants(_pickerKey) : _ancestors(_pickerKey);
+    forbidden.add(_pickerKey);
+    // Search matches on Slate OR Roll only — one field, both columns.
+    const fields = ['Slate', 'Roll'];
+    let matches = dbRows.filter(r => !forbidden.has(r['_override_key']));
+    if (q) {{
+        const terms = q.split(/\\s+/).filter(Boolean);
+        matches = matches.filter(r => {{
+            const hay = fields.map(f => (r[f] || '')).join(' ').toLowerCase();
+            return terms.every(t => hay.includes(t));
+        }});
+    }}
+    const MAX = 60;
+    const shown = matches.slice(0, MAX);
+    if (!shown.length) {{
+        listEl.innerHTML = '<div class="linktake-picker-empty">No take matches that slate / roll</div>';
+        return;
+    }}
+    listEl.innerHTML = shown.map(r => {{
+        const k     = r['_override_key'];
+        const slate = (r['Slate'] || '').trim();
+        const roll  = (r['Roll']  || '').trim();
+        const take  = (r['Take']  || '').trim();
+        const chips =
+            '<span class="linktake-opt-chip chip-slate">Slate ' + escHtml(slate || '—') + '</span>' +
+            (take ? '<span class="linktake-opt-chip chip-take">T' + escHtml(take) + '</span>' : '') +
+            '<span class="linktake-opt-chip chip-roll">Roll ' + escHtml(roll || '—') + '</span>';
+        let sub = (r['VFX ID'] || r['Scene Description'] || '').trim();
+        const curParent = (r['_parent_take'] || '').trim();
+        if (_pickerMode === 'child' && curParent) {{
+            const pl = _takeLabelJs(_dbRowByKey(curParent));
+            sub = (sub ? sub + '  ·  ' : '') + 'currently child of ' + pl;
+        }}
+        return '<div class="linktake-opt" data-k="' + escHtml(k) + '" onclick="_doPickTake(this.dataset.k)">' +
+            '<span class="linktake-opt-main">' + chips + '</span>' +
+            (sub ? '<span class="linktake-opt-sub">' + escHtml(sub) + '</span>' : '') +
+            '</div>';
+    }}).join('') + (matches.length > MAX
+        ? '<div class="linktake-picker-empty">+' + (matches.length - MAX) + ' more — refine your search</div>'
+        : '');
+}}
+
+async function _doPickTake(targetKey) {{
+    const anchor = _pickerKey;
+    if (!anchor || !targetKey || targetKey === anchor) return;
+    try {{
+        if (_pickerMode === 'parent') {{
+            await _saveTakeExtras(anchor, {{ parent_take: targetKey }});
+            _applyParentChange(anchor, targetKey);
+        }} else {{
+            await _saveTakeExtras(targetKey, {{ parent_take: anchor }});
+            _applyParentChange(targetKey, anchor);
+        }}
+        closeLinkTakePicker();
+    }} catch(e) {{
+        alert('Link error: ' + e.message);
     }}
 }}
 
