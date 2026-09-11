@@ -3173,6 +3173,12 @@ class HTMLGenerator:
           </label>
         </div>
         <div class="db-filter-field" style="justify-content:flex-end">
+          <label class="show-omitted-toggle" title="Show only takes that have an Element Name">
+            <input type="checkbox" id="show-elementname-cb" onchange="setShowElementNameOnly(this.checked)">
+            <span style="line-height:1.2;text-align:left">ELEMENT NAME<br>ONLY</span>
+          </label>
+        </div>
+        <div class="db-filter-field" style="justify-content:flex-end">
           <label class="show-omitted-toggle" title="Show only takes that have a Parent Take">
             <input type="checkbox" id="show-parent-cb" onchange="setShowParentOnly(this.checked)">
             <span style="line-height:1.2;text-align:left">PARENT<br>ONLY</span>
@@ -3182,6 +3188,18 @@ class HTMLGenerator:
           <label class="show-omitted-toggle" title="Show only takes that have at least one child take">
             <input type="checkbox" id="show-children-cb" onchange="setShowChildrenOnly(this.checked)">
             <span style="line-height:1.2;text-align:left">CHILDREN<br>ONLY</span>
+          </label>
+        </div>
+        <div class="db-filter-field" style="justify-content:flex-end">
+          <label class="show-omitted-toggle" title="Show/hide the Shot Name badges (collapsed title line and expanded card)">
+            <input type="checkbox" id="show-shotnamebadge-cb" checked onchange="setShowShotNameBadge(this.checked)">
+            <span style="line-height:1.2;text-align:left">SHOT NAME<br>BADGE</span>
+          </label>
+        </div>
+        <div class="db-filter-field" style="justify-content:flex-end">
+          <label class="show-omitted-toggle" title="Show/hide the Element Name badges (collapsed title line and expanded card)">
+            <input type="checkbox" id="show-elementnamebadge-cb" checked onchange="setShowElementNameBadge(this.checked)">
+            <span style="line-height:1.2;text-align:left">ELEMENT NAME<br>BADGE</span>
           </label>
         </div>
         <div class="db-filter-field db-export-btns">
@@ -3403,9 +3421,12 @@ function _saveUiState() {{
             lidarQuery:     lidarQuery,
             showOmitted:    showOmitted,
             showEditedOnly: showEditedOnly,
-            showShotNameOnly: showShotNameOnly,
-            showParentOnly:   showParentOnly,
-            showChildrenOnly: showChildrenOnly,
+            showShotNameOnly:    showShotNameOnly,
+            showElementNameOnly: showElementNameOnly,
+            showParentOnly:      showParentOnly,
+            showChildrenOnly:    showChildrenOnly,
+            showShotNameBadge:    showShotNameBadge,
+            showElementNameBadge: showElementNameBadge,
         }}));
     }} catch(e) {{}}
 }}
@@ -3518,14 +3539,26 @@ function _restoreUiState() {{
             const cb = document.getElementById('show-edited-cb');
             if (cb) cb.checked = true;
         }}
-        [['showShotNameOnly','show-shotname-cb'], ['showParentOnly','show-parent-cb'], ['showChildrenOnly','show-children-cb']]
+        [['showShotNameOnly','show-shotname-cb'], ['showElementNameOnly','show-elementname-cb'],
+         ['showParentOnly','show-parent-cb'], ['showChildrenOnly','show-children-cb']]
             .forEach(([flag, id]) => {{
                 if (!s[flag]) return;
-                if (flag === 'showShotNameOnly') showShotNameOnly = true;
-                if (flag === 'showParentOnly')   showParentOnly   = true;
-                if (flag === 'showChildrenOnly') showChildrenOnly = true;
+                if (flag === 'showShotNameOnly')    showShotNameOnly    = true;
+                if (flag === 'showElementNameOnly') showElementNameOnly = true;
+                if (flag === 'showParentOnly')      showParentOnly      = true;
+                if (flag === 'showChildrenOnly')    showChildrenOnly    = true;
                 const cb = document.getElementById(id);
                 if (cb) cb.checked = true;
+            }});
+        // Badge display toggles default ON (checkbox pre-checked) — only restore an
+        // explicit "hidden" choice.
+        [['showShotNameBadge','show-shotnamebadge-cb'], ['showElementNameBadge','show-elementnamebadge-cb']]
+            .forEach(([flag, id]) => {{
+                if (s[flag] !== false) return;
+                if (flag === 'showShotNameBadge')    showShotNameBadge    = false;
+                if (flag === 'showElementNameBadge') showElementNameBadge = false;
+                const cb = document.getElementById(id);
+                if (cb) cb.checked = false;
             }});
         // Active tab — restore last (skip in db-only exports)
         if (!DB_ONLY_MODE && s.view && ['browse','database','queries','lidar','assets','queue','delivered'].includes(s.view)) {{
@@ -4895,11 +4928,14 @@ let queryField       = 'Body';
 let querySearch      = '';
 let querySortByCount = true;
 let dbQueryFilter    = null; // {{ field, label, value }} — set from Queries page
-let showOmitted      = false;
-let showEditedOnly   = false;
-let showShotNameOnly = false;   // only takes that have a Shot Name
-let showParentOnly   = false;   // only takes that have a Parent Take
-let showChildrenOnly = false;   // only takes that have at least one child
+let showOmitted         = false;
+let showEditedOnly      = false;
+let showShotNameOnly    = false;   // only takes that have a Shot Name
+let showElementNameOnly = false;   // only takes that have an Element Name
+let showParentOnly      = false;   // only takes that have a Parent Take
+let showChildrenOnly    = false;   // only takes that have at least one child
+let showShotNameBadge    = true;   // display toggle — hide/show Shot Name badges everywhere
+let showElementNameBadge = true;   // display toggle — hide/show Element Name badges everywhere
 
 function _slateSceneKey(slate) {{
     const s = (slate || '').trim();
@@ -4993,9 +5029,12 @@ function setDbGroup(mode) {{
     _saveUiState();
 }}
 
-function setShowShotNameOnly(v) {{ showShotNameOnly = v; _saveUiState(); renderDatabase(); }}
-function setShowParentOnly(v)   {{ showParentOnly   = v; _saveUiState(); renderDatabase(); }}
-function setShowChildrenOnly(v) {{ showChildrenOnly = v; _saveUiState(); renderDatabase(); }}
+function setShowShotNameOnly(v)    {{ showShotNameOnly    = v; _saveUiState(); renderDatabase(); }}
+function setShowElementNameOnly(v) {{ showElementNameOnly = v; _saveUiState(); renderDatabase(); }}
+function setShowParentOnly(v)      {{ showParentOnly      = v; _saveUiState(); renderDatabase(); }}
+function setShowChildrenOnly(v)    {{ showChildrenOnly    = v; _saveUiState(); renderDatabase(); }}
+function setShowShotNameBadge(v)    {{ showShotNameBadge    = v; _saveUiState(); renderDatabase(); }}
+function setShowElementNameBadge(v) {{ showElementNameBadge = v; _saveUiState(); renderDatabase(); }}
 
 function setDbSort(key) {{
     dbSortKey = key;
@@ -6587,7 +6626,8 @@ function dbRowMatches(row) {{
     if (f.focal     && !(row['Focal']      || '').toLowerCase().includes(f.focal))      return false;
     if (f.shot_name   && !(row['_shot_names'] || []).some(n => n.toLowerCase().includes(f.shot_name))) return false;
     if (f.parent_take && !(row['_parent_take_label'] || '').toLowerCase().includes(f.parent_take)) return false;
-    if (showShotNameOnly && !((row['_shot_names'] || []).length))   return false;
+    if (showShotNameOnly    && !((row['_shot_names']    || []).length)) return false;
+    if (showElementNameOnly && !((row['_element_names'] || []).length)) return false;
     if (showParentOnly   && !(row['_parent_take'] || '').trim())   return false;
     if (showChildrenOnly && !((row['_children_takes'] || []).length)) return false;
     if (dbVfxFilter !== 'all') {{
@@ -8284,7 +8324,9 @@ function _entryByOverrideKey(key) {{
 }}
 
 // Clickable Shot Name pills for the collapsed title line (each sets the shot_name filter).
+// Respects the "SHOT NAME BADGE" display toggle.
 function _shotNamePillsHtml(names) {{
+    if (!showShotNameBadge) return '';
     return (names || []).map(name =>
         '<span class="db-shotname-pill db-tag-clickable" data-v="' + escHtml(name) + '"'
         + ' onclick="event.stopPropagation();setTagFilter(&#39;shot_name&#39;,this.dataset.v,event)"'
@@ -8293,7 +8335,9 @@ function _shotNamePillsHtml(names) {{
 }}
 
 // Plain (non-filtering) Element Name pills for the collapsed title line.
+// Respects the "ELEMENT NAME BADGE" display toggle.
 function _elementNamePillsHtml(names) {{
+    if (!showElementNameBadge) return '';
     return (names || []).map(name =>
         '<span class="db-elementname-pill" title="Element name">' + escHtml(name) + '</span>'
     ).join('');
@@ -8338,12 +8382,12 @@ function _extrasBoxHtml(row) {{
 
     if (OFFLINE_MODE && !shotNames.length && !elementNames.length && !parent && !kids.length) return '';
 
-    const shotRow = _multiNameRowHtml(dk, 'Shot Name', shotNames,
+    const shotRow = showShotNameBadge ? _multiNameRowHtml(dk, 'Shot Name', shotNames,
         'db-shotname-pill', 'db-shotname-add', '+ add shot name…',
-        '_removeShotName', '_addShotName');
-    const elementRow = _multiNameRowHtml(dk, 'Element Name', elementNames,
+        '_removeShotName', '_addShotName') : '';
+    const elementRow = showElementNameBadge ? _multiNameRowHtml(dk, 'Element Name', elementNames,
         'db-elementname-pill', 'db-elementname-add', '+ add element name…',
-        '_removeElementName', '_addElementName');
+        '_removeElementName', '_addElementName') : '';
 
     // Parent Take
     let parentRow = '';
