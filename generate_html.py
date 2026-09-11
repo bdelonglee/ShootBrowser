@@ -2413,6 +2413,8 @@ class HTMLGenerator:
         .db-extra-row {{ display: flex; align-items: center; gap: 8px; min-height: 24px; }}
         .db-extra-row-children {{ align-items: flex-start; }}
         .db-child-list {{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }}
+        /* Shot Name / Element Name badges stack one-per-line instead of wrapping in a row */
+        .db-namebadge-list {{ display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }}
         .db-child-badge {{
             background: rgba(86,211,100,0.14); border-color: rgba(86,211,100,0.4); color: #56d364;
         }}
@@ -8352,7 +8354,7 @@ function _multiNameRowHtml(dk, label, names, pillClass, addClass, placeholder, r
         + '</span>'
     ).join('');
     return '<div class="db-extra-row db-extra-row-children"><span class="db-extra-label">' + label + '</span>'
-        + '<span class="db-child-list">'
+        + '<span class="db-namebadge-list">'
         + (badges || '<span class="db-extra-value empty">none</span>')
         + (OFFLINE_MODE ? '' :
             '<input class="db-extra-input ' + addClass + '" ' + dk + ' type="text" maxlength="120"'
