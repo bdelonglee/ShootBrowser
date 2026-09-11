@@ -2458,6 +2458,9 @@ class HTMLGenerator:
             margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
         }}
         .db-shotname-slot:empty, .db-elementname-slot:empty, .db-linktake-slot:empty {{ display: none; }}
+        /* Folded-card badge stack: several Shot/Element Names stack one-per-line
+           instead of crowding a single row. */
+        .db-badgestack {{ display: inline-flex; flex-direction: column; align-items: flex-end; gap: 3px; }}
         .db-shotname-pill, .db-elementname-pill {{
             display: inline-flex; align-items: center; gap: 4px;
             font-size: 0.78em; font-weight: 700; letter-spacing: 0.02em;
@@ -8326,23 +8329,25 @@ function _entryByOverrideKey(key) {{
 }}
 
 // Clickable Shot Name pills for the collapsed title line (each sets the shot_name filter).
-// Respects the "SHOT NAME BADGE" display toggle.
+// Respects the "SHOT NAME BADGE" display toggle. Several names stack one-per-line.
 function _shotNamePillsHtml(names) {{
     if (!showShotNameBadge) return '';
-    return (names || []).map(name =>
+    const pills = (names || []).map(name =>
         '<span class="db-shotname-pill db-tag-clickable" data-v="' + escHtml(name) + '"'
         + ' onclick="event.stopPropagation();setTagFilter(&#39;shot_name&#39;,this.dataset.v,event)"'
         + ' title="Filter by shot name">' + escHtml(name) + '</span>'
     ).join('');
+    return pills ? '<span class="db-badgestack">' + pills + '</span>' : '';
 }}
 
 // Plain (non-filtering) Element Name pills for the collapsed title line.
-// Respects the "ELEMENT NAME BADGE" display toggle.
+// Respects the "ELEMENT NAME BADGE" display toggle. Several names stack one-per-line.
 function _elementNamePillsHtml(names) {{
     if (!showElementNameBadge) return '';
-    return (names || []).map(name =>
+    const pills = (names || []).map(name =>
         '<span class="db-elementname-pill" title="Element name">' + escHtml(name) + '</span>'
     ).join('');
+    return pills ? '<span class="db-badgestack">' + pills + '</span>' : '';
 }}
 
 // Shared renderer for a "badges + free-text add input" row (Shot Name, Element Name).
