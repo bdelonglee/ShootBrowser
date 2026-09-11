@@ -705,8 +705,24 @@ def _extras_parent(ext: dict) -> str:
     return (ext.get("parent_take") or ext.get("linked_take") or "").strip()
 
 
+def _extras_shot_names(ext: dict) -> list:
+    """Shot Name list from an extras entry (accepts the legacy singular 'shot_name',
+    which some entries hold as several whitespace-separated names in one string —
+    split those into individual names)."""
+    names = ext.get("shot_names")
+    if not isinstance(names, list):
+        names = (ext.get("shot_name") or "").split()
+    out, seen = [], set()
+    for n in names:
+        n = (n or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
 def _apply_take_extras(rows: list, extras: dict) -> list:
-    """Attach Shot Name, Parent Take (+ resolved label) and the derived
+    """Attach Shot Names, Parent Take (+ resolved label) and the derived
     Children Takes list to each row."""
     take_map = extras.get("takes", {})
     by_key   = {r.get("_override_key", ""): r for r in rows}
@@ -715,7 +731,7 @@ def _apply_take_extras(rows: list, extras: dict) -> list:
     for row in rows:
         k   = row.get("_override_key", "")
         ext = take_map.get(k, {})
-        row["_shot_name"]   = (ext.get("shot_name") or "").strip()
+        row["_shot_names"]  = _extras_shot_names(ext)
         parent             = _extras_parent(ext)
         row["_parent_take"] = parent
         if parent:
@@ -748,7 +764,7 @@ def _would_cycle(takes: dict, child_key: str, new_parent: str) -> bool:
 
 @app.route("/api/take-extras/save", methods=["POST"])
 def api_save_take_extras():
-    """Merge-update Shot Name and/or Parent Take for one take. Only the keys
+    """Merge-update Shot Names and/or Parent Take for one take. Only the keys
     present in the request body are touched; an entry left empty is removed."""
     try:
         body = request.json or {}
@@ -760,12 +776,19 @@ def api_save_take_extras():
         takes = x.setdefault("takes", {})
         entry = dict(takes.get(key, {}))
 
-        if "shot_name" in body:
-            sn = (body.get("shot_name") or "").strip()
-            if sn:
-                entry["shot_name"] = sn
+        if "shot_names" in body:
+            raw = body.get("shot_names")
+            names, seen = [], set()
+            for n in (raw if isinstance(raw, list) else []):
+                n = (n or "").strip()
+                if n and n not in seen:
+                    seen.add(n)
+                    names.append(n)
+            entry.pop("shot_name", None)   # drop legacy singular key on write
+            if names:
+                entry["shot_names"] = names
             else:
-                entry.pop("shot_name", None)
+                entry.pop("shot_names", None)
 
         if "parent_take" in body or "linked_take" in body:
             parent = (body.get("parent_take") or body.get("linked_take") or "").strip()
