@@ -672,27 +672,31 @@ class HTMLGenerator:
             left  = ('Slate ' + slate + '/T' + take) if take else (('Slate ' + slate) if slate else '?')
             return (left + ' · Roll ' + roll) if roll else left
 
-        def _tk_shot_names(ext):
-            # legacy singular 'shot_name' sometimes holds several whitespace-
-            # separated names in one string — split those into individual names.
-            names = ext.get('shot_names')
-            if not isinstance(names, list):
-                names = (ext.get('shot_name') or '').split()
+        def _tk_dedupe(names):
             out, seen = [], set()
-            for n in names:
+            for n in (names if isinstance(names, list) else []):
                 n = (n or '').strip()
                 if n and n not in seen:
                     seen.add(n)
                     out.append(n)
             return out
 
+        def _tk_shot_names(ext):
+            # legacy singular 'shot_name' sometimes holds several whitespace-
+            # separated names in one string — split those into individual names.
+            names = ext.get('shot_names')
+            if not isinstance(names, list):
+                names = (ext.get('shot_name') or '').split()
+            return _tk_dedupe(names)
+
         kids = {}
         for row in rows:
             k   = row['_override_key']
             ext = take_extras.get(k, {})
-            row['_shot_names']  = _tk_shot_names(ext)
-            parent             = (ext.get('parent_take') or ext.get('linked_take') or '').strip()
-            row['_parent_take'] = parent
+            row['_shot_names']    = _tk_shot_names(ext)
+            row['_element_names'] = _tk_dedupe(ext.get('element_names'))
+            parent               = (ext.get('parent_take') or ext.get('linked_take') or '').strip()
+            row['_parent_take']   = parent
             if parent:
                 kids.setdefault(parent, []).append(k)
         for row in rows:
@@ -2451,16 +2455,23 @@ class HTMLGenerator:
         .db-title-right {{
             margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
         }}
-        .db-shotname-slot:empty, .db-linktake-slot:empty {{ display: none; }}
-        .db-shotname-pill {{
+        .db-shotname-slot:empty, .db-elementname-slot:empty, .db-linktake-slot:empty {{ display: none; }}
+        .db-shotname-pill, .db-elementname-pill {{
             display: inline-flex; align-items: center; gap: 4px;
-            font-size: 0.78em; color: #58a6ff; font-weight: 700; letter-spacing: 0.02em;
-            background: rgba(88,166,255,0.16); border: 1px solid rgba(88,166,255,0.45);
+            font-size: 0.78em; font-weight: 700; letter-spacing: 0.02em;
             padding: 2px 9px; border-radius: 6px; white-space: nowrap;
         }}
-        .db-shotname-pill .db-extra-x {{ color: inherit; opacity: 0.55; margin-left: 1px; }}
-        .db-shotname-pill .db-extra-x:hover {{ opacity: 1; color: #e05c5c; }}
-        .db-shotname-add {{ max-width: 160px; }}
+        .db-shotname-pill {{
+            color: #58a6ff;
+            background: rgba(88,166,255,0.16); border: 1px solid rgba(88,166,255,0.45);
+        }}
+        .db-elementname-pill {{
+            color: #f778ba;
+            background: rgba(247,120,186,0.16); border: 1px solid rgba(247,120,186,0.45);
+        }}
+        .db-shotname-pill .db-extra-x, .db-elementname-pill .db-extra-x {{ color: inherit; opacity: 0.55; margin-left: 1px; }}
+        .db-shotname-pill .db-extra-x:hover, .db-elementname-pill .db-extra-x:hover {{ opacity: 1; color: #e05c5c; }}
+        .db-shotname-add, .db-elementname-add {{ max-width: 160px; }}
         .db-linktake-flag {{ color: #a371f7; font-size: 0.95em; }}
         /* Linked-take picker modal */
         .linktake-picker-overlay {{
@@ -6831,7 +6842,8 @@ function renderDbCard(row, idx) {{
     const hasSharedNote = !!(row['_shared_note'] || '').trim();
     const noteFlagSlot = '<span class="db-note-flag-slot">' + (hasNote ? '<span class="db-note-flag" title="Has note">⚑</span>' : '') + '</span>';
     const sharedNoteFlagSlot = '<span class="db-shared-note-flag-slot">' + (hasSharedNote ? '<span class="db-shared-note-flag" title="Has shared note">⚑</span>' : '') + '</span>';
-    const shotNameSlot = '<span class="db-shotname-slot">' + _shotNamePillsHtml(row['_shot_names']) + '</span>';
+    const shotNameSlot    = '<span class="db-shotname-slot">'    + _shotNamePillsHtml(row['_shot_names']) + '</span>';
+    const elementNameSlot = '<span class="db-elementname-slot">' + _elementNamePillsHtml(row['_element_names']) + '</span>';
     const linkTakeSlot = '<span class="db-linktake-slot">' + _titleRelSlotInner(row) + '</span>';
     // Quick-copy text (title line)
     const quickParts  = [
@@ -6866,7 +6878,7 @@ function renderDbCard(row, idx) {{
             ${{binBadge}}
             ${{addBinBtn}}
             ${{copyBtn}}
-            <span class="db-title-right">${{shotNameSlot}}${{linkTakeSlot}}</span>
+            <span class="db-title-right">${{shotNameSlot}}${{elementNameSlot}}${{linkTakeSlot}}</span>
             ${{chevron}}
         </div>
         <div class="entry-details">${{isExpanded ? renderDbDetails(row) : ''}}</div>
@@ -8280,6 +8292,33 @@ function _shotNamePillsHtml(names) {{
     ).join('');
 }}
 
+// Plain (non-filtering) Element Name pills for the collapsed title line.
+function _elementNamePillsHtml(names) {{
+    return (names || []).map(name =>
+        '<span class="db-elementname-pill" title="Element name">' + escHtml(name) + '</span>'
+    ).join('');
+}}
+
+// Shared renderer for a "badges + free-text add input" row (Shot Name, Element Name).
+function _multiNameRowHtml(dk, label, names, pillClass, addClass, placeholder, removeFn, addFn) {{
+    if (!names.length && OFFLINE_MODE) return '';
+    const badges = names.map(n =>
+        '<span class="' + pillClass + '" data-name="' + escHtml(n) + '">' + escHtml(n)
+        + (OFFLINE_MODE ? '' : '<button class="db-extra-x" data-name="' + escHtml(n) + '" ' + dk + ' onclick="event.stopPropagation();' + removeFn + '(this.dataset.extraKey,this.dataset.name)" title="Remove">×</button>')
+        + '</span>'
+    ).join('');
+    return '<div class="db-extra-row db-extra-row-children"><span class="db-extra-label">' + label + '</span>'
+        + '<span class="db-child-list">'
+        + (badges || '<span class="db-extra-value empty">none</span>')
+        + (OFFLINE_MODE ? '' :
+            '<input class="db-extra-input ' + addClass + '" ' + dk + ' type="text" maxlength="120"'
+            + ' placeholder="' + escHtml(placeholder) + '"'
+            + ' onclick="event.stopPropagation()"'
+            + ' onkeydown="if(event.key===&#39;Enter&#39;)this.blur()"'
+            + ' onblur="' + addFn + '(this)">')
+        + '</span></div>';
+}}
+
 // Title-line indicator: 🔗 = has a parent take, ⇊N = has N children.
 function _titleRelSlotInner(row) {{
     const p = (row['_parent_take'] || '').trim();
@@ -8289,34 +8328,22 @@ function _titleRelSlotInner(row) {{
 }}
 
 function _extrasBoxHtml(row) {{
-    const key       = row['_override_key'] || '';
-    const shotNames = row['_shot_names'] || [];
-    const parent    = (row['_parent_take'] || '').trim();
-    const parentLbl = (row['_parent_take_label'] || '').trim() || parent;
-    const kids      = row['_children_takes'] || [];
-    const dk        = 'data-extra-key="' + escHtml(key) + '"';
+    const key          = row['_override_key'] || '';
+    const shotNames    = row['_shot_names'] || [];
+    const elementNames = row['_element_names'] || [];
+    const parent       = (row['_parent_take'] || '').trim();
+    const parentLbl    = (row['_parent_take_label'] || '').trim() || parent;
+    const kids         = row['_children_takes'] || [];
+    const dk           = 'data-extra-key="' + escHtml(key) + '"';
 
-    if (OFFLINE_MODE && !shotNames.length && !parent && !kids.length) return '';
+    if (OFFLINE_MODE && !shotNames.length && !elementNames.length && !parent && !kids.length) return '';
 
-    // Shot Names — badges with ×, + a free-text "add" input (like Children, but typed not picked)
-    let shotRow = '';
-    if (shotNames.length || !OFFLINE_MODE) {{
-        const badges = shotNames.map(n =>
-            '<span class="db-shotname-pill" data-name="' + escHtml(n) + '">' + escHtml(n)
-            + (OFFLINE_MODE ? '' : '<button class="db-extra-x" data-name="' + escHtml(n) + '" ' + dk + ' onclick="event.stopPropagation();_removeShotName(this.dataset.extraKey,this.dataset.name)" title="Remove">×</button>')
-            + '</span>'
-        ).join('');
-        shotRow = '<div class="db-extra-row db-extra-row-children"><span class="db-extra-label">Shot Name</span>'
-            + '<span class="db-child-list">'
-            + (badges || '<span class="db-extra-value empty">none</span>')
-            + (OFFLINE_MODE ? '' :
-                '<input class="db-extra-input db-shotname-add" ' + dk + ' type="text" maxlength="120"'
-                + ' placeholder="+ add shot name…"'
-                + ' onclick="event.stopPropagation()"'
-                + ' onkeydown="if(event.key===&#39;Enter&#39;)this.blur()"'
-                + ' onblur="_addShotName(this)">')
-            + '</span></div>';
-    }}
+    const shotRow = _multiNameRowHtml(dk, 'Shot Name', shotNames,
+        'db-shotname-pill', 'db-shotname-add', '+ add shot name…',
+        '_removeShotName', '_addShotName');
+    const elementRow = _multiNameRowHtml(dk, 'Element Name', elementNames,
+        'db-elementname-pill', 'db-elementname-add', '+ add element name…',
+        '_removeElementName', '_addElementName');
 
     // Parent Take
     let parentRow = '';
@@ -8349,7 +8376,7 @@ function _extrasBoxHtml(row) {{
             + '</span></div>';
     }}
 
-    return '<div class="db-extras" onclick="event.stopPropagation()">' + shotRow + parentRow + childRow + '</div>';
+    return '<div class="db-extras" onclick="event.stopPropagation()">' + shotRow + elementRow + parentRow + childRow + '</div>';
 }}
 
 async function _saveTakeExtras(key, patch) {{
@@ -8418,11 +8445,16 @@ function _refreshExtrasUI(key) {{
     if (box) box.outerHTML = _extrasBoxHtml(row);
     const sn = entry.querySelector('.entry-title-line .db-shotname-slot');
     if (sn) sn.innerHTML = _shotNamePillsHtml(row['_shot_names']);
+    const en = entry.querySelector('.entry-title-line .db-elementname-slot');
+    if (en) en.innerHTML = _elementNamePillsHtml(row['_element_names']);
     const lt = entry.querySelector('.entry-title-line .db-linktake-slot');
     if (lt) lt.innerHTML = _titleRelSlotInner(row);
 }}
 
-async function _addShotName(inp) {{
+// Shared add/remove for the "several free-text names" fields (Shot Name, Element Name).
+// `field` is the row's underscore-prefixed key (e.g. '_shot_names'); the API body
+// key is the same without the leading underscore.
+async function _addMultiName(inp, field) {{
     if (OFFLINE_MODE) return;
     const val = inp.value.trim();
     if (!val) return;
@@ -8430,31 +8462,38 @@ async function _addShotName(inp) {{
     const row = _dbRowByKey(key);
     if (!row) return;
     inp.value = '';   // clear immediately so a stray blur-after-Enter can't double-submit
-    const cur = row['_shot_names'] || [];
+    const cur = row[field] || [];
     if (cur.includes(val)) return;
     const next = cur.concat([val]);
+    const patch = {{}}; patch[field.slice(1)] = next;
     try {{
-        await _saveTakeExtras(key, {{ shot_names: next }});
-        row['_shot_names'] = next;
+        await _saveTakeExtras(key, patch);
+        row[field] = next;
         _refreshExtrasUI(key);
     }} catch(e) {{
-        alert('Add shot name error: ' + e.message);
+        alert('Add ' + field.slice(1).replace('_', ' ') + ' error: ' + e.message);
     }}
 }}
 
-async function _removeShotName(key, name) {{
+async function _removeMultiName(key, name, field) {{
     if (OFFLINE_MODE) return;
     const row = _dbRowByKey(key);
     if (!row) return;
-    const next = (row['_shot_names'] || []).filter(n => n !== name);
+    const next = (row[field] || []).filter(n => n !== name);
+    const patch = {{}}; patch[field.slice(1)] = next;
     try {{
-        await _saveTakeExtras(key, {{ shot_names: next }});
-        row['_shot_names'] = next;
+        await _saveTakeExtras(key, patch);
+        row[field] = next;
         _refreshExtrasUI(key);
     }} catch(e) {{
-        alert('Remove shot name error: ' + e.message);
+        alert('Remove ' + field.slice(1).replace('_', ' ') + ' error: ' + e.message);
     }}
 }}
+
+async function _addShotName(inp)        {{ return _addMultiName(inp, '_shot_names'); }}
+async function _removeShotName(key, n)  {{ return _removeMultiName(key, n, '_shot_names'); }}
+async function _addElementName(inp)       {{ return _addMultiName(inp, '_element_names'); }}
+async function _removeElementName(key, n) {{ return _removeMultiName(key, n, '_element_names'); }}
 
 async function _clearParentTake(key) {{
     if (OFFLINE_MODE) return;

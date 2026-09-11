@@ -705,15 +705,10 @@ def _extras_parent(ext: dict) -> str:
     return (ext.get("parent_take") or ext.get("linked_take") or "").strip()
 
 
-def _extras_shot_names(ext: dict) -> list:
-    """Shot Name list from an extras entry (accepts the legacy singular 'shot_name',
-    which some entries hold as several whitespace-separated names in one string —
-    split those into individual names)."""
-    names = ext.get("shot_names")
-    if not isinstance(names, list):
-        names = (ext.get("shot_name") or "").split()
+def _dedupe_names(values) -> list:
+    """Trim, drop empties, dedupe (order-preserving) a list of free-text names."""
     out, seen = [], set()
-    for n in names:
+    for n in (values if isinstance(values, list) else []):
         n = (n or "").strip()
         if n and n not in seen:
             seen.add(n)
@@ -721,9 +716,24 @@ def _extras_shot_names(ext: dict) -> list:
     return out
 
 
+def _extras_shot_names(ext: dict) -> list:
+    """Shot Name list from an extras entry (accepts the legacy singular 'shot_name',
+    which some entries hold as several whitespace-separated names in one string —
+    split those into individual names)."""
+    names = ext.get("shot_names")
+    if not isinstance(names, list):
+        names = (ext.get("shot_name") or "").split()
+    return _dedupe_names(names)
+
+
+def _extras_element_names(ext: dict) -> list:
+    """Element Name list from an extras entry."""
+    return _dedupe_names(ext.get("element_names"))
+
+
 def _apply_take_extras(rows: list, extras: dict) -> list:
-    """Attach Shot Names, Parent Take (+ resolved label) and the derived
-    Children Takes list to each row."""
+    """Attach Shot Names, Element Names, Parent Take (+ resolved label) and the
+    derived Children Takes list to each row."""
     take_map = extras.get("takes", {})
     by_key   = {r.get("_override_key", ""): r for r in rows}
 
@@ -731,9 +741,10 @@ def _apply_take_extras(rows: list, extras: dict) -> list:
     for row in rows:
         k   = row.get("_override_key", "")
         ext = take_map.get(k, {})
-        row["_shot_names"]  = _extras_shot_names(ext)
-        parent             = _extras_parent(ext)
-        row["_parent_take"] = parent
+        row["_shot_names"]    = _extras_shot_names(ext)
+        row["_element_names"] = _extras_element_names(ext)
+        parent               = _extras_parent(ext)
+        row["_parent_take"]   = parent
         if parent:
             children.setdefault(parent, []).append(k)
 
@@ -764,8 +775,9 @@ def _would_cycle(takes: dict, child_key: str, new_parent: str) -> bool:
 
 @app.route("/api/take-extras/save", methods=["POST"])
 def api_save_take_extras():
-    """Merge-update Shot Names and/or Parent Take for one take. Only the keys
-    present in the request body are touched; an entry left empty is removed."""
+    """Merge-update Shot Names, Element Names and/or Parent Take for one take.
+    Only the keys present in the request body are touched; an entry left empty
+    is removed."""
     try:
         body = request.json or {}
         key  = body.get("key", "")
@@ -777,18 +789,19 @@ def api_save_take_extras():
         entry = dict(takes.get(key, {}))
 
         if "shot_names" in body:
-            raw = body.get("shot_names")
-            names, seen = [], set()
-            for n in (raw if isinstance(raw, list) else []):
-                n = (n or "").strip()
-                if n and n not in seen:
-                    seen.add(n)
-                    names.append(n)
+            names = _dedupe_names(body.get("shot_names"))
             entry.pop("shot_name", None)   # drop legacy singular key on write
             if names:
                 entry["shot_names"] = names
             else:
                 entry.pop("shot_names", None)
+
+        if "element_names" in body:
+            names = _dedupe_names(body.get("element_names"))
+            if names:
+                entry["element_names"] = names
+            else:
+                entry.pop("element_names", None)
 
         if "parent_take" in body or "linked_take" in body:
             parent = (body.get("parent_take") or body.get("linked_take") or "").strip()
