@@ -1054,6 +1054,15 @@ def _find_db_json_file() -> tuple:
     return jsonfile, (m.group(1) if m else None)
 
 
+def _cell_text(v) -> str:
+    """Stringify a row value for CSV/PDF output. Multi-value fields (Shot
+    Name, Element Name) are stored as lists — join them instead of dumping
+    a Python repr like "['A', 'B']"."""
+    if isinstance(v, list):
+        return "; ".join(str(x) for x in v if x)
+    return str(v or "")
+
+
 def _slate_scene_key(slate: str) -> str | None:
     """'18/2' → '18', '49A/1' → '49', 'P37A/3' → 'P37', 'P1/2' → 'P1'."""
     s = slate.strip()
@@ -1535,7 +1544,7 @@ def api_extract_slates_export():
 
             if fmt == "csv":
                 sorted_rows = sorted(matching, key=lambda r: str(r.get(sort_key) or ""), reverse=not sort_asc)
-                esc   = lambda v: '"' + str(v or "").replace('"', '""') + '"'
+                esc   = lambda v: '"' + _cell_text(v).replace('"', '""') + '"'
                 lines = [",".join(esc(c) for c in cols)]
                 for row in sorted_rows:
                     lines.append(",".join(esc(row.get(c, "")) for c in cols))
@@ -1658,6 +1667,7 @@ PDF_TAKE_COL_WEIGHTS = {
     'Body': 1.5, 'Camera Move': 2.0, 'Resolution': 1.3, 'Focus': 1.1,
     'Tilt': 1.1, 'Height': 1.1, 'WB': 1.1, 'ISO': 1.1, 'Filter': 1.3,
     'Take Notes': 3.0, '_shared_note': 3.0, '_note': 3.0,
+    '_shot_names': 2.0, '_element_names': 2.0,
 }
 PDF_TAKE_COL_STYLES = {
     'Take': 'center', 'Camera': 'center', 'Focal': 'center',
@@ -1961,11 +1971,11 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
                     if f == 'VFX Pass / Ref':
                         row_cells.append(Paragraph('YES' if is_vfx else '', sty_vfx))
                     elif sty == 'mono':
-                        row_cells.append(Paragraph(r.get(f, '') or '—', sty_mono))
+                        row_cells.append(Paragraph(_cell_text(r.get(f)) or '—', sty_mono))
                     elif sty == 'center':
-                        row_cells.append(Paragraph(r.get(f, '') or '—', sty_tc_c))
+                        row_cells.append(Paragraph(_cell_text(r.get(f)) or '—', sty_tc_c))
                     else:
-                        row_cells.append(Paragraph(r.get(f, '') or '—', sty_tc))
+                        row_cells.append(Paragraph(_cell_text(r.get(f)) or '—', sty_tc))
                 take_data.append(row_cells)
 
             # data rows start at index 2 (row 0 = slate label, row 1 = col headers)

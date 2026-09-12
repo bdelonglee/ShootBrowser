@@ -108,6 +108,15 @@ def blank_added_take_fields() -> dict:
     return fields
 
 
+def _cell_text(v) -> str:
+    """Stringify a row value for CSV/export output. Multi-value fields (Shot
+    Name, Element Name) are stored as lists — join them instead of dumping a
+    Python repr like "['A', 'B']". Mirrors server.py's helper of the same name."""
+    if isinstance(v, list):
+        return '; '.join(str(x) for x in v if x)
+    return str(v or '')
+
+
 @dataclass
 class SubdirChild:
     name: str
@@ -566,7 +575,7 @@ class HTMLGenerator:
         writer = csv.writer(out)
         writer.writerow(cols)
         for row in rows:
-            writer.writerow([str(row.get(c, '') or '') for c in cols])
+            writer.writerow([_cell_text(row.get(c)) for c in cols])
         return out.getvalue().encode('utf-8-sig')
 
     def _copy_lidar_previews(self, entries: list, export_dir: Path, assets_root: str) -> list:
@@ -5328,8 +5337,10 @@ function _csvDefaultCols() {{
     const rest = all.filter(c => !CSV_ORDERED.includes(c));
     const CSV_LABELS = {{ 'Take Notes': 'Take note' }};
     const cols = [...ord, ...rest].map(f => ({{ field: f, on: true, ...(CSV_LABELS[f] ? {{label: CSV_LABELS[f]}} : {{}}) }}));
-    cols.push({{ field: '_shared_note', label: 'Shared Note', on: false }});
-    cols.push({{ field: '_note',        label: 'Internal Note', on: false }});
+    cols.push({{ field: '_shared_note',   label: 'Shared Note', on: false }});
+    cols.push({{ field: '_note',          label: 'Internal Note', on: false }});
+    cols.push({{ field: '_shot_names',    label: 'Shot Name', on: false }});
+    cols.push({{ field: '_element_names', label: 'Element Name', on: false }});
     return cols;
 }}
 
@@ -5459,7 +5470,8 @@ function _csvCurrentConfig() {{
 function _csvApplyConfig(cfg) {{
     if (cfg.cols && cfg.cols.length) csvModalCols = cfg.cols.map(c => ({{...c}}));
     csvModalSort  = {{ key: cfg.sortKey || 'Slate', asc: cfg.sortAsc !== false }};
-    for (const [f, lbl] of [['_shared_note', 'Shared Note'], ['_note', 'Internal Note']]) {{
+    for (const [f, lbl] of [['_shared_note', 'Shared Note'], ['_note', 'Internal Note'],
+                             ['_shot_names', 'Shot Name'], ['_element_names', 'Element Name']]) {{
         if (!csvModalCols.some(c => c.field === f))
             csvModalCols.push({{ field: f, label: lbl, on: false }});
     }}
@@ -5527,7 +5539,7 @@ function _doExportCsv(downloadName) {{
         return sortAsc ? cmp : -cmp;
     }});
 
-    const esc   = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const esc   = v => '"' + String(Array.isArray(v) ? v.join('; ') : (v ?? '')).replace(/"/g, '""') + '"';
     const lines = [cols.map(esc).join(',')];
     for (const row of sorted) lines.push(cols.map(c => esc(row[c])).join(','));
 
@@ -5792,6 +5804,8 @@ const PDF_TAKE_AVAIL = [
     {{field:'Take Notes',     label:'Take note'}},
     {{field:'_shared_note',   label:'Shared Note'}},
     {{field:'_note',          label:'Internal Note'}},
+    {{field:'_shot_names',    label:'Shot Name'}},
+    {{field:'_element_names', label:'Element Name'}},
 ];
 
 let pdfPresets      = {{}};
@@ -5981,7 +5995,8 @@ function _pdfApplyConfig(cfg) {{
     if (cfg.takeCols && cfg.takeCols.length) pdfTakeCols = cfg.takeCols.map(c=>({{...c}}));
     pdfShowVfxWork = cfg.showVfxWork !== false;
     pdfShowNotes   = cfg.showNotes   !== false;
-    for (const [f, lbl] of [['_shared_note', 'Shared Note'], ['_note', 'Internal Note']]) {{
+    for (const [f, lbl] of [['_shared_note', 'Shared Note'], ['_note', 'Internal Note'],
+                             ['_shot_names', 'Shot Name'], ['_element_names', 'Element Name']]) {{
         if (!pdfTakeCols.some(c => c.field === f))
             pdfTakeCols.push({{ field: f, label: lbl, on: false }});
     }}
