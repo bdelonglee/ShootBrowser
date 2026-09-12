@@ -777,11 +777,13 @@ class HTMLGenerator:
         generated_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         offline_mode         = offline_data is not None or db_only
         db_only_mode         = db_only
-        offline_db_json      = json.dumps(offline_data['db_rows']       if offline_data else [])
-        offline_del_json     = json.dumps(offline_data['delivered']     if offline_data else [])
-        offline_photos_json  = json.dumps(offline_data['photos']        if offline_data else {})
-        offline_lidar_json   = json.dumps(offline_data['lidar_entries'] if offline_data else [])
-        offline_assets_json  = json.dumps(offline_data['assets_data']   if offline_data else [])
+        # .get() with defaults — some callers (per-block HTML export) pass a
+        # partial offline_data dict covering only db_rows/delivered/photos.
+        offline_db_json      = json.dumps(offline_data.get('db_rows', [])       if offline_data else [])
+        offline_del_json     = json.dumps(offline_data.get('delivered', [])     if offline_data else [])
+        offline_photos_json  = json.dumps(offline_data.get('photos', {})        if offline_data else {})
+        offline_lidar_json   = json.dumps(offline_data.get('lidar_entries', []) if offline_data else [])
+        offline_assets_json  = json.dumps(offline_data.get('assets_data', [])   if offline_data else [])
 
         return f"""<!DOCTYPE html>
 <html lang="en">
