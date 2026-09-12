@@ -1762,6 +1762,7 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
     MUTED  = colors.HexColor('#5a6a7a')
     BLACK  = colors.HexColor('#1a1a2e')
     BLUEHI = colors.HexColor('#e8f0f8')
+    PINK   = colors.HexColor('#e0559e')   # Element Name — matches the web UI's pink badge
 
     # ── Paragraph style factory ───────────────────────────────────────
     def _s(name, **kw):
@@ -1796,10 +1797,31 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
                           textColor=colors.HexColor('#8ab4d4'), leading=10)
     sty_shot_big    = _s('SHB', fontSize=26, fontName='Helvetica-Bold',
                           textColor=colors.white, leading=30)
-    sty_element_hdr = _s('ELH', fontSize=13, fontName='Helvetica-Bold',
-                          textColor=BLUE, spaceBefore=2, spaceAfter=3)
-    sty_element_none = _s('ELN', fontSize=9.5, fontName='Helvetica-Oblique',
+    # Element Name renders as a solid pink bar (like the navy Shot Name / blue
+    # Slate bars) rather than a plain heading, so it visually pops between them.
+    sty_element_label = _s('ELL', fontSize=7, fontName='Helvetica-Bold',
+                          textColor=colors.HexColor('#f6c9e2'), leading=9)
+    sty_element_big = _s('ELB', fontSize=13, fontName='Helvetica-Bold',
+                          textColor=colors.white, leading=15)
+    sty_element_none = _s('ELN', fontSize=8, fontName='Helvetica-Oblique',
                           textColor=MUTED, spaceBefore=2, spaceAfter=3)
+    # Compact styles for the Shot Name mode's per-element Slate info + Take
+    # row — much smaller than the slate-mode equivalents (sty_label/sty_value/
+    # sty_th/sty_tc/...) so more fits without needing wider columns. Kept as
+    # separate styles rather than shrinking the shared ones, so slate mode is
+    # untouched.
+    sty_c_label  = _s('CLB', fontSize=5.5, fontName='Helvetica-Bold',
+                          textColor=MUTED, leading=7)
+    sty_c_value  = _s('CVL', fontSize=6.5, leading=8)
+    sty_c_th     = _s('CTH', fontSize=6, fontName='Helvetica-Bold',
+                          textColor=colors.white, alignment=TA_CENTER)
+    sty_c_tc     = _s('CTC', fontSize=6.5, leading=8)
+    sty_c_tc_c   = _s('CTCC', fontSize=6.5, leading=8, alignment=TA_CENTER)
+    sty_c_mono   = _s('CMO', fontSize=6, fontName='Courier')
+    sty_c_vfx    = _s('CVX', fontSize=6.5, alignment=TA_CENTER,
+                          textColor=GREEN, fontName='Helvetica-Bold')
+    sty_c_slate_lbl = _s('CSL', fontSize=6.5, fontName='Helvetica-Bold', textColor=colors.white)
+    sty_c_slate_val = _s('CSV', fontSize=6.5, textColor=colors.white)
 
     export_date   = datetime.now().strftime('%d/%m/%Y')
     all_flat      = [r for rows in slate_rows.values() for r in rows]
@@ -2108,47 +2130,62 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
             slate_disp = row.get('Slate', '') or '—'
             record     = records_by_slate.get(_base_slate(slate_disp))
 
-            # Element Name — second most prominent thing on the page.
+            # Element Name — a solid pink bar, so it visually pops between the
+            # navy Shot Name header above and the blue Slate bar below.
             if el:
-                story.append(Paragraph(_pdf_text(el), sty_element_hdr))
+                el_bar = Table(
+                    [[Paragraph('ELEMENT', sty_element_label)],
+                     [Paragraph(_pdf_text(el), sty_element_big)]],
+                    colWidths=[CW],
+                )
+                el_bar.setStyle(TableStyle([
+                    ('BACKGROUND',    (0,0), (-1,-1), PINK),
+                    ('TOPPADDING',    (0,0), (-1,0),  4),
+                    ('BOTTOMPADDING', (0,0), (-1,0),  0),
+                    ('TOPPADDING',    (0,1), (-1,1),  0),
+                    ('BOTTOMPADDING', (0,1), (-1,1),  5),
+                    ('LEFTPADDING',   (0,0), (-1,-1), 8),
+                    ('RIGHTPADDING',  (0,0), (-1,-1), 8),
+                ]))
+                story.append(el_bar)
+                story.append(Spacer(1, 1 * mm))
             else:
                 story.append(Paragraph('— no elements for this Shot Name —', sty_element_none))
 
             # Compact slate info bar: Slate ID + Scene Description, one line.
             scene_desc = (row.get('Scene Description', '') or '').strip() or '—'
             slate_bar = Table(
-                [[Paragraph(f'SLATE&nbsp;&nbsp;{_pdf_text(slate_disp)}',
-                            _s('SLC', fontSize=8, fontName='Helvetica-Bold', textColor=colors.white)),
-                  Paragraph(_pdf_text(scene_desc),
-                            _s('SLD', fontSize=8, textColor=colors.white))]],
-                colWidths=[32 * mm, CW - 32 * mm],
+                [[Paragraph(f'SLATE&nbsp;&nbsp;{_pdf_text(slate_disp)}', sty_c_slate_lbl),
+                  Paragraph(_pdf_text(scene_desc), sty_c_slate_val)]],
+                colWidths=[26 * mm, CW - 26 * mm],
             )
             slate_bar.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,-1), BLUE),
-                ('PADDING',    (0,0), (-1,-1), 5),
+                ('PADDING',    (0,0), (-1,-1), 3),
                 ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
             ]))
             story.append(slate_bar)
 
-            # Compact info line — same info_fields config, packed 4 pairs per row.
+            # Compact info line — same info_fields config, packed 6 pairs per row
+            # (small font leaves room for more pairs across the same width).
             if info_fields:
-                PAIR_PER_ROW = 4
+                PAIR_PER_ROW = 6
                 cells = []
                 for f in info_fields:
                     val = (row.get(f, '') or '').strip() or '—'
-                    cells.append(Paragraph(f, sty_label))
-                    cells.append(Paragraph(_pdf_text(val), sty_value))
+                    cells.append(Paragraph(f, sty_c_label))
+                    cells.append(Paragraph(_pdf_text(val), sty_c_value))
                 while len(cells) % (PAIR_PER_ROW * 2):
                     cells.append('')
                 info_rows_c = [cells[i:i + PAIR_PER_ROW * 2]
                                for i in range(0, len(cells), PAIR_PER_ROW * 2)]
-                ilw_c = 20 * mm
+                ilw_c = 14 * mm
                 ivw_c = (CW - PAIR_PER_ROW * ilw_c) / PAIR_PER_ROW
                 info_tbl_c = Table(info_rows_c, colWidths=[ilw_c, ivw_c] * PAIR_PER_ROW)
                 info_tbl_c.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (-1,-1), BGRAY),
                     ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
-                    ('PADDING',    (0,0), (-1,-1), 3),
+                    ('PADDING',    (0,0), (-1,-1), 2),
                     ('VALIGN',     (0,0), (-1,-1), 'TOP'),
                 ]))
                 story.append(info_tbl_c)
@@ -2189,32 +2226,32 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
                 tcw     = [CW * PDF_TAKE_COL_WEIGHTS.get(c['field'], 1.5) / total_w
                            for c in take_cols]
                 is_vfx  = (row.get('VFX Pass / Ref') or '').strip().lower() == 'yes'
-                header_row = [Paragraph(c['label'], sty_th) for c in take_cols]
+                header_row = [Paragraph(c['label'], sty_c_th) for c in take_cols]
                 data_row   = []
                 for c in take_cols:
                     f   = c['field']
                     sty = PDF_TAKE_COL_STYLES.get(f, 'normal')
                     if f == 'VFX Pass / Ref':
-                        data_row.append(Paragraph('YES' if is_vfx else '', sty_vfx))
+                        data_row.append(Paragraph('YES' if is_vfx else '', sty_c_vfx))
                     elif sty == 'mono':
-                        data_row.append(Paragraph(_cell_text(row.get(f)) or '—', sty_mono))
+                        data_row.append(Paragraph(_cell_text(row.get(f)) or '—', sty_c_mono))
                     elif sty == 'center':
-                        data_row.append(Paragraph(_cell_text(row.get(f)) or '—', sty_tc_c))
+                        data_row.append(Paragraph(_cell_text(row.get(f)) or '—', sty_c_tc_c))
                     else:
-                        data_row.append(Paragraph(_cell_text(row.get(f)) or '—', sty_tc))
+                        data_row.append(Paragraph(_cell_text(row.get(f)) or '—', sty_c_tc))
                 take_tbl_c = Table([header_row, data_row], colWidths=tcw)
                 take_tbl_c.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (-1,0), BLUE),
                     ('BACKGROUND', (0,1), (-1,1),
                      colors.HexColor('#edfaf2') if is_vfx else colors.white),
                     ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
-                    ('PADDING',    (0,0), (-1,-1), 4),
+                    ('PADDING',    (0,0), (-1,-1), 2),
                     ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
                 ]))
-                story.append(Spacer(1, 1.5 * mm))
+                story.append(Spacer(1, 1 * mm))
                 story.append(take_tbl_c)
 
-            story.append(Spacer(1, 5 * mm))
+            story.append(Spacer(1, 3 * mm))
 
         story.append(PageBreak())
 
