@@ -637,6 +637,8 @@ class HTMLGenerator:
             return []
         rows = []
         for f in sorted(d.glob('*.json')):
+            if f.name.startswith('.'):   # e.g. macOS AppleDouble shadow files on exFAT drives
+                continue
             try:
                 obj = json.loads(f.read_text(encoding='utf-8'))
             except Exception:

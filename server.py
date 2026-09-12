@@ -841,8 +841,35 @@ def _added_takes_dir() -> Path:
     return Path(DATA_DIR) / "__DATABASE" / "added_takes"
 
 
-def _added_take_path(take_id: str) -> Path:
-    return _added_takes_dir() / f"{take_id}.json"
+def _slugify_roll(roll: str) -> str:
+    """Roll value -> filesystem-safe filename fragment (spaces -> underscore,
+    characters illegal on Windows/macOS replaced)."""
+    s = (roll or "").strip()
+    if not s:
+        return ""
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r'[\/\\:*?"<>|]', "-", s)
+    return s
+
+
+def _added_take_write_path(roll: str, take_id: str) -> Path:
+    """Where a take with this Roll should live — <roll>__<take_id>.json, or
+    just <take_id>.json when Roll is blank. take_id is always present so the
+    filename stays unique even if two takes share the same Roll."""
+    slug = _slugify_roll(roll)
+    name = f"{slug}__{take_id}.json" if slug else f"{take_id}.json"
+    return _added_takes_dir() / name
+
+
+def _find_added_take_file(take_id: str):
+    """Locate an added take's file by its take_id, regardless of Roll prefix
+    (or lack of one — older files were named <take_id>.json only)."""
+    d = _added_takes_dir()
+    if not d.exists():
+        return None
+    matches = [f for f in list(d.glob(f"*__{take_id}.json")) + list(d.glob(f"{take_id}.json"))
+               if not f.name.startswith(".")]
+    return matches[0] if matches else None
 
 
 def _load_added_take_rows() -> list:
@@ -853,6 +880,8 @@ def _load_added_take_rows() -> list:
         return []
     rows = []
     for f in sorted(d.glob("*.json")):
+        if f.name.startswith("."):   # e.g. macOS AppleDouble shadow files on exFAT drives
+            continue
         try:
             obj = json.loads(f.read_text(encoding="utf-8"))
         except Exception:
@@ -905,7 +934,9 @@ def api_create_added_take():
             "fields": fields,
         }
         _added_takes_dir().mkdir(parents=True, exist_ok=True)
-        _added_take_path(take_id).write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+        _added_take_write_path(fields.get("Roll", ""), take_id).write_text(
+            json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         return jsonify({"success": True, "key": f"{record_id}::{take_id}"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -923,14 +954,18 @@ def api_update_added_take():
         if not key or "::" not in key or not isinstance(fields, dict):
             return jsonify({"success": False, "error": "key and fields required"}), 400
         _, take_id = key.split("::", 1)
-        p = _added_take_path(take_id)
-        if not p.exists():
+        p = _find_added_take_file(take_id)
+        if not p:
             return jsonify({"success": False, "error": "added take not found"}), 404
         obj = json.loads(p.read_text(encoding="utf-8"))
         obj.setdefault("fields", {}).update(
             {k: v for k, v in fields.items() if k in DENORMALIZED_ROW_FIELDS}
         )
-        p.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+        # Keep the filename's Roll prefix in sync — rename if it changed.
+        new_path = _added_take_write_path(obj["fields"].get("Roll", ""), take_id)
+        if new_path != p and p.exists():
+            p.unlink()
+        new_path.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -944,8 +979,8 @@ def api_delete_added_take():
         if not key or "::" not in key:
             return jsonify({"success": False, "error": "key required"}), 400
         _, take_id = key.split("::", 1)
-        p = _added_take_path(take_id)
-        if p.exists():
+        p = _find_added_take_file(take_id)
+        if p and p.exists():
             p.unlink()
         return jsonify({"success": True})
     except Exception as e:
