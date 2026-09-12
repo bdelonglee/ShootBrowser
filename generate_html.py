@@ -5671,7 +5671,8 @@ async function _doExtractAll() {{
         {{ format: 'pdf',
            info_fields:   pdfInfoCols.filter(c => c.on).map(c => c.field),
            take_cols:     pdfTakeCols.filter(c => c.on).map(c => ({{field: c.field, label: c.label}})),
-           show_vfx_work: pdfShowVfxWork, show_notes: pdfShowNotes, landscape: pdfLandscape }},
+           show_vfx_work: pdfShowVfxWork, show_notes: pdfShowNotes, landscape: pdfLandscape,
+           pdf_mode: pdfMode }},
         {{ format: withPhotos ? 'html_photos' : 'html' }},
     ];
 
@@ -5818,6 +5819,7 @@ let pdfInfoCols     = [];   // [{{field, on}}]
 let pdfTakeCols     = [];   // [{{field, label, on}}]
 let pdfShowVfxWork  = true;
 let pdfShowNotes    = true;
+let pdfMode         = 'slate';   // 'slate' | 'shotname'
 
 async function _loadPdfPresets() {{
     try {{ pdfPresets = await fetch('/api/ui-presets/pdf_presets').then(r => r.json()); }}
@@ -5899,6 +5901,19 @@ function _renderPdfModal() {{
         '</div>' +
         '</div>';
 
+    const modeHtml =
+        '<div>' +
+        '<div class="pdf-section-label">Page layout</div>' +
+        '<div class="pdf-scope-row">' +
+        '<label title="One page per slate, all its takes in one table (the classic layout)">' +
+        '<input type="radio" name="pdf-mode" value="slate"' + (pdfMode==='slate' ? ' checked' : '') +
+            ' onchange="pdfMode=&#39;slate&#39;"> Per Slate</label>' +
+        '<label title="One page per Shot Name, grouping its Element Names with each one&#39;s Slate info, photos, and take">' +
+        '<input type="radio" name="pdf-mode" value="shotname"' + (pdfMode==='shotname' ? ' checked' : '') +
+            ' onchange="pdfMode=&#39;shotname&#39;"> Per Shot Name</label>' +
+        '</div>' +
+        '</div>';
+
     const sortFields = ['Slate','Date','Shoot Day','VFX ID','Scene Description'];
     const sortHtml =
         '<div>' +
@@ -5961,7 +5976,7 @@ function _renderPdfModal() {{
         '<div class="pdf-col-list" style="margin-top:6px">' + takeRows + '</div>' +
         '</div>';
 
-    body.innerHTML = presetHtml + scopeHtml + orientHtml + sortHtml + infoHtml + textHtml + takeHtml;
+    body.innerHTML = presetHtml + scopeHtml + orientHtml + modeHtml + sortHtml + infoHtml + textHtml + takeHtml;
 }}
 
 function _pdfSortKeyChange(v) {{ pdfSortKey = v; }}
@@ -5980,7 +5995,7 @@ function _pdfTakeCheckAll(on) {{ pdfTakeCols.forEach(c=>c.on=on); _renderPdfModa
 function _pdfCurrentConfig() {{
     return {{
         scope: pdfScope, sortKey: pdfSortKey, sortAsc: pdfSortAsc,
-        landscape: pdfLandscape,
+        landscape: pdfLandscape, mode: pdfMode,
         infoCols: pdfInfoCols.map(c=>({{...c}})),
         takeCols: pdfTakeCols.map(c=>({{...c}})),
         showVfxWork: pdfShowVfxWork, showNotes: pdfShowNotes,
@@ -5991,6 +6006,7 @@ function _pdfApplyConfig(cfg) {{
     pdfSortKey     = cfg.sortKey     || 'Slate';
     pdfSortAsc     = cfg.sortAsc     !== false;
     pdfLandscape   = cfg.landscape   !== false;
+    pdfMode        = cfg.mode        || 'slate';
     if (cfg.infoCols && cfg.infoCols.length) pdfInfoCols = cfg.infoCols.map(c=>({{...c}}));
     if (cfg.takeCols && cfg.takeCols.length) pdfTakeCols = cfg.takeCols.map(c=>({{...c}}));
     pdfShowVfxWork = cfg.showVfxWork !== false;
@@ -6061,6 +6077,7 @@ async function _doPdfExport(downloadName) {{
             show_vfx_work: pdfShowVfxWork,
             show_notes: pdfShowNotes,
             landscape: pdfLandscape,
+            pdf_mode: pdfMode,
         }});
         return;
     }}
@@ -6109,6 +6126,7 @@ async function _doPdfExport(downloadName) {{
                 show_vfx_work: pdfShowVfxWork,
                 show_notes: pdfShowNotes,
                 landscape: pdfLandscape,
+                pdf_mode: pdfMode,
             }}),
         }});
         if (!res.ok) {{
@@ -7614,6 +7632,7 @@ async function _doGlobalExportAll() {{
                     show_vfx_work: pdfCfg.showVfxWork,
                     show_notes:    pdfCfg.showNotes,
                     landscape:     pdfCfg.landscape,
+                    mode:          pdfCfg.mode,
                 }},
             }}),
         }});

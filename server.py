@@ -1063,6 +1063,41 @@ def _cell_text(v) -> str:
     return str(v or "")
 
 
+def _pdf_text(v) -> str:
+    """_cell_text() output, XML-escaped for safe use inside a reportlab
+    Paragraph (which parses a small HTML-like markup — user-typed Shot Name /
+    Element Name text needs escaping since it can contain '&', '<', etc.)."""
+    from xml.sax.saxutils import escape
+    return escape(_cell_text(v))
+
+
+def _build_shotname_groups(all_rows: list) -> list:
+    """Group elements by Shot Name for the PDF's "Shot Name" page-layout mode.
+
+    Returns a list of {"shot_name": str, "items": [{"element_name": str, "row": dict}, ...]},
+    sorted by shot name. A shot name with no elements at all still gets one
+    item with element_name="" (its Slate/Take info is still worth a page).
+    An element is attributed to whichever of its own row's shot names it
+    starts with (longest match wins, for a row carrying several shot names);
+    if none match — bad/inconsistent data — it falls back to that row's
+    first shot name rather than being dropped."""
+    groups: dict = {}
+    for row in all_rows:
+        shot_names = row.get("_shot_names") or []
+        element_names = row.get("_element_names") or []
+        if not shot_names:
+            continue
+        if not element_names:
+            for sn in shot_names:
+                groups.setdefault(sn, []).append({"element_name": "", "row": row})
+            continue
+        for el in element_names:
+            matches = [sn for sn in shot_names if el.startswith(sn)]
+            owner = max(matches, key=len) if matches else shot_names[0]
+            groups.setdefault(owner, []).append({"element_name": el, "row": row})
+    return [{"shot_name": sn, "items": groups[sn]} for sn in sorted(groups.keys())]
+
+
 def _slate_scene_key(slate: str) -> str | None:
     """'18/2' → '18', '49A/1' → '49', 'P37A/3' → 'P37', 'P1/2' → 'P1'."""
     s = slate.strip()
@@ -1505,6 +1540,7 @@ def api_extract_slates_export():
     show_vfx_work = body.get("show_vfx_work", True)
     show_notes    = body.get("show_notes",    True)
     pdf_landscape = body.get("landscape",     True)
+    pdf_mode      = body.get("pdf_mode",      "slate")
 
     records_by_slate = {r["slateId"]: r for r in data.get("records", [])}
     project_name     = (data.get("project") or {}).get("name", "VFX Shoot")
@@ -1565,7 +1601,7 @@ def api_extract_slates_export():
                 _generate_pdf(buf, project_name, slate_ids, slate_rows, records_by_slate,
                               info_fields=info_fields, take_cols=take_cols_pdf,
                               show_vfx_work=show_vfx_work, show_notes=show_notes,
-                              landscape=pdf_landscape)
+                              landscape=pdf_landscape, mode=pdf_mode)
                 buf.seek(0)
                 out_path.write_bytes(buf.read())
 
@@ -1681,8 +1717,19 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
                   slate_rows: dict, records_by_slate: dict,
                   info_fields=None, take_cols=None,
                   show_vfx_work=True, show_notes=True,
-                  landscape=True) -> None:
-    """Render a PDF report into buf (a writable file-like object)."""
+                  landscape=True, mode: str = "slate") -> None:
+    """Render a PDF report into buf (a writable file-like object).
+
+    mode="slate" (default): one page per slate, all its takes in one table
+    (the original layout).
+    mode="shotname": groups by Shot Name instead. Cover page lists every
+    Shot Name with its Element Names (grouped, via _build_shotname_groups),
+    ahead of the usual slate index. Body is one page per Shot Name, each
+    containing one Element block per (element, contributing take): a big
+    Shot Name header, the Element Name, a compact Slate info bar + photos,
+    and a single-row Take table for just that take. Falls back to mode="slate"
+    entirely if the export has no Shot Names at all — see `effective_mode`.
+    """
     try:
         from reportlab.lib.pagesizes import A4, landscape as _landscape
         from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
@@ -1742,10 +1789,27 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
     sty_note_val    = _s('NV', fontSize=8.5, leading=12)
     sty_slate_idx   = _s('SI', fontSize=8, fontName='Helvetica-Bold',
                           textColor=BLUE, alignment=TA_CENTER)
+    sty_sn_header   = _s('SNH', fontSize=10, fontName='Helvetica-Bold',
+                          textColor=BLUE, leftIndent=0, spaceBefore=4, spaceAfter=1)
+    sty_sn_element  = _s('SNE', fontSize=8.5, textColor=MUTED, leftIndent=8, spaceAfter=1)
+    sty_shot_label  = _s('SHL', fontSize=8, fontName='Helvetica-Bold',
+                          textColor=colors.HexColor('#8ab4d4'), leading=10)
+    sty_shot_big    = _s('SHB', fontSize=26, fontName='Helvetica-Bold',
+                          textColor=colors.white, leading=30)
+    sty_element_hdr = _s('ELH', fontSize=13, fontName='Helvetica-Bold',
+                          textColor=BLUE, spaceBefore=2, spaceAfter=3)
+    sty_element_none = _s('ELN', fontSize=9.5, fontName='Helvetica-Oblique',
+                          textColor=MUTED, spaceBefore=2, spaceAfter=3)
 
     export_date   = datetime.now().strftime('%d/%m/%Y')
     all_flat      = [r for rows in slate_rows.values() for r in rows]
     total_takes   = len(all_flat)
+
+    shotname_groups = _build_shotname_groups(all_flat) if mode == "shotname" else []
+    effective_mode  = "shotname" if (mode == "shotname" and shotname_groups) else "slate"
+
+    def _base_slate(s):
+        return re.sub(r'/\d+$', '', (s or '').strip())
 
     # ── Document ──────────────────────────────────────────────────────
     doc = SimpleDocTemplate(
@@ -1796,6 +1860,17 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
     story.append(stat_tbl)
     story.append(Spacer(1, 10 * mm))
 
+    # Shot Name mode: Shot Names + their Element Names, ahead of the slate index.
+    if effective_mode == "shotname":
+        story.append(Paragraph('Shot Names in this export', sty_h3))
+        story.append(Spacer(1, 2 * mm))
+        for grp in shotname_groups:
+            story.append(Paragraph(f'ShotName&nbsp;&nbsp;{_pdf_text(grp["shot_name"])}', sty_sn_header))
+            for item in grp['items']:
+                if item['element_name']:
+                    story.append(Paragraph(f'Element&nbsp;&nbsp;{_pdf_text(item["element_name"])}', sty_sn_element))
+        story.append(Spacer(1, 8 * mm))
+
     # Slate index grid
     story.append(Paragraph('Slates in this export', sty_h3))
     story.append(Spacer(1, 2 * mm))
@@ -1816,8 +1891,8 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
     story.append(idx_tbl)
     story.append(PageBreak())
 
-    # ── Slate pages ───────────────────────────────────────────────────
-    for slate_id in ordered_slates:
+    # ── Slate pages (mode="slate") ──────────────────────────────────────
+    for slate_id in (ordered_slates if effective_mode == "slate" else []):
         rows   = slate_rows.get(slate_id, [])
         if not rows:
             continue
@@ -1997,6 +2072,149 @@ def _generate_pdf(buf, project_name: str, ordered_slates: list,
             ] + bg_cmds))
             story.append(Spacer(1, 1.5 * mm))
             story.append(take_tbl)
+
+        story.append(PageBreak())
+
+    # ── Shot Name pages (mode="shotname") ───────────────────────────────
+    # One page (or run of pages) per Shot Name. Within it, one block per
+    # Element Name (or one block for the take itself if it has none): a big
+    # Shot Name header (most prominent thing on the page), the Element Name,
+    # a compact Slate info bar + photos (photos stay full-size — only the
+    # surrounding info is shrunk), then a single-row Take table for just
+    # that one take.
+    for grp in (shotname_groups if effective_mode == "shotname" else []):
+        shot_name = grp['shot_name']
+
+        sn_hdr = Table(
+            [[Paragraph('SHOT NAME', sty_shot_label)],
+             [Paragraph(_pdf_text(shot_name), sty_shot_big)]],
+            colWidths=[CW],
+        )
+        sn_hdr.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), NAVY),
+            ('TOPPADDING',    (0,0), (-1,0),  8),
+            ('BOTTOMPADDING', (0,0), (-1,0),  0),
+            ('TOPPADDING',    (0,1), (-1,1),  0),
+            ('BOTTOMPADDING', (0,1), (-1,1),  10),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+        ]))
+        story.append(sn_hdr)
+        story.append(Spacer(1, 3 * mm))
+
+        for item in grp['items']:
+            el  = item['element_name']
+            row = item['row']
+            slate_disp = row.get('Slate', '') or '—'
+            record     = records_by_slate.get(_base_slate(slate_disp))
+
+            # Element Name — second most prominent thing on the page.
+            if el:
+                story.append(Paragraph(_pdf_text(el), sty_element_hdr))
+            else:
+                story.append(Paragraph('— no elements for this Shot Name —', sty_element_none))
+
+            # Compact slate info bar: Slate ID + Scene Description, one line.
+            scene_desc = (row.get('Scene Description', '') or '').strip() or '—'
+            slate_bar = Table(
+                [[Paragraph(f'SLATE&nbsp;&nbsp;{_pdf_text(slate_disp)}',
+                            _s('SLC', fontSize=8, fontName='Helvetica-Bold', textColor=colors.white)),
+                  Paragraph(_pdf_text(scene_desc),
+                            _s('SLD', fontSize=8, textColor=colors.white))]],
+                colWidths=[32 * mm, CW - 32 * mm],
+            )
+            slate_bar.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), BLUE),
+                ('PADDING',    (0,0), (-1,-1), 5),
+                ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
+            ]))
+            story.append(slate_bar)
+
+            # Compact info line — same info_fields config, packed 4 pairs per row.
+            if info_fields:
+                PAIR_PER_ROW = 4
+                cells = []
+                for f in info_fields:
+                    val = (row.get(f, '') or '').strip() or '—'
+                    cells.append(Paragraph(f, sty_label))
+                    cells.append(Paragraph(_pdf_text(val), sty_value))
+                while len(cells) % (PAIR_PER_ROW * 2):
+                    cells.append('')
+                info_rows_c = [cells[i:i + PAIR_PER_ROW * 2]
+                               for i in range(0, len(cells), PAIR_PER_ROW * 2)]
+                ilw_c = 20 * mm
+                ivw_c = (CW - PAIR_PER_ROW * ilw_c) / PAIR_PER_ROW
+                info_tbl_c = Table(info_rows_c, colWidths=[ilw_c, ivw_c] * PAIR_PER_ROW)
+                info_tbl_c.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,-1), BGRAY),
+                    ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
+                    ('PADDING',    (0,0), (-1,-1), 3),
+                    ('VALIGN',     (0,0), (-1,-1), 'TOP'),
+                ]))
+                story.append(info_tbl_c)
+
+            # Reference photos — kept full-size, same treatment as slate mode.
+            if record:
+                pics = (record.get('referencePictures') or [])[:4]
+                img_bufs = []
+                for pic in pics:
+                    try:
+                        b64 = pic.split(',', 1)[1] if pic.startswith('data:') else pic
+                        img_bufs.append(io.BytesIO(base64.b64decode(b64)))
+                    except Exception:
+                        pass
+                if img_bufs:
+                    n     = len(img_bufs)
+                    ncols = min(n, 4)
+                    ph_w  = (CW - (ncols - 1) * 3 * mm) / ncols
+                    ph_h  = 60 * mm
+                    ph_row = []
+                    for j in range(ncols):
+                        try:
+                            ph_row.append(Image(img_bufs[j], width=ph_w, height=ph_h, kind='bound'))
+                        except Exception:
+                            ph_row.append('')
+                    ph_tbl = Table([ph_row], colWidths=[ph_w] * ncols)
+                    ph_tbl.setStyle(TableStyle([
+                        ('ALIGN',   (0,0), (-1,-1), 'CENTER'),
+                        ('VALIGN',  (0,0), (-1,-1), 'MIDDLE'),
+                        ('PADDING', (0,0), (-1,-1), 3),
+                    ]))
+                    story.append(Spacer(1, 1.5 * mm))
+                    story.append(ph_tbl)
+
+            # Take info — a single row, same take_cols config as slate mode.
+            if take_cols:
+                total_w = sum(PDF_TAKE_COL_WEIGHTS.get(c['field'], 1.5) for c in take_cols)
+                tcw     = [CW * PDF_TAKE_COL_WEIGHTS.get(c['field'], 1.5) / total_w
+                           for c in take_cols]
+                is_vfx  = (row.get('VFX Pass / Ref') or '').strip().lower() == 'yes'
+                header_row = [Paragraph(c['label'], sty_th) for c in take_cols]
+                data_row   = []
+                for c in take_cols:
+                    f   = c['field']
+                    sty = PDF_TAKE_COL_STYLES.get(f, 'normal')
+                    if f == 'VFX Pass / Ref':
+                        data_row.append(Paragraph('YES' if is_vfx else '', sty_vfx))
+                    elif sty == 'mono':
+                        data_row.append(Paragraph(_cell_text(row.get(f)) or '—', sty_mono))
+                    elif sty == 'center':
+                        data_row.append(Paragraph(_cell_text(row.get(f)) or '—', sty_tc_c))
+                    else:
+                        data_row.append(Paragraph(_cell_text(row.get(f)) or '—', sty_tc))
+                take_tbl_c = Table([header_row, data_row], colWidths=tcw)
+                take_tbl_c.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), BLUE),
+                    ('BACKGROUND', (0,1), (-1,1),
+                     colors.HexColor('#edfaf2') if is_vfx else colors.white),
+                    ('GRID',       (0,0), (-1,-1), 0.3, BORDER),
+                    ('PADDING',    (0,0), (-1,-1), 4),
+                    ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
+                ]))
+                story.append(Spacer(1, 1.5 * mm))
+                story.append(take_tbl_c)
+
+            story.append(Spacer(1, 5 * mm))
 
         story.append(PageBreak())
 
@@ -2211,12 +2429,13 @@ def api_global_export_all():
         show_vfx_work = pdf_cfg.get("show_vfx_work", True)
         show_notes    = pdf_cfg.get("show_notes",    True)
         pdf_landscape = pdf_cfg.get("landscape",     True)
+        pdf_mode      = pdf_cfg.get("mode",          "slate")
 
         pdf_buf = io.BytesIO()
         _generate_pdf(pdf_buf, project_name, slate_ids, slate_rows, records_by_slate,
                       info_fields=info_fields, take_cols=take_cols,
                       show_vfx_work=show_vfx_work, show_notes=show_notes,
-                      landscape=pdf_landscape)
+                      landscape=pdf_landscape, mode=pdf_mode)
         pdf_buf.seek(0)
         (db_dir / 'global_database.pdf').write_bytes(pdf_buf.read())
 
@@ -2254,6 +2473,7 @@ def api_export_pdf():
         show_vfx_work = body.get("show_vfx_work", True)
         show_notes    = body.get("show_notes",    True)
         pdf_landscape = body.get("landscape",     True)
+        pdf_mode      = body.get("pdf_mode",      "slate")
 
         data             = _load_db_json()
         all_rows         = _denormalize_json_to_rows(data) + _load_added_take_rows()
@@ -2287,7 +2507,7 @@ def api_export_pdf():
         _generate_pdf(buf, project_name, slate_ids, slate_rows, records_by_slate,
                       info_fields=info_fields, take_cols=take_cols,
                       show_vfx_work=show_vfx_work, show_notes=show_notes,
-                      landscape=pdf_landscape)
+                      landscape=pdf_landscape, mode=pdf_mode)
         buf.seek(0)
 
         safe     = re.sub(r'[^\w\-.]', '_', project_name)
