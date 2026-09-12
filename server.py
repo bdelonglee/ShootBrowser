@@ -22,6 +22,7 @@ import sys
 import json
 import shutil
 import subprocess
+import uuid
 from dataclasses import asdict
 import threading
 import webbrowser
@@ -45,7 +46,10 @@ except ImportError:
 
 # Make sure our sibling modules are importable
 sys.path.insert(0, str(Path(__file__).parent))
-from generate_html import HTMLGenerator, _denormalize_json_to_rows
+from generate_html import (
+    HTMLGenerator, _denormalize_json_to_rows,
+    DENORMALIZED_ROW_FIELDS, blank_added_take_fields,
+)
 
 app = Flask(__name__)
 
@@ -431,7 +435,7 @@ def api_database():
     """Return database rows (with overrides applied) from __DATABASE/*.json."""
     try:
         data = _load_db_json()
-        rows = _denormalize_json_to_rows(data)
+        rows = _denormalize_json_to_rows(data) + _load_added_take_rows()
         rows = _apply_overrides(rows, _load_overrides())
         rows = _apply_omissions(rows, _load_omissions())
         rows = _apply_notes(rows, _load_notes())
@@ -820,6 +824,129 @@ def api_save_take_extras():
         else:
             takes.pop(key, None)
         _save_take_extras(x)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Added takes (user-created Slate/Take entries, not in the source DB) ───────
+# One JSON file per take in a dedicated subdirectory — never a single shared
+# file — so takes added on different machines can be merged just by copying
+# files together (uuid4 ids make filename collisions negligible). Living in a
+# *subdirectory* of __DATABASE/ also means _db_jsonfiles()'s non-recursive
+# glob("*.json") never sees these files, so — unlike take_extras.json etc. —
+# no _DB_JSON_EXCLUDED entry is needed here.
+
+def _added_takes_dir() -> Path:
+    return Path(DATA_DIR) / "__DATABASE" / "added_takes"
+
+
+def _added_take_path(take_id: str) -> Path:
+    return _added_takes_dir() / f"{take_id}.json"
+
+
+def _load_added_take_rows() -> list:
+    """Load every added take as a denormalized row, same shape as
+    _denormalize_json_to_rows() produces, plus an _is_added flag."""
+    d = _added_takes_dir()
+    if not d.exists():
+        return []
+    rows = []
+    for f in sorted(d.glob("*.json")):
+        try:
+            obj = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        row = dict(obj.get("fields") or {})
+        row["_record_id"]             = obj.get("record_id", "")
+        row["_take_id"]               = obj.get("take_id", "")
+        row["_is_added"]              = True
+        row["_added_created_at"]      = obj.get("created_at", "")
+        row["_added_duplicated_from"] = obj.get("duplicated_from", "")
+        rows.append(row)
+    return rows
+
+
+@app.route("/api/added-takes/create", methods=["POST"])
+def api_create_added_take():
+    """Create a new added take — either a blank Slate/Take, or a duplicate of
+    an existing (real or added) take, optionally attached to that take's
+    existing slate (same record_id) or given a brand-new slate."""
+    try:
+        body       = request.json or {}
+        mode       = body.get("mode", "blank")     # 'blank' | 'duplicate'
+        same_slate = bool(body.get("same_slate"))  # duplicate mode only
+        source_key = body.get("source_key", "")
+
+        if mode == "duplicate":
+            if not source_key:
+                return jsonify({"success": False, "error": "source_key required"}), 400
+            rows = _denormalize_json_to_rows(_load_db_json()) + _load_added_take_rows()
+            source = next(
+                (r for r in rows if r.get("_record_id", "") + "::" + r.get("_take_id", "") == source_key),
+                None,
+            )
+            if not source:
+                return jsonify({"success": False, "error": "source take not found"}), 404
+            fields    = {k: v for k, v in source.items() if not k.startswith("_")}
+            record_id = source.get("_record_id", "") if same_slate else str(uuid.uuid4())
+        else:
+            fields    = blank_added_take_fields()
+            record_id = str(uuid.uuid4())
+
+        fields["Timestamp"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        take_id = str(uuid.uuid4())
+        obj = {
+            "version": 1,
+            "record_id": record_id,
+            "take_id": take_id,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "duplicated_from": source_key if mode == "duplicate" else "",
+            "fields": fields,
+        }
+        _added_takes_dir().mkdir(parents=True, exist_ok=True)
+        _added_take_path(take_id).write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+        return jsonify({"success": True, "key": f"{record_id}::{take_id}"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/added-takes/update", methods=["POST"])
+def api_update_added_take():
+    """Merge field values into an existing added take (an added take has no
+    separate "original" to diff against, so this just updates whichever keys
+    are given — unlisted fields, e.g. Timestamp, are left untouched)."""
+    try:
+        body   = request.json or {}
+        key    = body.get("key", "")
+        fields = body.get("fields")
+        if not key or "::" not in key or not isinstance(fields, dict):
+            return jsonify({"success": False, "error": "key and fields required"}), 400
+        _, take_id = key.split("::", 1)
+        p = _added_take_path(take_id)
+        if not p.exists():
+            return jsonify({"success": False, "error": "added take not found"}), 404
+        obj = json.loads(p.read_text(encoding="utf-8"))
+        obj.setdefault("fields", {}).update(
+            {k: v for k, v in fields.items() if k in DENORMALIZED_ROW_FIELDS}
+        )
+        p.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/added-takes/delete", methods=["POST"])
+def api_delete_added_take():
+    """Permanently delete an added take's file."""
+    try:
+        key = (request.json or {}).get("key", "")
+        if not key or "::" not in key:
+            return jsonify({"success": False, "error": "key required"}), 400
+        _, take_id = key.split("::", 1)
+        p = _added_take_path(take_id)
+        if p.exists():
+            p.unlink()
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -1312,7 +1439,7 @@ def api_extract_slates_export():
 
     try:
         data = _load_db_json()
-        rows = _denormalize_json_to_rows(data)
+        rows = _denormalize_json_to_rows(data) + _load_added_take_rows()
         rows = _apply_overrides(rows, _load_overrides())
         rows = _apply_notes(rows, _load_notes())
         rows = _apply_shared_notes(rows, _load_shared_notes())
@@ -2010,7 +2137,7 @@ def api_global_export_all():
 
         # 2. PDF → GLOBAL/Database/
         data             = _load_db_json()
-        all_rows         = _denormalize_json_to_rows(data)
+        all_rows         = _denormalize_json_to_rows(data) + _load_added_take_rows()
         all_rows         = _apply_overrides(all_rows, _load_overrides())
         all_rows         = _apply_notes(all_rows, _load_notes())
         all_rows         = _apply_shared_notes(all_rows, _load_shared_notes())
@@ -2084,7 +2211,7 @@ def api_export_pdf():
         pdf_landscape = body.get("landscape",     True)
 
         data             = _load_db_json()
-        all_rows         = _denormalize_json_to_rows(data)
+        all_rows         = _denormalize_json_to_rows(data) + _load_added_take_rows()
         all_rows         = _apply_overrides(all_rows, _load_overrides())
         all_rows         = _apply_notes(all_rows, _load_notes())
         all_rows         = _apply_shared_notes(all_rows, _load_shared_notes())

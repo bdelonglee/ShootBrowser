@@ -85,6 +85,29 @@ def _denormalize_json_to_rows(data: dict) -> list:
     return rows
 
 
+# Field names _denormalize_json_to_rows produces (excluding the trailing _-prefixed
+# ones), in display order. Doubles as the template for a brand-new added take —
+# see server.py's /api/added-takes/* routes and _load_added_take_rows().
+DENORMALIZED_ROW_FIELDS = [
+    'Slate', 'Scene Description', 'VFX ID', 'Camera Move', 'Notes', 'Date',
+    'Shoot Day', 'Set Location', 'Script Location', 'Int/Ext', 'Day/Night',
+    'Unit', 'Wrangler', 'VFX Work', 'Set Refs', 'Camera', 'Body', 'Resolution',
+    'Take', 'Take Notes', 'Balls & Chart', 'VFX Pass / Ref', 'Roll', 'Lens',
+    'F-Stop', 'Shutter', 'FPS', 'WB', 'ISO', 'Focal', 'Focus', 'Tilt',
+    'Height', 'Filter', 'Timestamp',
+]
+
+
+def blank_added_take_fields() -> dict:
+    """Default field values for a brand-new added take, before the user fills
+    them in via the edit panel."""
+    fields = {name: '' for name in DENORMALIZED_ROW_FIELDS}
+    fields['Take']           = '1'
+    fields['Balls & Chart']  = 'No'
+    fields['VFX Pass / Ref'] = 'No'
+    return fields
+
+
 @dataclass
 class SubdirChild:
     name: str
@@ -605,6 +628,28 @@ class HTMLGenerator:
         print(f"   Embedded {count} photo(s) for {len(result)} slate(s)")
         return result
 
+    def _load_added_take_rows(self) -> list:
+        """Load user-added takes (server.py's /api/added-takes/*), one JSON file
+        per take under __DATABASE/added_takes/. Mirrors server.py's helper of
+        the same name — keep the two in sync."""
+        d = self.data_dir / '__DATABASE' / 'added_takes'
+        if not d.exists():
+            return []
+        rows = []
+        for f in sorted(d.glob('*.json')):
+            try:
+                obj = json.loads(f.read_text(encoding='utf-8'))
+            except Exception:
+                continue
+            row = dict(obj.get('fields') or {})
+            row['_record_id']             = obj.get('record_id', '')
+            row['_take_id']               = obj.get('take_id', '')
+            row['_is_added']              = True
+            row['_added_created_at']      = obj.get('created_at', '')
+            row['_added_duplicated_from'] = obj.get('duplicated_from', '')
+            rows.append(row)
+        return rows
+
     def _load_offline_db_rows(self) -> list:
         """Load database rows with overrides, notes, and shared notes applied."""
         jsonfiles = self._db_jsonfiles()
@@ -613,7 +658,7 @@ class HTMLGenerator:
         for encoding in ('utf-8-sig', 'utf-8', 'mac_roman', 'latin-1'):
             try:
                 data = json.loads(jsonfiles[0].read_text(encoding=encoding))
-                rows = _denormalize_json_to_rows(data)
+                rows = _denormalize_json_to_rows(data) + self._load_added_take_rows()
                 self._apply_overlays(rows)
                 return rows
             except (UnicodeDecodeError, json.JSONDecodeError):
@@ -1107,6 +1152,7 @@ class HTMLGenerator:
         /* ── Database field overrides ── */
         .edited-val, .entry-title-line .edited-val {{ color: #39c5cf !important; font-weight: 500; }}
         .db-has-edits {{ border-left-color: #39c5cf !important; }}
+        .db-is-added {{ border-left-color: #f0883e !important; }}
         .db-has-edits .entry-title-line::after {{
             content: '✎';
             font-size: 0.7em;
@@ -1235,6 +1281,56 @@ class HTMLGenerator:
             font-size: 0.68em; font-weight: 700; text-transform: uppercase;
             letter-spacing: 0.05em; color: #e05c5c; border: 1px solid #e05c5c;
             border-radius: 4px; padding: 1px 5px; margin-left: 4px; opacity: 0.8;
+        }}
+        .db-added-badge {{
+            font-size: 0.68em; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.05em; color: #f0883e;
+            background: rgba(240,136,62,0.14); border: 1px solid #f0883e;
+            border-radius: 4px; padding: 1px 6px;
+        }}
+        .db-delete-btn {{
+            font-size: 0.78em; padding: 4px 12px; border-radius: 5px;
+            cursor: pointer; border: 1px solid rgba(224,92,92,0.4); color: #e05c5c;
+            background: var(--surface-2); transition: all 0.15s;
+        }}
+        .db-delete-btn:hover {{ background: rgba(224,92,92,0.14); }}
+        .db-duplicate-btn {{
+            font-size: 0.78em; padding: 4px 12px; border-radius: 5px;
+            cursor: pointer; border: 1px solid var(--border); color: var(--text-muted);
+            background: var(--surface-2); transition: all 0.15s;
+        }}
+        .db-duplicate-btn:hover {{ border-color: #f0883e; color: #f0883e; }}
+        /* New-take / duplicate modal */
+        .duplicate-modal-overlay {{
+            position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            z-index: 500; display: flex; align-items: center; justify-content: center;
+        }}
+        .duplicate-modal {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 24px; width: 360px; max-width: 92vw;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }}
+        .duplicate-modal-title {{ font-weight: 700; font-size: 0.95em; margin-bottom: 6px; color: var(--text); }}
+        .duplicate-modal-sub {{ font-size: 0.8em; color: var(--text-muted); margin-bottom: 18px; }}
+        .duplicate-modal-opts {{ display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }}
+        .duplicate-modal-opt {{
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 10px 12px; border-radius: 7px; border: 1px solid var(--border);
+            cursor: pointer; transition: all 0.15s;
+        }}
+        .duplicate-modal-opt:hover {{ border-color: #f0883e; background: rgba(240,136,62,0.07); }}
+        .duplicate-modal-opt input {{ accent-color: #f0883e; margin-top: 2px; flex-shrink: 0; }}
+        .duplicate-modal-opt-label {{ font-size: 0.85em; font-weight: 600; color: var(--text); }}
+        .duplicate-modal-opt-desc {{ font-size: 0.76em; color: var(--text-muted); margin-top: 2px; }}
+        .duplicate-modal-footer {{ display: flex; gap: 8px; }}
+        .duplicate-confirm-btn {{
+            flex: 1; padding: 9px 14px; border-radius: 7px; border: none;
+            background: #f0883e; color: #1a1206; font-weight: 700; font-size: 0.85em; cursor: pointer;
+        }}
+        .duplicate-confirm-btn:hover {{ opacity: 0.9; }}
+        .duplicate-cancel-btn {{
+            padding: 9px 14px; border-radius: 7px; cursor: pointer;
+            border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); font-size: 0.85em;
         }}
         .db-omit-btn {{
             font-size: 0.78em; padding: 4px 12px; border-radius: 5px;
@@ -3087,6 +3183,8 @@ class HTMLGenerator:
           <option value="parent_take">Sort: Parent Take</option>
         </select>
         <button id="db-sort-dir" class="db-sort-dir" onclick="toggleDbSortDir()" title="Toggle sort direction">↑</button>
+        <button class="tool-btn" id="db-new-take-btn" onclick="createBlankTake()"
+            title="Add a new Slate/Take, not from the source database">➕ New Take</button>
         <span id="db-stats-bar" class="db-stats-bar"></span>
       </div>
       <div class="db-filter-row">
@@ -6883,10 +6981,12 @@ function renderDbCard(row, idx) {{
     const vfxPass     = _isVfxPass(row);
     const hasEdits    = (row['_edited_fields'] || []).length > 0;
     const isOmitted   = !!row['_omitted'];
+    const isAdded     = !!row['_is_added'];
     const overrideKey = row['_override_key'] || '';
     const edited      = new Set(row['_edited_fields'] || []);
     const ec          = f => edited.has(f) ? ' edited-val' : '';
     const omitBadge   = isOmitted ? '<span class="db-omit-badge">omitted</span>' : '';
+    const addedBadge  = isAdded ? '<span class="db-added-badge" title="Added in ShootBrowser — not in the source database">➕ added</span>' : '';
     const hasNote       = !!(row['_note'] || '').trim();
     const hasSharedNote = !!(row['_shared_note'] || '').trim();
     const noteFlagSlot = '<span class="db-note-flag-slot">' + (hasNote ? '<span class="db-note-flag" title="Has note">⚑</span>' : '') + '</span>';
@@ -6909,7 +7009,7 @@ function renderDbCard(row, idx) {{
         `<span class="${{cls}}${{extra}} db-tag-clickable" data-v="${{escHtml(val)}}"
             onclick="event.stopPropagation();setTagFilter('${{filterKey}}',this.dataset.v,event)"
             title="Filter by ${{filterKey.replace('_',' ')}}">${{escHtml(val)}}</span>`;
-    return `<div class="entry${{isExpanded ? ' expanded' : ''}}${{vfxPass ? ' vfx-pass' : ''}}${{hasEdits ? ' db-has-edits' : ''}}${{isOmitted ? ' db-omitted' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}" data-override-key="${{escHtml(overrideKey)}}">
+    return `<div class="entry${{isExpanded ? ' expanded' : ''}}${{vfxPass ? ' vfx-pass' : ''}}${{hasEdits ? ' db-has-edits' : ''}}${{isOmitted ? ' db-omitted' : ''}}${{isAdded ? ' db-is-added' : ''}}" data-db-id="${{escHtml(id)}}" data-slate="${{escHtml(slate)}}" data-override-key="${{escHtml(overrideKey)}}">
         <div class="entry-title-line" onclick="toggleDbCard(this)">
             ${{tag('db-slate', 'slate', slate, ec('Slate'))}}
             <span class="db-take">T${{escHtml(takeNum)}}</span>
@@ -6922,6 +7022,7 @@ function renderDbCard(row, idx) {{
             ${{tilt   ? `<span class="db-tilt">${{escHtml(tilt)}}</span>` : ''}}
             ${{noteFlagSlot}}
             ${{sharedNoteFlagSlot}}
+            ${{addedBadge}}
             ${{omitBadge}}
             ${{photoBadge}}
             ${{binBadge}}
@@ -7049,18 +7150,23 @@ function renderDbDetails(row) {{
     const recordId    = row['_record_id']    || '';
     const hasEdits    = (row['_edited_fields'] || []).length > 0;
     const isOmitted   = !!row['_omitted'];
+    const isAdded     = !!row['_is_added'];
     const noteText       = (row['_note'] || '').trim();
     const noteBox        = OFFLINE_MODE ? '' : _noteBoxHtml(overrideKey, noteText, false);
     const sharedNoteText = (row['_shared_note'] || '').trim();
     const sharedNoteBox  = _sharedNoteBoxHtml(overrideKey, sharedNoteText, false);
+    const duplicateBtn = `<button class="db-duplicate-btn" onclick="openDuplicateModal('${{escHtml(overrideKey)}}')" title="Duplicate this take into a new added take">&#8942; Duplicate</button>`;
+    const removalAction = isAdded
+        ? `<button class="db-delete-btn" onclick="deleteAddedTake('${{escHtml(overrideKey)}}')" title="Permanently delete this added take">&#128465; Delete</button>`
+        : (isOmitted
+            ? `<button class="db-restore-btn" onclick="restoreOmit('${{escHtml(overrideKey)}}','${{escHtml(recordId)}}')" title="Remove omission">&#8635; Restore</button>`
+            : `<button class="db-omit-btn" onclick="openOmitModal('${{escHtml(overrideKey)}}','${{escHtml(recordId)}}')" title="Omit this take from results">&#8856; Omit</button>`);
     const editActions = OFFLINE_MODE ? '' : `
         <div class="db-edit-actions">
             <button class="db-edit-btn" onclick="openEditPanel('${{escHtml(overrideKey)}}')" title="Edit fields for this take">&#9998; Edit</button>
-            ${{hasEdits ? `<button class="db-revert-btn" onclick="revertTake('${{escHtml(overrideKey)}}')" title="Revert all edits for this take">&#8635; Revert</button>` : ''}}
-            ${{isOmitted
-                ? `<button class="db-restore-btn" onclick="restoreOmit('${{escHtml(overrideKey)}}','${{escHtml(recordId)}}')" title="Remove omission">&#8635; Restore</button>`
-                : `<button class="db-omit-btn" onclick="openOmitModal('${{escHtml(overrideKey)}}','${{escHtml(recordId)}}')" title="Omit this take from results">&#8856; Omit</button>`
-            }}
+            ${{duplicateBtn}}
+            ${{(!isAdded && hasEdits) ? `<button class="db-revert-btn" onclick="revertTake('${{escHtml(overrideKey)}}')" title="Revert all edits for this take">&#8635; Revert</button>` : ''}}
+            ${{removalAction}}
             <button class="db-edit-btn" style="margin-left:auto"
                 onclick="copyCardFull('${{escHtml(overrideKey)}}',event)" title="Copy all fields">&#9112; Copy all</button>
         </div>`;
@@ -7746,6 +7852,19 @@ const EDIT_TAKE_FIELDS = [
     ['ISO',          'ISO'],
     ['Filter',       'Filter'],
 ];
+// Extra fields only editable on an added take — for a real take these are
+// identity fields tied to the source database, not overridable.
+const EDIT_SLATE_FIELDS_ADDED_EXTRA = [
+    ['Date', 'Date'],
+];
+const EDIT_TAKE_FIELDS_ADDED_EXTRA = [
+    ['Take',            'Take'],
+    ['Camera Letter',   'Camera'],
+    ['Camera Move',     'Camera Move'],
+    ['Resolution',      'Resolution'],
+    ['Balls & Chart',   'Balls & Chart'],
+    ['VFX Pass / Ref',  'VFX Pass / Ref'],
+];
 
 let _editRow = null; // row currently being edited
 
@@ -7773,11 +7892,13 @@ function openEditPanel(overrideKey) {{
     _editRow = row;
     OFFLINE_MODE && console.warn('Edit panel opened in offline mode — saves will fail.');
 
+    const isAdded = !!row['_is_added'];
     document.getElementById('edit-panel-title').textContent =
-        'Edit — ' + (row['Slate'] || '?') + ' / Take ' + (row['Take'] || '?');
-    document.getElementById('edit-panel-subtitle').textContent =
-        'Camera ' + (row['Camera'] || '?') +
-        (row['_edited_at'] ? '  ·  Last edited ' + row['_edited_at'].replace('T',' ') : '');
+        (isAdded ? 'Edit added take — ' : 'Edit — ') + (row['Slate'] || '?') + ' / Take ' + (row['Take'] || '?');
+    document.getElementById('edit-panel-subtitle').textContent = isAdded
+        ? ('Added in ShootBrowser' + (row['_added_created_at'] ? '  ·  Created ' + row['_added_created_at'].replace('T',' ') : ''))
+        : ('Camera ' + (row['Camera'] || '?') +
+           (row['_edited_at'] ? '  ·  Last edited ' + row['_edited_at'].replace('T',' ') : ''));
 
     const edited    = new Set(row['_edited_fields'] || []);
     const originals = row['_originals'] || {{}};
@@ -7801,13 +7922,17 @@ function openEditPanel(overrideKey) {{
             '</div>';
     }}
 
+    const slateFields = isAdded ? EDIT_SLATE_FIELDS.concat(EDIT_SLATE_FIELDS_ADDED_EXTRA) : EDIT_SLATE_FIELDS;
+    const takeFields  = isAdded ? EDIT_TAKE_FIELDS.concat(EDIT_TAKE_FIELDS_ADDED_EXTRA)   : EDIT_TAKE_FIELDS;
+
     document.getElementById('edit-panel-body').innerHTML =
         '<div class="edit-section-head">SLATE</div>' +
-        EDIT_SLATE_FIELDS.map(makeField).join('') +
-        '<label class="edit-apply-all">' +
-        '<input type="checkbox" id="edit-apply-all-cb">Apply record-level changes to all takes of this slate</label>' +
+        slateFields.map(makeField).join('') +
+        (isAdded ? '' :
+            '<label class="edit-apply-all">' +
+            '<input type="checkbox" id="edit-apply-all-cb">Apply record-level changes to all takes of this slate</label>') +
         '<div class="edit-section-head" style="margin-top:14px">TAKE</div>' +
-        EDIT_TAKE_FIELDS.map(makeField).join('');
+        takeFields.map(makeField).join('');
 
     document.getElementById('edit-panel').classList.add('open');
 }}
@@ -7837,6 +7962,8 @@ function closeEditPanel() {{
 async function saveEdit() {{
     if (!_editRow) return;
     if (OFFLINE_MODE) {{ alert('Editing is not available in offline mode.'); return; }}
+
+    if (_editRow['_is_added']) return _saveAddedTakeEdit();
 
     const overrideKey = _editRow['_override_key'];
     const recordId    = _editRow['_record_id'] || '';
@@ -7884,6 +8011,33 @@ async function saveEdit() {{
         if (!data.success) {{ alert('Save failed: ' + (data.error || 'unknown')); return; }}
         closeEditPanel();
         dbRows = [];        // force reload
+        loadDatabase();
+    }} catch(e) {{
+        alert('Save error: ' + e.message);
+    }}
+}}
+
+// Added takes have no "original" baseline to diff against — every field on the
+// panel is just written straight into the take's own file (full replace).
+async function _saveAddedTakeEdit() {{
+    const overrideKey = _editRow['_override_key'];
+    const allFields    = [...EDIT_SLATE_FIELDS, ...EDIT_SLATE_FIELDS_ADDED_EXTRA,
+                           ...EDIT_TAKE_FIELDS, ...EDIT_TAKE_FIELDS_ADDED_EXTRA];
+    const fields = {{}};
+    for (const [, key] of allFields) {{
+        const el = document.getElementById('ef_' + key);
+        fields[key] = el ? el.value : (_editRow[key] || '');
+    }}
+    try {{
+        const res = await fetch('/api/added-takes/update', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ key: overrideKey, fields }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Save failed: ' + (data.error || 'unknown')); return; }}
+        closeEditPanel();
+        dbRows = [];
         loadDatabase();
     }} catch(e) {{
         alert('Save error: ' + e.message);
@@ -8064,6 +8218,125 @@ async function restoreOmit(overrideKey, recordId) {{
         loadDatabase();
     }} catch(e) {{
         alert('Restore error: ' + e.message);
+    }}
+}}
+
+// ── Added takes (created in ShootBrowser, not in the source database) ───────
+// Persisted server-side as one JSON file per take under
+// __DATABASE/added_takes/ — see /api/added-takes/* in server.py.
+
+async function createBlankTake() {{
+    if (OFFLINE_MODE) {{ alert('Not available in offline mode.'); return; }}
+    try {{
+        const res = await fetch('/api/added-takes/create', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ mode: 'blank' }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Create failed: ' + (data.error || '')); return; }}
+        dbRows = [];
+        await loadDatabase();
+        _expandAndEdit(data.key);
+    }} catch(e) {{
+        alert('Create error: ' + e.message);
+    }}
+}}
+
+// Expand a freshly-created card and open its edit panel once it's in the DOM.
+function _expandAndEdit(overrideKey) {{
+    const entry = _entryByOverrideKey(overrideKey);
+    if (!entry) return;
+    if (!entry.classList.contains('expanded')) {{
+        const titleLine = entry.querySelector('.entry-title-line');
+        if (titleLine) toggleDbCard(titleLine);
+    }}
+    entry.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+    setTimeout(() => openEditPanel(overrideKey), 200);
+}}
+
+let _duplicateKey = null;
+
+(function () {{
+    const ov = document.createElement('div');
+    ov.id = 'duplicate-modal-overlay';
+    ov.className = 'duplicate-modal-overlay';
+    ov.style.display = 'none';
+    ov.innerHTML =
+        '<div class="duplicate-modal">' +
+        '<div class="duplicate-modal-title">Duplicate this take</div>' +
+        '<div class="duplicate-modal-sub" id="duplicate-modal-sub"></div>' +
+        '<div class="duplicate-modal-opts">' +
+        '<label class="duplicate-modal-opt">' +
+        '<input type="radio" name="duplicate-scope" value="same" checked>' +
+        '<div><div class="duplicate-modal-opt-label">New take on the same slate</div>' +
+        '<div class="duplicate-modal-opt-desc">Keeps the same slate — this becomes another take of it</div></div>' +
+        '</label>' +
+        '<label class="duplicate-modal-opt">' +
+        '<input type="radio" name="duplicate-scope" value="new">' +
+        '<div><div class="duplicate-modal-opt-label">New slate</div>' +
+        '<div class="duplicate-modal-opt-desc">Copies the fields but starts an independent slate</div></div>' +
+        '</label>' +
+        '</div>' +
+        '<div class="duplicate-modal-footer">' +
+        '<button class="duplicate-confirm-btn" onclick="confirmDuplicate()">Duplicate</button>' +
+        '<button class="duplicate-cancel-btn" onclick="closeDuplicateModal()">Cancel</button>' +
+        '</div>' +
+        '</div>';
+    ov.addEventListener('click', e => {{ if (e.target === ov) closeDuplicateModal(); }});
+    document.body.appendChild(ov);
+}})();
+
+function openDuplicateModal(overrideKey) {{
+    if (OFFLINE_MODE) {{ alert('Not available in offline mode.'); return; }}
+    _duplicateKey = overrideKey;
+    const row = _dbRowByKey(overrideKey);
+    document.getElementById('duplicate-modal-sub').textContent =
+        row ? ((row['Slate'] || '?') + ' / Take ' + (row['Take'] || '?')) : overrideKey;
+    document.querySelectorAll('input[name="duplicate-scope"]').forEach(r => {{ r.checked = r.value === 'same'; }});
+    document.getElementById('duplicate-modal-overlay').style.display = 'flex';
+}}
+
+function closeDuplicateModal() {{
+    document.getElementById('duplicate-modal-overlay').style.display = 'none';
+    _duplicateKey = null;
+}}
+
+async function confirmDuplicate() {{
+    if (!_duplicateKey) return;
+    const sameSlate = (document.querySelector('input[name="duplicate-scope"]:checked')?.value || 'same') === 'same';
+    try {{
+        const res = await fetch('/api/added-takes/create', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ mode: 'duplicate', source_key: _duplicateKey, same_slate: sameSlate }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Duplicate failed: ' + (data.error || '')); return; }}
+        closeDuplicateModal();
+        dbRows = [];
+        await loadDatabase();
+        _expandAndEdit(data.key);
+    }} catch(e) {{
+        alert('Duplicate error: ' + e.message);
+    }}
+}}
+
+async function deleteAddedTake(overrideKey) {{
+    if (OFFLINE_MODE) return;
+    if (!confirm('Permanently delete this added take? This cannot be undone.')) return;
+    try {{
+        const res = await fetch('/api/added-takes/delete', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ key: overrideKey }}),
+        }});
+        const data = await res.json();
+        if (!data.success) {{ alert('Delete failed: ' + (data.error || '')); return; }}
+        dbRows = [];
+        loadDatabase();
+    }} catch(e) {{
+        alert('Delete error: ' + e.message);
     }}
 }}
 
