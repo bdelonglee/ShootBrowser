@@ -6522,8 +6522,8 @@ function _renderBinAddMenu() {{
     if (_bmType === null) {{
         menu.innerHTML =
             `<div class="bin-menu-section-label">ADD TO BIN</div>` +
-            `<div class="bin-menu-item" onclick="_binMenuPick('take')">Add ${{takeLabel}}<span class="bin-menu-chevron">›</span></div>` +
-            `<div class="bin-menu-item" onclick="_binMenuPick('slate')">Add ${{slateLabel}}<span class="bin-menu-chevron">›</span></div>`;
+            `<div class="bin-menu-item" onclick="event.stopPropagation();_binMenuPick('take')">Add ${{takeLabel}}<span class="bin-menu-chevron">›</span></div>` +
+            `<div class="bin-menu-item" onclick="event.stopPropagation();_binMenuPick('slate')">Add ${{slateLabel}}<span class="bin-menu-chevron">›</span></div>`;
     }} else {{
         const type  = _bmType;
         const label = type === 'take' ? takeLabel : slateLabel;
@@ -6546,7 +6546,7 @@ function _renderBinAddMenu() {{
                 </div>`;
             }}).join('');
         menu.innerHTML =
-            `<div class="bin-menu-item bin-menu-back" onclick="_binMenuBackToChoice()">‹ Back</div>` +
+            `<div class="bin-menu-item bin-menu-back" onclick="event.stopPropagation();_binMenuBackToChoice()">‹ Back</div>` +
             `<hr class="bin-menu-divider">` +
             `<div class="bin-menu-section-label">ADD ${{label}} TO BIN</div>` +
             rows +
