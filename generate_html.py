@@ -2254,6 +2254,7 @@ class HTMLGenerator:
             background: var(--surface-2); border: 1px solid var(--border);
             border-radius: 8px; padding: 5px 0;
             min-width: 200px;
+            max-height: min(70vh, 480px); overflow-y: auto; overscroll-behavior: contain;
             box-shadow: 0 8px 24px rgba(0,0,0,0.45);
         }}
         .bin-menu-section-label {{
@@ -6396,6 +6397,7 @@ function _openSlateRemoveChoice(btn, binId, slate, take, cam, slateCount) {{
     let left = rect.left;
     if (left + mw > window.innerWidth  - 8) left = window.innerWidth  - mw - 8;
     if (top  + mh > window.innerHeight - 8) top  = rect.top - mh - 6;
+    top = Math.max(8, top);   // keep on-screen even when the (now height-capped) menu is tall
     menu.style.top  = top  + 'px';
     menu.style.left = left + 'px';
 }}
@@ -6453,6 +6455,7 @@ function _openRemoveMenu(e, btn, item) {{
     let left = rect.left;
     if (left + mw > window.innerWidth  - 8) left = window.innerWidth  - mw - 8;
     if (top  + mh > window.innerHeight - 8) top  = rect.top - mh - 6;
+    top = Math.max(8, top);   // keep on-screen even when the (now height-capped) menu is tall
     menu.style.top  = top  + 'px';
     menu.style.left = left + 'px';
 }}
@@ -6529,6 +6532,7 @@ function openBinMenu(e, btn) {{
     let left = rect.left;
     if (left + mw > window.innerWidth  - 8) left = window.innerWidth  - mw - 8;
     if (top  + mh > window.innerHeight - 8) top  = rect.top - mh - 6;
+    top = Math.max(8, top);   // keep on-screen even when the (now height-capped) menu is tall
     menu.style.top  = top  + 'px';
     menu.style.left = left + 'px';
 }}
