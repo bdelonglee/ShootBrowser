@@ -10,14 +10,18 @@ record_id — is keyed by "{record_id}::{take_id}", so a fresh export silently
 orphans all of it: nothing is deleted, it just no longer matches any row in
 the new export, so the app shows none of it.
 
-This tool re-links that data to the new export by matching on the one thing
-that *does* stay stable across re-exports: (Slate, Take#, Camera, Timestamp).
-See claude_guideline/ID_REMAP.md for the full story and why this is needed.
+This module re-links that data to the new export by matching on the one
+thing that *does* stay stable across re-exports: (Slate, Take#, Camera,
+Timestamp). See claude_guideline/ID_REMAP.md for the full story.
 
-Dry-run is the DEFAULT — nothing changes unless you pass --apply (which then
-still asks for interactive confirmation before writing).
+This file is a standalone module on purpose — server.py only ever calls
+find_orphans() (cheap: current export only) and run_remap() (the full fix)
+and never reimplements the matching logic itself. See "Library API" below
+if you're wiring this into something else.
 
-Usage:
+CLI usage (dry-run is the DEFAULT — nothing changes unless you pass --apply,
+which then still asks for interactive confirmation before writing):
+
     python3 remap_take_ids.py <root>           # dry-run (safe)
     python3 remap_take_ids.py <root> --apply   # show report, confirm, then execute
 
@@ -35,6 +39,8 @@ _DB_JSON_EXCLUDED = {
     "extraction_meta.json", "overrides.json", "omissions.json",
     "notes.json", "shared_notes.json", "take_extras.json",
 }
+
+_SIDECAR_FILES = ("take_extras.json", "notes.json", "shared_notes.json", "overrides.json")
 
 
 # ── Loading ──────────────────────────────────────────────────────────────────
@@ -62,6 +68,21 @@ def find_db_snapshots(db_dir: Path):
     return sorted(candidates, key=lambda f: f.stat().st_mtime, reverse=True)
 
 
+def _added_take_ids(db_dir: Path) -> set:
+    added_dir = db_dir / "added_takes"
+    if not added_dir.is_dir():
+        return set()
+    ids = set()
+    for f in added_dir.glob("*.json"):
+        if f.name.startswith("."):
+            continue
+        try:
+            ids.add(load(f).get("take_id", ""))
+        except Exception:
+            pass
+    return ids
+
+
 # ── Identity matching ────────────────────────────────────────────────────────
 
 def index_db(db: dict):
@@ -82,6 +103,57 @@ def index_db(db: dict):
         counts[ident] = counts.get(ident, 0) + 1
     return by_override, by_identity, counts
 
+
+# ── Cheap status check — current export only, no old snapshots loaded ───────
+
+def find_orphans(db_dir: Path, new_db: dict) -> dict:
+    """How many keys in each sidecar file don't match the current export?
+    Only needs the already-loaded current export (the caller almost always
+    has this cached already) — never touches old snapshots, so this is safe
+    to call on every server startup or Database-tab load. Returns
+    {sidecar_filename: orphaned_key_count}; a file absent or fully clean is
+    omitted, so an empty dict means nothing needs fixing."""
+    new_by_override, _, _ = index_db(new_db)
+    added_ids = _added_take_ids(db_dir)
+    result = {}
+
+    def count_orphans(keys):
+        return sum(1 for k in keys
+                   if k.split("::", 1)[-1] not in added_ids and k not in new_by_override)
+
+    for name in ("take_extras.json", "notes.json", "shared_notes.json"):
+        p = db_dir / name
+        if not p.exists():
+            continue
+        try:
+            n = count_orphans(load(p).get("takes", {}).keys())
+        except Exception:
+            continue
+        if n:
+            result[name] = n
+
+    p = db_dir / "overrides.json"
+    if p.exists():
+        try:
+            n = count_orphans(load(p).get("overrides", {}).keys())
+            if n:
+                result["overrides.json"] = n
+        except Exception:
+            pass
+
+    p = db_dir / "omissions.json"
+    if p.exists():
+        try:
+            n = count_orphans(load(p).get("takes", []))
+            if n:
+                result["omissions.json"] = n
+        except Exception:
+            pass
+
+    return result
+
+
+# ── Remap plan ───────────────────────────────────────────────────────────────
 
 def build_remapper(old_dbs, new_db, added_take_ids):
     # Merge every old snapshot's index — a key might have been written
@@ -141,8 +213,6 @@ def build_remapper(old_dbs, new_db, added_take_ids):
 
     return remap_key, remap_record_id, make_log
 
-
-# ── Per-file remap plans ─────────────────────────────────────────────────────
 
 def plan_takes_dict(path: Path, remap_key_fn, log, remap_value_fields=()):
     """For sidecar files shaped {"version":1,"takes":{override_key: {...}}} —
@@ -217,9 +287,127 @@ def plan_added_takes(added_files, remap_key_fn, remap_record_id_fn, log):
     return updates
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+def plan_all(db_dir: Path, new_db: dict, old_dbs: list) -> dict:
+    """Build the full remap plan for every sidecar file. Returns a dict with
+    one entry per file (data + log + collisions) plus 'added_updates' —
+    nothing is written to disk yet. Shared by the CLI and run_remap()."""
+    added_dir = db_dir / "added_takes"
+    added_files = sorted(f for f in added_dir.glob("*.json") if not f.name.startswith(".")) \
+        if added_dir.is_dir() else []
+    added_take_ids = {load(f).get("take_id", "") for f in added_files}
 
-def report_log(name: str, log: dict) -> None:
+    remap_key_fn, remap_record_id_fn, make_log = build_remapper(old_dbs, new_db, added_take_ids)
+
+    plan = {}
+
+    log = make_log()
+    data, collisions = plan_takes_dict(
+        db_dir / "take_extras.json", remap_key_fn, log, remap_value_fields=("parent_take",)
+    )
+    plan["take_extras.json"] = {"path": db_dir / "take_extras.json", "data": data, "log": log, "collisions": collisions}
+
+    log = make_log()
+    data, collisions = plan_takes_dict(db_dir / "notes.json", remap_key_fn, log)
+    plan["notes.json"] = {"path": db_dir / "notes.json", "data": data, "log": log, "collisions": collisions}
+
+    log = make_log()
+    data, collisions = plan_takes_dict(db_dir / "shared_notes.json", remap_key_fn, log)
+    plan["shared_notes.json"] = {"path": db_dir / "shared_notes.json", "data": data, "log": log, "collisions": collisions}
+
+    log = make_log()
+    data, collisions = plan_overrides(db_dir / "overrides.json", remap_key_fn, log)
+    plan["overrides.json"] = {"path": db_dir / "overrides.json", "data": data, "log": log, "collisions": collisions}
+
+    log = make_log()
+    data = plan_omissions(db_dir / "omissions.json", remap_key_fn, remap_record_id_fn, log)
+    plan["omissions.json"] = {"path": db_dir / "omissions.json", "data": data, "log": log, "collisions": []}
+
+    plan["added_takes"] = plan_added_takes(added_files, remap_key_fn, remap_record_id_fn, make_log())
+
+    return plan
+
+
+def write_plan(db_dir: Path, plan: dict) -> Path:
+    """Persist a plan built by plan_all(): backs up every file it's about to
+    change into db_dir/_id_remap_backup/ first. Returns the backup dir."""
+    backup_dir = db_dir / "_id_remap_backup"
+    backup_dir.mkdir(exist_ok=True)
+
+    for name in _SIDECAR_FILES + ("omissions.json",):
+        entry = plan.get(name)
+        if not entry or entry["data"] is None:
+            continue
+        path = entry["path"]
+        if path.exists():
+            shutil.copy2(path, backup_dir / (path.name + ".bak"))
+        save(path, entry["data"])
+
+    for f, old_obj, new_obj in plan.get("added_takes", []):
+        shutil.copy2(f, backup_dir / (f.name + ".bak"))
+        save(f, new_obj)
+
+    return backup_dir
+
+
+def summarize_plan(plan: dict) -> dict:
+    """A JSON-friendly summary of a plan — for the /api/remap-apply response."""
+    out = {"files": {}, "added_takes": []}
+    for name in _SIDECAR_FILES + ("omissions.json",):
+        entry = plan.get(name)
+        if not entry or entry["data"] is None:
+            continue
+        log = entry["log"]
+        out["files"][name] = {
+            "remapped": len(log["remapped"]),
+            "already_current": len(log["already_current"]),
+            "unresolved": len(log["unresolved"]),
+            "unresolved_detail": [f"{k}: {reason}" for k, reason in log["unresolved"]],
+            "collisions": len(entry["collisions"]),
+        }
+    for f, old_obj, new_obj in plan.get("added_takes", []):
+        out["added_takes"].append({
+            "file": f.name,
+            "record_id_from": old_obj.get("record_id", ""),
+            "record_id_to": new_obj.get("record_id", ""),
+        })
+    return out
+
+
+# ── Library entry point (used by server.py) ──────────────────────────────────
+
+def run_remap(db_dir: Path, new_db_path: Path = None) -> dict:
+    """Full fix: discover every old export, build the plan, write it (with
+    backup). No interactive confirmation — the caller (the web UI's own
+    confirm modal, or the CLI's input() prompt) is responsible for that.
+    Returns {"summary": ..., "backup_dir": str} or raises on a hard error
+    (e.g. fewer than 2 exports found)."""
+    snapshots = find_db_snapshots(db_dir)
+    if new_db_path is not None:
+        # Caller already knows which export is "current" (e.g. server.py's
+        # own cached selection) — trust it over our own mtime pick.
+        snapshots = [new_db_path] + [p for p in snapshots if p != new_db_path]
+    if len(snapshots) < 2:
+        raise RuntimeError(
+            f"Found {len(snapshots)} database export(s) in {db_dir} (and _old/) — "
+            "need at least 2 (one to remap from, one current) to do anything."
+        )
+    new_path, old_paths = snapshots[0], snapshots[1:]
+    new_db = load(new_path)
+    old_dbs = [load(p) for p in old_paths]
+
+    plan = plan_all(db_dir, new_db, old_dbs)
+    backup_dir = write_plan(db_dir, plan)
+    return {
+        "current_export": new_path.name,
+        "matched_against": [p.name for p in old_paths],
+        "summary": summarize_plan(plan),
+        "backup_dir": str(backup_dir),
+    }
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+
+def _report_log(name: str, log: dict) -> None:
     print(f"{name}: {len(log['remapped'])} remapped, "
           f"{len(log['already_current'])} already current, "
           f"{len(log['added_take_untouched'])} added-take (untouched), "
@@ -228,7 +416,7 @@ def report_log(name: str, log: dict) -> None:
         print(f"  UNRESOLVED: {k} - {reason}")
 
 
-def report_collisions(name: str, collisions: list) -> None:
+def _report_collisions(name: str, collisions: list) -> None:
     if not collisions:
         return
     print(f"\n{len(collisions)} collision(s) in {name} (two old keys -> same new key):")
@@ -266,46 +454,16 @@ def main() -> None:
 
     new_db = load(new_path)
     old_dbs = [load(p) for p in old_paths]
+    plan = plan_all(db_dir, new_db, old_dbs)
 
-    added_dir = db_dir / "added_takes"
-    added_files = sorted(f for f in added_dir.glob("*.json") if not f.name.startswith("."))
-    added_take_ids = {load(f).get("take_id", "") for f in added_files}
+    for name in _SIDECAR_FILES + ("omissions.json",):
+        entry = plan[name]
+        if entry["data"] is None:
+            continue
+        _report_log(name, entry["log"])
+        _report_collisions(name, entry["collisions"])
 
-    remap_key_fn, remap_record_id_fn, make_log = build_remapper(old_dbs, new_db, added_take_ids)
-
-    te_log = make_log()
-    te_data, te_collisions = plan_takes_dict(
-        db_dir / "take_extras.json", remap_key_fn, te_log, remap_value_fields=("parent_take",)
-    )
-
-    notes_log = make_log()
-    notes_data, notes_collisions = plan_takes_dict(db_dir / "notes.json", remap_key_fn, notes_log)
-
-    shared_log = make_log()
-    shared_data, shared_collisions = plan_takes_dict(db_dir / "shared_notes.json", remap_key_fn, shared_log)
-
-    ov_log = make_log()
-    ov_data, ov_collisions = plan_overrides(db_dir / "overrides.json", remap_key_fn, ov_log)
-
-    om_log = make_log()
-    om_data = plan_omissions(db_dir / "omissions.json", remap_key_fn, remap_record_id_fn, om_log)
-
-    added_updates = plan_added_takes(added_files, remap_key_fn, remap_record_id_fn, make_log())
-
-    if te_data is not None:
-        report_log("take_extras.json", te_log)
-        report_collisions("take_extras.json", te_collisions)
-    if notes_data is not None:
-        report_log("notes.json", notes_log)
-        report_collisions("notes.json", notes_collisions)
-    if shared_data is not None:
-        report_log("shared_notes.json", shared_log)
-        report_collisions("shared_notes.json", shared_collisions)
-    if ov_data is not None:
-        report_log("overrides.json", ov_log)
-        report_collisions("overrides.json", ov_collisions)
-    if om_data is not None:
-        report_log("omissions.json", om_log)
+    added_updates = plan["added_takes"]
     if added_updates:
         print(f"added_takes/: {len(added_updates)} record_id update(s)")
         for f, old_obj, new_obj in added_updates:
@@ -320,25 +478,7 @@ def main() -> None:
         print("Aborted.")
         return
 
-    backup_dir = db_dir / "_id_remap_backup"
-    backup_dir.mkdir(exist_ok=True)
-
-    def write(path: Path, data):
-        if data is None:
-            return
-        if path.exists():
-            shutil.copy2(path, backup_dir / (path.name + ".bak"))
-        save(path, data)
-
-    write(db_dir / "take_extras.json", te_data)
-    write(db_dir / "notes.json", notes_data)
-    write(db_dir / "shared_notes.json", shared_data)
-    write(db_dir / "overrides.json", ov_data)
-    write(db_dir / "omissions.json", om_data)
-    for f, old_obj, new_obj in added_updates:
-        shutil.copy2(f, backup_dir / (f.name + ".bak"))
-        save(f, new_obj)
-
+    backup_dir = write_plan(db_dir, plan)
     print(f"\nDone. Backups in {backup_dir}")
 
 

@@ -1162,6 +1162,60 @@ class HTMLGenerator:
         }}
         .db-pin-clear:hover {{ color: var(--text); }}
 
+        /* ── Sidecar-data remap banner/modal (see claude_guideline/ID_REMAP.md) ── */
+        .remap-banner {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            background: rgba(227,179,65,0.10);
+            border: 1px solid rgba(227,179,65,0.35);
+            border-left: 3px solid #e3b341;
+            border-radius: 6px;
+            font-size: 0.82em;
+            color: #e3b341;
+        }}
+        .remap-banner strong {{ color: var(--text); }}
+        .remap-fix-btn {{
+            background: #e3b341; color: #1a1206; border: none;
+            font-weight: 700; font-size: 0.85em; padding: 5px 14px;
+            border-radius: 5px; cursor: pointer;
+        }}
+        .remap-fix-btn:hover {{ opacity: 0.9; }}
+        .remap-dismiss-btn {{
+            margin-left: auto;
+            background: none; border: none; color: #e3b341;
+            cursor: pointer; font-size: 0.9em; padding: 0 4px; opacity: 0.75;
+        }}
+        .remap-dismiss-btn:hover {{ opacity: 1; }}
+        .remap-modal-overlay {{
+            position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            z-index: 500; display: flex; align-items: center; justify-content: center;
+        }}
+        .remap-modal {{
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 24px; width: 440px; max-width: 92vw;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }}
+        .remap-modal-title {{ font-weight: 700; font-size: 0.95em; margin-bottom: 6px; color: var(--text); }}
+        .remap-modal-sub {{ font-size: 0.8em; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }}
+        .remap-modal-body {{ font-size: 0.8em; color: var(--text-muted); margin-bottom: 20px; max-height: 260px; overflow-y: auto; }}
+        .remap-modal-body table {{ width: 100%; border-collapse: collapse; }}
+        .remap-modal-body td {{ padding: 3px 6px; border-bottom: 1px solid var(--border); }}
+        .remap-modal-body td:last-child {{ text-align: right; color: var(--text); font-weight: 600; }}
+        .remap-modal-footer {{ display: flex; gap: 8px; }}
+        .remap-confirm-btn {{
+            flex: 1; padding: 9px 14px; border-radius: 7px; border: none;
+            background: #e3b341; color: #1a1206; font-weight: 700; font-size: 0.85em; cursor: pointer;
+        }}
+        .remap-confirm-btn:hover {{ opacity: 0.9; }}
+        .remap-confirm-btn:disabled {{ opacity: 0.5; cursor: default; }}
+        .remap-cancel-btn {{
+            padding: 9px 14px; border-radius: 7px; cursor: pointer;
+            border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); font-size: 0.85em;
+        }}
+
         /* ── Database field overrides ── */
         .edited-val, .entry-title-line .edited-val {{ color: #39c5cf !important; font-weight: 500; }}
         .db-has-edits {{ border-left-color: #39c5cf !important; }}
@@ -3324,6 +3378,11 @@ class HTMLGenerator:
         <div class="db-filter-field db-export-btns">
           <button class="export-btn" id="db-export-menu-btn" onclick="_openDbExportMenu(event)" title="Export filtered rows">⬇ Export</button>
         </div>
+      </div>
+      <div id="remap-banner" class="remap-banner" style="display:none;margin-top:12px">
+        <span id="remap-banner-label"></span>
+        <button class="remap-fix-btn" onclick="openRemapModal()">Fix now</button>
+        <button class="remap-dismiss-btn" onclick="dismissRemapBanner()" title="Dismiss until the database is re-exported again">✕ Dismiss</button>
       </div>
       <div id="db-pin-banner" class="db-pin-banner" style="display:none;margin-top:12px">
         <span id="db-pin-label"></span>
@@ -6889,9 +6948,133 @@ async function loadDatabase() {{
         dbRows           = dbData.rows || [];
         slatesWithPhotos = new Set(photosData.slates_with_photos || []);
         renderDatabase();
+        checkRemapStatus();
     }} catch(e) {{
         el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>Could not load database: ${{escHtml(e.message)}}</p></div>`;
     }}
+}}
+
+// ── Sidecar-data remap (see remap_take_ids.py + claude_guideline/ID_REMAP.md) ─
+// Self-contained: server.py exposes /api/remap-status (cheap check) and
+// /api/remap-apply (fix), both thin wrappers around remap_take_ids.py — no
+// matching logic lives here or in server.py, only this banner/modal glue.
+let _remapStatus = null;
+
+async function checkRemapStatus() {{
+    if (OFFLINE_MODE) return;
+    try {{
+        const res = await fetch('/api/remap-status');
+        const data = await res.json();
+        if (!data.success) return;
+        _remapStatus = data;
+        _renderRemapBanner();
+    }} catch(e) {{ /* non-critical — silently skip */ }}
+}}
+
+function _remapDismissKey(dbFile) {{
+    return 'sb-remap-dismissed::' + (dbFile || '');
+}}
+
+function _renderRemapBanner() {{
+    const banner = document.getElementById('remap-banner');
+    const label  = document.getElementById('remap-banner-label');
+    if (!banner || !label || !_remapStatus) return;
+    const total = _remapStatus.total || 0;
+    if (total === 0) {{ banner.style.display = 'none'; return; }}
+    let dismissed = false;
+    try {{ dismissed = localStorage.getItem(_remapDismissKey(_remapStatus.db_file)) === '1'; }} catch(e) {{}}
+    if (dismissed) {{ banner.style.display = 'none'; return; }}
+    label.innerHTML = `<strong>${{total}}</strong> take${{total === 1 ? '' : 's'}} have Shot Name / Element Name / Notes data that no longer match the current database export.`;
+    banner.style.display = 'flex';
+}}
+
+function dismissRemapBanner() {{
+    if (_remapStatus) {{
+        try {{ localStorage.setItem(_remapDismissKey(_remapStatus.db_file), '1'); }} catch(e) {{}}
+    }}
+    const banner = document.getElementById('remap-banner');
+    if (banner) banner.style.display = 'none';
+}}
+
+(function () {{
+    const ov = document.createElement('div');
+    ov.id = 'remap-modal-overlay';
+    ov.className = 'remap-modal-overlay';
+    ov.style.display = 'none';
+    ov.innerHTML =
+        '<div class="remap-modal">' +
+        '<div class="remap-modal-title">Fix mismatched take data</div>' +
+        '<div class="remap-modal-sub" id="remap-modal-sub"></div>' +
+        '<div class="remap-modal-body" id="remap-modal-body"></div>' +
+        '<div class="remap-modal-footer" id="remap-modal-footer">' +
+        '<button class="remap-confirm-btn" id="remap-confirm-btn" onclick="confirmRemapApply()">Fix now</button>' +
+        '<button class="remap-cancel-btn" onclick="closeRemapModal()">Cancel</button>' +
+        '</div>' +
+        '</div>';
+    ov.addEventListener('click', e => {{ if (e.target === ov) closeRemapModal(); }});
+    document.body.appendChild(ov);
+}})();
+
+function openRemapModal() {{
+    if (OFFLINE_MODE || !_remapStatus) return;
+    const orphans = _remapStatus.orphans || {{}};
+    document.getElementById('remap-modal-sub').innerHTML =
+        'The active database export changed since this data was entered, so it no longer lines up by ID. ' +
+        'ShootBrowser can re-match it using Slate / Take / Camera / Timestamp, which stay the same across ' +
+        're-exports. Nothing is deleted — the affected files are backed up first.';
+    const rows = Object.entries(orphans).map(([file, n]) =>
+        '<tr><td>' + escHtml(file) + '</td><td>' + n + ' key' + (n === 1 ? '' : 's') + '</td></tr>'
+    ).join('');
+    document.getElementById('remap-modal-body').innerHTML = '<table>' + rows + '</table>';
+    document.getElementById('remap-modal-footer').innerHTML =
+        '<button class="remap-confirm-btn" id="remap-confirm-btn" onclick="confirmRemapApply()">Fix now</button>' +
+        '<button class="remap-cancel-btn" onclick="closeRemapModal()">Cancel</button>';
+    document.getElementById('remap-modal-overlay').style.display = 'flex';
+}}
+
+function closeRemapModal() {{
+    document.getElementById('remap-modal-overlay').style.display = 'none';
+}}
+
+async function confirmRemapApply() {{
+    const btn = document.getElementById('remap-confirm-btn');
+    if (btn) {{ btn.disabled = true; btn.textContent = 'Fixing…'; }}
+    try {{
+        const res = await fetch('/api/remap-apply', {{ method: 'POST' }});
+        const data = await res.json();
+        if (!data.success) {{
+            alert('Fix failed: ' + (data.error || ''));
+            if (btn) {{ btn.disabled = false; btn.textContent = 'Fix now'; }}
+            return;
+        }}
+        _showRemapResult(data);
+    }} catch(e) {{
+        alert('Fix error: ' + e.message);
+        if (btn) {{ btn.disabled = false; btn.textContent = 'Fix now'; }}
+    }}
+}}
+
+function _showRemapResult(data) {{
+    const files = (data.summary && data.summary.files) || {{}};
+    const rows = Object.entries(files).map(([file, s]) =>
+        '<tr><td>' + escHtml(file) + '</td><td>' + s.remapped + ' fixed' +
+        (s.unresolved ? ', ' + s.unresolved + ' unresolved' : '') + '</td></tr>'
+    ).join('');
+    document.getElementById('remap-modal-sub').innerHTML =
+        'Done — matched against <strong>' + escHtml((data.matched_against || []).join(', ') || 'older exports') +
+        '</strong>. A backup of the original files was saved to <code style="font-size:0.85em">' +
+        escHtml(data.backup_dir || '') + '</code>.';
+    document.getElementById('remap-modal-body').innerHTML =
+        rows ? ('<table>' + rows + '</table>') : '<em>Nothing needed fixing.</em>';
+    document.getElementById('remap-modal-footer').innerHTML =
+        '<button class="remap-confirm-btn" onclick="_finishRemap()">Done</button>';
+}}
+
+async function _finishRemap() {{
+    closeRemapModal();
+    _remapStatus = null;
+    dbRows = [];
+    await loadDatabase();
 }}
 
 function renderDatabase() {{

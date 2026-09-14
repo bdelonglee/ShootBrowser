@@ -50,6 +50,10 @@ from generate_html import (
     HTMLGenerator, _denormalize_json_to_rows,
     DENORMALIZED_ROW_FIELDS, blank_added_take_fields,
 )
+# Sidecar-data remap after a source-DB re-export — see claude_guideline/ID_REMAP.md.
+# Kept in its own module on purpose: server.py only ever calls these two
+# functions and never reimplements the identity-matching logic itself.
+import remap_take_ids as _remap
 
 app = Flask(__name__)
 
@@ -983,6 +987,45 @@ def api_delete_added_take():
         if p and p.exists():
             p.unlink()
         return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Sidecar-data remap (see remap_take_ids.py + claude_guideline/ID_REMAP.md) ─
+# The source database regenerates every record/take id on each re-export, so
+# these two routes are the app's own "did that just orphan my data?" check and
+# fix — both are thin wrappers, all the actual matching logic lives in
+# remap_take_ids.py and is never duplicated here.
+
+@app.route("/api/remap-status")
+def api_remap_status():
+    """Cheap check (current export only) — how many sidecar keys no longer
+    match any row in the active database export?"""
+    try:
+        db_dir = Path(DATA_DIR) / "__DATABASE"
+        new_db = _load_db_json()
+        orphans = _remap.find_orphans(db_dir, new_db) if new_db else {}
+        jsonfile, _ = _find_db_json_file()
+        return jsonify({
+            "success": True,
+            "orphans": orphans,
+            "total": sum(orphans.values()),
+            "db_file": jsonfile.name if jsonfile else None,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/remap-apply", methods=["POST"])
+def api_remap_apply():
+    """Run the full fix: match every sidecar key against every archived
+    export on disk, back up, and write. No confirmation here — the caller
+    (the UI's own confirm modal) already asked."""
+    try:
+        db_dir = Path(DATA_DIR) / "__DATABASE"
+        jsonfile, _ = _find_db_json_file()
+        result = _remap.run_remap(db_dir, new_db_path=jsonfile)
+        return jsonify({"success": True, **result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

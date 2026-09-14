@@ -111,8 +111,52 @@ call afterward (35 takes correctly showing Shot Name / Element Name again).
   database, check `ls -la DATA/__DATABASE/*_db.json` for a newer mtime than
   the sidecar files first — don't assume data loss until you've ruled out
   orphaning.
-- A real, standing fix beyond "remember to run this script" would be
-  wiring a version of this remap into the app itself — e.g., detect on
-  startup that the active `*_db.json` changed since the sidecar files were
-  last touched, and offer to run the remap before loading. Not built yet;
-  flagged here so it isn't lost.
+## 5. In-app detection and fix (built 2026-09-14)
+
+The app now surfaces this itself instead of relying on someone remembering
+to run the CLI. `remap_take_ids.py` is a library first, CLI second — the
+matching/remap logic lives only there and is never duplicated:
+
+- **`find_orphans(db_dir, new_db)`** — cheap check against the current
+  export only (no old snapshots touched). Returns
+  `{sidecar_filename: orphan_count}`; empty means nothing to fix.
+- **`run_remap(db_dir, new_db_path=None)`** — the full fix: discovers every
+  old export, builds the plan, backs up, writes. No interactive prompt —
+  callers own confirmation.
+
+`server.py` wraps these as two thin routes (no matching logic of its own):
+`GET /api/remap-status` (returns `orphans`, `total`, and `db_file` — the
+current export's filename, for a dismiss key) and
+`POST /api/remap-apply` (runs the fix, returns the same shape as
+`summarize_plan()`).
+
+`generate_html.py`'s Database view calls `/api/remap-status` once per load
+(`checkRemapStatus()`). If `total > 0` a dismissible amber banner appears
+("N takes have Shot Name / Element Name / Notes data that no longer match
+the current database export") with a **Fix now** button that opens a
+confirm modal, calls `/api/remap-apply`, and shows the result (files fixed,
+matched-against snapshots, backup location) before reloading `dbRows`.
+Dismissal is per-`db_file` (`localStorage`, key `sb-remap-dismissed::<file>`)
+so it doesn't nag again for the same export but does resurface the moment a
+newer export introduces new orphans. All of this frontend code lives in one
+clearly-delimited block in `generate_html.py` (search
+`Sidecar-data remap (see remap_take_ids.py`), separate from the rest of the
+Database view's rendering code, mirroring the backend separation.
+
+The CLI (`python3 remap_take_ids.py <root> [--apply]`) is unchanged and
+still useful for scripting or when the app itself isn't running.
+
+## 6. If you're extending this
+
+- **Any new sidecar file keyed by `_override_key`** needs a `plan_*()`
+  function here mirroring whichever of `plan_takes_dict()` (dict of
+  override_key → value) or `plan_omissions()`-style (list of override_keys)
+  matches its shape — don't forget it, or the next re-export will silently
+  orphan that data too, exactly like this one did for Take Extras. Also add
+  it to `find_orphans()`'s file list so the in-app banner catches it too.
+- **This is a symptom worth recognizing on sight**: if a user reports that
+  per-take data they entered "disappeared" after they updated the source
+  database, check `ls -la DATA/__DATABASE/*_db.json` for a newer mtime than
+  the sidecar files first — don't assume data loss until you've ruled out
+  orphaning. In practice this should now be rare, since the app's own
+  banner should catch it as soon as the Database view is opened.
