@@ -2273,6 +2273,8 @@ class HTMLGenerator:
         .bin-menu-item.in-bin {{ color: #a371f7; }}
         .bin-menu-item.new-bin {{ color: var(--accent); }}
         .bin-menu-icon {{ width: 14px; text-align: center; flex-shrink: 0; }}
+        .bin-menu-chevron {{ margin-left: auto; opacity: 0.5; flex-shrink: 0; }}
+        .bin-menu-back {{ color: var(--text-muted); }}
         #bin-modal-overlay {{
             display: none; position: fixed; inset: 0;
             background: rgba(0,0,0,0.6); z-index: 2500;
@@ -6390,16 +6392,7 @@ function _openSlateRemoveChoice(btn, binId, slate, take, cam, slateCount) {{
         '<span class="bin-menu-icon">−</span>All ' + slateCount + ' takes from slate ' + si +
         '</div>';
     menu.style.display = 'block';
-    const rect = btn.getBoundingClientRect();
-    const mw = menu.offsetWidth  || 240;
-    const mh = menu.offsetHeight || 100;
-    let top  = rect.bottom + 6;
-    let left = rect.left;
-    if (left + mw > window.innerWidth  - 8) left = window.innerWidth  - mw - 8;
-    if (top  + mh > window.innerHeight - 8) top  = rect.top - mh - 6;
-    top = Math.max(8, top);   // keep on-screen even when the (now height-capped) menu is tall
-    menu.style.top  = top  + 'px';
-    menu.style.left = left + 'px';
+    _positionBinMenu(btn);
 }}
 function _confirmRemoveFromBin(e, btn) {{
     e.stopPropagation();
@@ -6448,16 +6441,7 @@ function _openRemoveMenu(e, btn, item) {{
                 '</div>';
         }}).join('');
     menu.style.display = 'block';
-    const rect = btn.getBoundingClientRect();
-    const mw   = menu.offsetWidth  || 220;
-    const mh   = menu.offsetHeight || 120;
-    let top  = rect.bottom + 6;
-    let left = rect.left;
-    if (left + mw > window.innerWidth  - 8) left = window.innerWidth  - mw - 8;
-    if (top  + mh > window.innerHeight - 8) top  = rect.top - mh - 6;
-    top = Math.max(8, top);   // keep on-screen even when the (now height-capped) menu is tall
-    menu.style.top  = top  + 'px';
-    menu.style.left = left + 'px';
+    _positionBinMenu(btn);
 }}
 function _doRemoveFromBin(binId, slate, take, camera) {{
     closeBinMenu();
@@ -6476,6 +6460,8 @@ function _createBinAndAdd(item) {{
 
 // Context menu — current row state
 let _bmSlate = '', _bmTake = '', _bmCam = '';
+let _bmBtn  = null;   // trigger button, kept so a step change can reposition
+let _bmType = null;   // null = choosing Take/Slate; 'take' | 'slate' = showing that bin list
 function _binMenuAction(binId, action, type) {{
     const item = type === 'slate'
         ? {{ type: 'slate', slate: _bmSlate }}
@@ -6489,42 +6475,10 @@ function _binMenuCreate(type) {{
         : {{ type: 'take', slate: _bmSlate, take: _bmTake, camera: _bmCam }};
     _createBinAndAdd(item);
 }}
-function openBinMenu(e, btn) {{
-    e.stopPropagation();
-    _bmSlate = btn.dataset.slate  || '';
-    _bmTake  = btn.dataset.take   || '';
-    _bmCam   = btn.dataset.cam    || '';
-    const menu     = document.getElementById('bin-menu');
-    const binList  = Object.values(bins);
-    function sectionRows(type) {{
-        if (!binList.length) return '<div class="bin-menu-item" style="color:var(--text-muted);cursor:default">No bins yet</div>';
-        return binList.map(b => {{
-            const item = type === 'slate'
-                ? {{ type:'slate', slate: _bmSlate }}
-                : {{ type:'take', slate: _bmSlate, take: _bmTake, camera: _bmCam }};
-            const inBin = b.items.some(i =>
-                i.type === item.type && i.slate === item.slate &&
-                (i.type === 'slate' || (i.take === item.take && i.camera === item.camera))
-            );
-            const action = inBin ? 'remove' : 'add';
-            return `<div class="bin-menu-item${{inBin ? ' in-bin' : ''}}"
-                onclick="_binMenuAction('${{b.id}}','${{action}}','${{type}}')">
-                <span class="bin-menu-icon">${{inBin ? '✓' : ''}}</span>
-                ${{escHtml(b.name)}}
-            </div>`;
-        }}).join('');
-    }}
-    const takeLabel  = `Take ${{escHtml(_bmTake)}}${{_bmCam ? '  Cam ' + escHtml(_bmCam) : ''}}`;
-    const slateLabel = `Slate ${{escHtml(_bmSlate)}}`;
-    menu.innerHTML =
-        `<div class="bin-menu-section-label">ADD ${{takeLabel}} TO BIN</div>` +
-        sectionRows('take') +
-        `<div class="bin-menu-item new-bin" onclick="_binMenuCreate('take')"><span class="bin-menu-icon">+</span>New bin…</div>` +
-        `<hr class="bin-menu-divider">` +
-        `<div class="bin-menu-section-label">ADD ${{slateLabel}} TO BIN</div>` +
-        sectionRows('slate') +
-        `<div class="bin-menu-item new-bin" onclick="_binMenuCreate('slate')"><span class="bin-menu-icon">+</span>New bin…</div>`;
-    menu.style.display = 'block';
+
+// Shared "keep the popup on-screen" positioning, used by every #bin-menu opener.
+function _positionBinMenu(btn) {{
+    const menu = document.getElementById('bin-menu');
     const rect = btn.getBoundingClientRect();
     const mw   = menu.offsetWidth  || 220;
     const mh   = menu.offsetHeight || 200;
@@ -6535,6 +6489,72 @@ function openBinMenu(e, btn) {{
     top = Math.max(8, top);   // keep on-screen even when the (now height-capped) menu is tall
     menu.style.top  = top  + 'px';
     menu.style.left = left + 'px';
+}}
+
+function openBinMenu(e, btn) {{
+    e.stopPropagation();
+    _bmSlate = btn.dataset.slate  || '';
+    _bmTake  = btn.dataset.take   || '';
+    _bmCam   = btn.dataset.cam    || '';
+    _bmBtn   = btn;
+    _bmType  = null;   // always start at the Take/Slate choice
+    _renderBinAddMenu();
+}}
+
+function _binMenuPick(type) {{
+    _bmType = type;
+    _renderBinAddMenu();
+}}
+
+function _binMenuBackToChoice() {{
+    _bmType = null;
+    _renderBinAddMenu();
+}}
+
+// Renders whichever step is active (_bmType) into the shared #bin-menu popup —
+// step 1 is a single Take-vs-Slate choice, step 2 is that one bin list (not
+// both lists stacked, which used to double the scroll length).
+function _renderBinAddMenu() {{
+    const menu = document.getElementById('bin-menu');
+    const takeLabel  = `Take ${{escHtml(_bmTake)}}${{_bmCam ? '  Cam ' + escHtml(_bmCam) : ''}}`;
+    const slateLabel = `Slate ${{escHtml(_bmSlate)}}`;
+
+    if (_bmType === null) {{
+        menu.innerHTML =
+            `<div class="bin-menu-section-label">ADD TO BIN</div>` +
+            `<div class="bin-menu-item" onclick="_binMenuPick('take')">Add ${{takeLabel}}<span class="bin-menu-chevron">›</span></div>` +
+            `<div class="bin-menu-item" onclick="_binMenuPick('slate')">Add ${{slateLabel}}<span class="bin-menu-chevron">›</span></div>`;
+    }} else {{
+        const type  = _bmType;
+        const label = type === 'take' ? takeLabel : slateLabel;
+        const binList = Object.values(bins);
+        const rows = !binList.length
+            ? '<div class="bin-menu-item" style="color:var(--text-muted);cursor:default">No bins yet</div>'
+            : binList.map(b => {{
+                const item = type === 'slate'
+                    ? {{ type:'slate', slate: _bmSlate }}
+                    : {{ type:'take', slate: _bmSlate, take: _bmTake, camera: _bmCam }};
+                const inBin = b.items.some(i =>
+                    i.type === item.type && i.slate === item.slate &&
+                    (i.type === 'slate' || (i.take === item.take && i.camera === item.camera))
+                );
+                const action = inBin ? 'remove' : 'add';
+                return `<div class="bin-menu-item${{inBin ? ' in-bin' : ''}}"
+                    onclick="_binMenuAction('${{b.id}}','${{action}}','${{type}}')">
+                    <span class="bin-menu-icon">${{inBin ? '✓' : ''}}</span>
+                    ${{escHtml(b.name)}}
+                </div>`;
+            }}).join('');
+        menu.innerHTML =
+            `<div class="bin-menu-item bin-menu-back" onclick="_binMenuBackToChoice()">‹ Back</div>` +
+            `<hr class="bin-menu-divider">` +
+            `<div class="bin-menu-section-label">ADD ${{label}} TO BIN</div>` +
+            rows +
+            `<div class="bin-menu-item new-bin" onclick="_binMenuCreate('${{type}}')"><span class="bin-menu-icon">+</span>New bin…</div>`;
+    }}
+
+    menu.style.display = 'block';
+    _positionBinMenu(_bmBtn);
 }}
 function closeBinMenu() {{
     const m = document.getElementById('bin-menu');
