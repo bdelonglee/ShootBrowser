@@ -9291,23 +9291,39 @@ function _exportBin(binId) {{
     const bin = bins[binId];
     if (!bin) return;
     const today = new Date().toISOString().slice(0, 10);
-    const takeNotes = [];
+    const takeNotes  = [];
+    const takeExtras = [];
+    const addedTakes = [];
     for (const row of dbRows) {{
         if (!_rowInBin(row, bin)) continue;
+        const slate = row['Slate'] || '', take = row['Take'] || '', camera = row['Camera'] || '';
         const note = (row['_note'] || '').trim();
-        if (note) takeNotes.push({{
-            slate:  row['Slate']  || '',
-            take:   row['Take']   || '',
-            camera: row['Camera'] || '',
-            note
-        }});
+        if (note) takeNotes.push({{ slate, take, camera, note }});
+
+        const shotNames    = row['_shot_names']    || [];
+        const elementNames = row['_element_names'] || [];
+        if (shotNames.length || elementNames.length) {{
+            takeExtras.push({{ slate, take, camera, shot_names: shotNames, element_names: elementNames }});
+        }}
+
+        // Added Takes don't exist in the receiving instance's source database at
+        // all — bundle the full field set so import can recreate them, not just
+        // reference them (see claude_guideline/ID_REMAP.md §5 for the same
+        // "identity survives, ids don't" pattern this reuses).
+        if (row['_is_added']) {{
+            const fields = {{}};
+            for (const k in row) {{ if (!k.startsWith('_')) fields[k] = row[k]; }}
+            addedTakes.push(fields);
+        }}
     }}
     const payload = {{
-        version: 1, format: 'vfx_bin',
+        version: 2, format: 'vfx_bin',
         name: bin.name, note: bin.note || '',
         exported_at: today,
         items: bin.items,
-        take_notes: takeNotes
+        take_notes: takeNotes,
+        take_extras: takeExtras,
+        added_takes: addedTakes
     }};
     const blob = new Blob([JSON.stringify(payload, null, 2)], {{type: 'application/json'}});
     const url  = URL.createObjectURL(blob);
@@ -9331,13 +9347,54 @@ function _handleBinImport(inp) {{
     reader.readAsText(file);
 }}
 
-function _parseBinImport(text) {{
+function _unionNames(a, b) {{
+    const seen = new Set(); const out = [];
+    for (const n of [...(a || []), ...(b || [])]) {{
+        const t = (n || '').trim();
+        if (t && !seen.has(t)) {{ seen.add(t); out.push(t); }}
+    }}
+    return out;
+}}
+
+// Recreate any Added Takes the bin references that don't exist locally yet
+// (matched by Slate/Take/Camera, same identity bins already use for items) —
+// reuses the existing added-takes endpoints rather than a new import path.
+async function _importMissingAddedTakes(addedTakes) {{
+    if (!addedTakes || !addedTakes.length) return;
+    const existingKeys = new Set(dbRows.map(r =>
+        (r['Slate'] || '') + '|' + (r['Take'] || '') + '|' + (r['Camera'] || '')));
+    let created = false;
+    for (const fields of addedTakes) {{
+        const k = (fields['Slate'] || '') + '|' + (fields['Take'] || '') + '|' + (fields['Camera'] || '');
+        if (existingKeys.has(k)) continue;
+        try {{
+            const res  = await fetch('/api/added-takes/create', {{
+                method: 'POST', headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{ mode: 'blank' }})
+            }});
+            const data = await res.json();
+            if (!data.success) continue;
+            await fetch('/api/added-takes/update', {{
+                method: 'POST', headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{ key: data.key, fields }})
+            }});
+            existingKeys.add(k);
+            created = true;
+        }} catch(e) {{ console.warn('Added take import failed:', e); }}
+    }}
+    if (created) {{ dbRows = []; await loadDatabase(); }}
+}}
+
+async function _parseBinImport(text) {{
     let data;
     try {{ data = JSON.parse(text); }} catch(e) {{
         alert('Invalid JSON file: ' + e.message); return;
     }}
     if (data.format !== 'vfx_bin') {{
         alert('Not a valid bin export file.'); return;
+    }}
+    if (!OFFLINE_MODE) {{
+        await _importMissingAddedTakes(data.added_takes || []);
     }}
     const rowByKey = {{}};
     for (const row of dbRows) {{
@@ -9364,11 +9421,26 @@ function _parseBinImport(text) {{
             cleanNotes.push({{overrideKey: row['_override_key'], note: incoming}});
         }}
     }}
-    const pending = {{data, importDate, conflicts, cleanNotes}};
+    // Shot Name / Element Name are multi-value badges, not free text — a union
+    // of existing + incoming is unambiguous, so these merge silently with no
+    // conflict prompt (unlike notes above).
+    const extrasToSave = [];
+    for (const te of (data.take_extras || [])) {{
+        const k   = (te.slate || '') + '|' + (te.take || '') + '|' + (te.camera || '');
+        const row = rowByKey[k];
+        if (!row) continue;
+        const entry = {{ overrideKey: row['_override_key'] }};
+        const shotNames = _unionNames(row['_shot_names'], te.shot_names);
+        if (shotNames.length) entry.shot_names = shotNames;
+        const elementNames = _unionNames(row['_element_names'], te.element_names);
+        if (elementNames.length) entry.element_names = elementNames;
+        if (entry.shot_names || entry.element_names) extrasToSave.push(entry);
+    }}
+    const pending = {{data, importDate, conflicts, cleanNotes, extrasToSave}};
     if (conflicts.length) {{
         _showConflictModal(pending);
     }} else {{
-        _applyBinImport(pending);
+        await _applyBinImport(pending);
     }}
 }}
 
@@ -9424,7 +9496,7 @@ async function _confirmBinImport() {{
 }}
 
 async function _applyBinImport(pending) {{
-    const {{data, importDate, cleanNotes, conflicts = []}} = pending;
+    const {{data, importDate, cleanNotes, conflicts = [], extrasToSave = []}} = pending;
 
     // Create the new bin in localStorage
     const newId  = 'bin_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -9444,13 +9516,14 @@ async function _applyBinImport(pending) {{
     }}
 
     if (OFFLINE_MODE) {{
-        if (toSave.length) {{
+        const skipped = toSave.length + extrasToSave.length;
+        if (skipped) {{
             const list = document.getElementById('bin-modal-list');
             if (list) {{
                 const n = document.createElement('div');
                 n.className = 'bin-import-notice';
-                n.textContent = 'Bin imported. ' + toSave.length + ' take note' +
-                    (toSave.length === 1 ? '' : 's') + ' were skipped (offline mode).';
+                n.textContent = 'Bin imported. ' + skipped + ' note/extras entr' +
+                    (skipped === 1 ? 'y' : 'ies') + ' were skipped (offline mode).';
                 list.prepend(n);
             }}
         }}
@@ -9469,8 +9542,22 @@ async function _applyBinImport(pending) {{
         }} catch(e) {{ console.warn('Note save failed:', e); }}
     }}
 
-    // Reload rows to pick up new notes, then re-render
-    if (toSave.length) {{
+    // Persist Shot Name / Element Name unions to server
+    for (const {{overrideKey, shot_names, element_names}} of extrasToSave) {{
+        const body = {{ key: overrideKey }};
+        if (shot_names)    body.shot_names    = shot_names;
+        if (element_names) body.element_names = element_names;
+        try {{
+            await fetch('/api/take-extras/save', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify(body)
+            }});
+        }} catch(e) {{ console.warn('Extras save failed:', e); }}
+    }}
+
+    // Reload rows to pick up new notes/extras, then re-render
+    if (toSave.length || extrasToSave.length) {{
         try {{
             const r = await fetch('/api/database');
             const j = await r.json();

@@ -769,6 +769,21 @@ def _apply_take_extras(rows: list, extras: dict) -> list:
     return rows
 
 
+def _copy_take_extras(source_key: str, new_key: str) -> None:
+    """Duplicate a take's Shot Names / Element Names / Parent Take link onto a
+    freshly-created key. A no-op if the source has no extras entry — never
+    leaves an empty {} behind."""
+    if not source_key or source_key == new_key:
+        return
+    x = _load_take_extras()
+    takes = x.setdefault("takes", {})
+    entry = takes.get(source_key)
+    if not entry:
+        return
+    takes[new_key] = dict(entry)
+    _save_take_extras(x)
+
+
 def _would_cycle(takes: dict, child_key: str, new_parent: str) -> bool:
     """True if making new_parent the parent of child_key introduces a loop."""
     seen = {child_key}
@@ -929,6 +944,7 @@ def api_create_added_take():
 
         fields["Timestamp"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         take_id = str(uuid.uuid4())
+        new_key = f"{record_id}::{take_id}"
         obj = {
             "version": 1,
             "record_id": record_id,
@@ -941,7 +957,9 @@ def api_create_added_take():
         _added_take_write_path(fields.get("Roll", ""), take_id).write_text(
             json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8"
         )
-        return jsonify({"success": True, "key": f"{record_id}::{take_id}"})
+        if mode == "duplicate":
+            _copy_take_extras(source_key, new_key)
+        return jsonify({"success": True, "key": new_key})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
