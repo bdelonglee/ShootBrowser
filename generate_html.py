@@ -2337,7 +2337,7 @@ class HTMLGenerator:
         #bin-modal {{
             background: var(--surface); border: 1px solid var(--border);
             border-radius: 12px; padding: 24px;
-            min-width: 360px; max-width: 520px; width: 90%;
+            min-width: 360px; max-width: 1040px; width: 90%;
             max-height: min(80vh, 600px);
             display: flex; flex-direction: column;
             box-shadow: 0 16px 48px rgba(0,0,0,0.5);
@@ -2371,23 +2371,24 @@ class HTMLGenerator:
             border-radius: 5px; padding: 6px 10px; margin-bottom: 8px;
         }}
         .bin-modal-row {{
-            display: flex; align-items: flex-start; gap: 8px;
-            padding: 9px 4px; border-bottom: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: 20px minmax(0,1fr) 130px auto auto;
+            align-items: center; gap: 8px;
+            padding: 6px 4px; border-bottom: 1px solid var(--border);
             border-radius: 6px; transition: background 0.1s;
         }}
         .bin-modal-row:last-child {{ border-bottom: none; }}
         .bin-modal-row.active {{ background: rgba(163,113,247,0.08); }}
         .bin-active-dot {{
             background: none; border: 2px solid var(--border);
-            border-radius: 50%; width: 20px; height: 20px; flex-shrink: 0;
+            border-radius: 50%; width: 20px; height: 20px;
             cursor: pointer; color: transparent; font-size: 10px;
             display: flex; align-items: center; justify-content: center;
-            transition: border-color 0.15s, background 0.15s; margin-top: 3px;
+            transition: border-color 0.15s, background 0.15s;
         }}
         .bin-active-dot:hover {{ border-color: #a371f7; }}
         .bin-active-dot.active {{ background: #a371f7; border-color: #a371f7; color: white; }}
-        .bin-modal-info {{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }}
-        .bin-modal-name-row {{ display: flex; align-items: center; gap: 4px; }}
+        .bin-modal-name-row {{ display: flex; align-items: center; gap: 4px; min-width: 0; }}
         .bin-modal-name {{ font-size: 0.88em; color: var(--text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
         .bin-modal-rename-btn {{
             background: none; border: none; color: var(--text-muted); font-size: 0.9em;
@@ -2395,10 +2396,9 @@ class HTMLGenerator:
             transition: opacity 0.15s; line-height: 1;
         }}
         .bin-modal-rename-btn:hover {{ opacity: 1; }}
-        .bin-modal-count {{ font-size: 0.73em; color: var(--text-muted); }}
-        .bin-modal-note-snippet {{
-            font-size: 0.75em; color: var(--text-muted); opacity: 0.65;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic;
+        .bin-modal-count {{
+            font-size: 0.73em; color: var(--text-muted);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }}
         .bin-modal-rename-input {{
             flex: 1; min-width: 0;
@@ -6712,7 +6712,7 @@ function _newBinFromModal() {{
     tmp.id = 'bin-new-row';
     tmp.className = 'bin-modal-row';
     tmp.innerHTML =
-        '<div class="bin-modal-info" style="flex-direction:row;align-items:center;gap:6px">' +
+        '<div style="grid-column:1/-1;display:flex;align-items:center;gap:6px">' +
         '<input class="bin-modal-rename-input" id="bin-new-inp" placeholder="Bin name…" style="flex:1">' +
         '<button class="bin-modal-rename-ok" onclick="_doCreateBinModal()">Create</button>' +
         '<button class="bin-modal-rename-x" onclick="document.getElementById(&#39;bin-new-row&#39;).remove()">✕</button>' +
@@ -6755,20 +6755,18 @@ function _renderBinModal() {{
     list.innerHTML = binArr.map(b => {{
         const isActive = activeBinId === b.id;
         const bi = escHtml(b.id);
-        const note = ((b.note || "").split("\\n")[0] || "").trim();
+        const note = (b.note || "").trim();
         const countLabel = _binCountLabel(b);
+        const nameTitle = note ? b.name + '\\n\\n' + note : b.name;
         return '<div class="bin-modal-row' + (isActive ? ' active' : '') + '" data-bin-id="' + bi + '">' +
             '<button class="bin-active-dot' + (isActive ? ' active' : '') + '"' +
             ' onclick="_modalToggleActive(&#39;' + bi + '&#39;)"' +
             ' title="' + (isActive ? 'Deactivate' : 'Set as active bin') + '">●</button>' +
-            '<div class="bin-modal-info">' +
             '<div class="bin-modal-name-row">' +
-            '<span class="bin-modal-name" title="' + escHtml(b.name) + '">' + escHtml(b.name) + '</span>' +
+            '<span class="bin-modal-name" title="' + escHtml(nameTitle) + '">' + escHtml(b.name) + '</span>' +
             '<button class="bin-modal-rename-btn" onclick="_startRenameBin(&#39;' + bi + '&#39;)" title="Rename">✎</button>' +
             '</div>' +
-            '<div class="bin-modal-count">' + countLabel + '</div>' +
-            (note ? '<div class="bin-modal-note-snippet">' + escHtml(note) + '</div>' : '') +
-            '</div>' +
+            '<span class="bin-modal-count" title="' + escHtml(countLabel) + '">' + countLabel + '</span>' +
             '<button class="bin-modal-btn export" onclick="_exportBin(&#39;' + bi + '&#39;)" title="Export bin">Export ↓</button>' +
             '<button class="bin-modal-btn danger" onclick="deleteBin(&#39;' + bi + '&#39;)" title="Delete bin">Delete</button>' +
             '</div>';
