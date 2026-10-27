@@ -2338,11 +2338,16 @@ class HTMLGenerator:
             background: var(--surface); border: 1px solid var(--border);
             border-radius: 12px; padding: 24px;
             min-width: 360px; max-width: 520px; width: 90%;
+            max-height: min(80vh, 600px);
+            display: flex; flex-direction: column;
             box-shadow: 0 16px 48px rgba(0,0,0,0.5);
         }}
         .bin-modal-header {{
             display: flex; align-items: center; justify-content: space-between;
-            margin-bottom: 16px;
+            margin-bottom: 16px; flex-shrink: 0;
+        }}
+        #bin-modal-list {{
+            overflow-y: auto; min-height: 0; flex: 1 1 auto;
         }}
         .bin-modal-title {{ font-size: 1em; font-weight: 700; color: var(--text); }}
         .bin-new-btn {{
@@ -2411,7 +2416,7 @@ class HTMLGenerator:
         .bin-modal-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
         .bin-modal-btn.danger:hover {{ border-color: #f47067; color: #f47067; }}
         .bin-modal-close {{
-            margin-top: 16px; width: 100%;
+            margin-top: 16px; width: 100%; flex-shrink: 0;
             background: var(--surface-2); border: 1px solid var(--border);
             border-radius: 6px; color: var(--text); font-size: 0.85em;
             padding: 8px; cursor: pointer; transition: border-color 0.15s;
@@ -5089,6 +5094,10 @@ let dbPinnedKeys   = null;  // Set of scene keys when filtering from Browse badg
 let bins       = {{}};
 let activeBinId = null;
 const BINS_KEY = 'vfx_bins';
+function _sortedBins() {{
+    return Object.values(bins).sort((a, b) =>
+        (a.name || '').localeCompare(b.name || '', undefined, {{ sensitivity: 'base' }}));
+}}
 let dbPinnedLabel  = '';
 const expandedDbRows = new Set();
 
@@ -6253,7 +6262,7 @@ async function _openExportAllModal() {{
     // Populate optional bin list (only shown when no bin is currently active)
     const binSection = document.getElementById('export-all-bin-section');
     if (binSection) {{
-        const binArr = Object.values(bins);
+        const binArr = _sortedBins();
         if (!activeBinId && binArr.length) {{
             binSection.style.display = 'block';
             binSection.innerHTML =
@@ -6371,7 +6380,7 @@ function _rowBins(row) {{
 function _updateBinSelect() {{
     const sel = document.getElementById('bin-select');
     if (!sel) return;
-    const binList = Object.values(bins);
+    const binList = _sortedBins();
     sel.innerHTML =
         '<option value="">No Bin</option>' +
         binList.map(b => `<option value="${{escHtml(b.id)}}"${{activeBinId === b.id ? ' selected' : ''}}>${{escHtml(b.name)}}</option>`).join('') +
@@ -6586,7 +6595,7 @@ function _renderBinAddMenu() {{
     }} else {{
         const type  = _bmType;
         const label = type === 'take' ? takeLabel : slateLabel;
-        const binList = Object.values(bins);
+        const binList = _sortedBins();
         const rows = !binList.length
             ? '<div class="bin-menu-item" style="color:var(--text-muted);cursor:default">No bins yet</div>'
             : binList.map(b => {{
@@ -6716,13 +6725,9 @@ function _doCreateBinModal() {{
 function _renderBinModal() {{
     const list = document.getElementById('bin-modal-list');
     if (!list) return;
-    const binArr = Object.values(bins);
-    const importBtn =
-        '<div style="margin-top:12px">' +
-        '<button class="bin-modal-btn import" style="width:100%;padding:7px" onclick="_importBinFile()">⬆ Import Bin…</button>' +
-        '</div>';
+    const binArr = _sortedBins();
     if (!binArr.length) {{
-        list.innerHTML = '<p class="bin-modal-empty">No bins yet. Use the + button on any take to create one.</p>' + importBtn;
+        list.innerHTML = '<p class="bin-modal-empty">No bins yet. Use the + button on any take to create one.</p>';
         return;
     }}
     list.innerHTML = binArr.map(b => {{
@@ -6745,7 +6750,7 @@ function _renderBinModal() {{
             '<button class="bin-modal-btn export" onclick="_exportBin(&#39;' + bi + '&#39;)" title="Export bin">Export ↓</button>' +
             '<button class="bin-modal-btn danger" onclick="deleteBin(&#39;' + bi + '&#39;)" title="Delete bin">Delete</button>' +
             '</div>';
-    }}).join('') + importBtn;
+    }}).join('');
 }}
 function deleteBin(binId) {{
     const bin = bins[binId];
@@ -6769,6 +6774,7 @@ function deleteBin(binId) {{
         '<button class="bin-new-btn" onclick="_newBinFromModal()">+ New Bin</button>' +
         '</div>' +
         '<div id="bin-modal-list"></div>' +
+        '<button class="bin-modal-btn import" style="width:100%;padding:7px;margin-top:12px;flex-shrink:0" onclick="_importBinFile()">⬆ Import Bin…</button>' +
         '<button class="bin-modal-close" onclick="closeBinModal()">Close</button>' +
         '</div>';
     document.body.appendChild(overlay);
