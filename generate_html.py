@@ -2349,6 +2349,13 @@ class HTMLGenerator:
         #bin-modal-list {{
             overflow-y: auto; min-height: 0; flex: 1 1 auto;
         }}
+        .bin-modal-search {{
+            width: 100%; box-sizing: border-box; flex-shrink: 0;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.85em;
+            padding: 7px 10px; margin-bottom: 12px; outline: none;
+        }}
+        .bin-modal-search:focus {{ border-color: var(--accent); }}
         .bin-modal-title {{ font-size: 1em; font-weight: 700; color: var(--text); }}
         .bin-new-btn {{
             background: var(--surface-2); border: 1px solid var(--border);
@@ -5098,6 +5105,11 @@ function _sortedBins() {{
     return Object.values(bins).sort((a, b) =>
         (a.name || '').localeCompare(b.name || '', undefined, {{ sensitivity: 'base' }}));
 }}
+let _binModalSearch = '';
+function _filterBinModal(val) {{
+    _binModalSearch = val || '';
+    _renderBinModal();
+}}
 let dbPinnedLabel  = '';
 const expandedDbRows = new Set();
 
@@ -6629,6 +6641,9 @@ function closeBinMenu() {{
     if (m) m.style.display = 'none';
 }}
 function openBinModal() {{
+    _binModalSearch = '';
+    const si = document.getElementById('bin-modal-search');
+    if (si) si.value = '';
     _renderBinModal();
     document.getElementById('bin-modal-overlay').style.display = 'flex';
 }}
@@ -6719,15 +6734,22 @@ function _doCreateBinModal() {{
     const id = _newBinId();
     bins[id] = {{ id, name, items: [] }};
     _saveBins();
+    _binModalSearch = '';
+    const si = document.getElementById('bin-modal-search');
+    if (si) si.value = '';
     _renderBinModal();
     _updateBinSelect();
 }}
 function _renderBinModal() {{
     const list = document.getElementById('bin-modal-list');
     if (!list) return;
-    const binArr = _sortedBins();
+    const allBins = _sortedBins();
+    const q       = _binModalSearch.trim().toLowerCase();
+    const binArr  = q ? allBins.filter(b => (b.name || '').toLowerCase().includes(q)) : allBins;
     if (!binArr.length) {{
-        list.innerHTML = '<p class="bin-modal-empty">No bins yet. Use the + button on any take to create one.</p>';
+        list.innerHTML = allBins.length
+            ? '<p class="bin-modal-empty">No bins match "' + escHtml(_binModalSearch) + '".</p>'
+            : '<p class="bin-modal-empty">No bins yet. Use the + button on any take to create one.</p>';
         return;
     }}
     list.innerHTML = binArr.map(b => {{
@@ -6773,6 +6795,7 @@ function deleteBin(binId) {{
         '<span class="bin-modal-title">Bins</span>' +
         '<button class="bin-new-btn" onclick="_newBinFromModal()">+ New Bin</button>' +
         '</div>' +
+        '<input type="text" id="bin-modal-search" class="bin-modal-search" placeholder="Search bins…" oninput="_filterBinModal(this.value)">' +
         '<div id="bin-modal-list"></div>' +
         '<button class="bin-modal-btn import" style="width:100%;padding:7px;margin-top:12px;flex-shrink:0" onclick="_importBinFile()">⬆ Import Bin…</button>' +
         '<button class="bin-modal-close" onclick="closeBinModal()">Close</button>' +
@@ -6784,6 +6807,7 @@ function deleteBin(binId) {{
     imp.type    = 'file';
     imp.id      = 'bin-import-input';
     imp.accept  = '.json';
+    imp.multiple = true;
     imp.style.display = 'none';
     imp.addEventListener('change', function() {{ _handleBinImport(this); }});
     document.body.appendChild(imp);
@@ -9345,12 +9369,51 @@ function _importBinFile() {{
     if (inp) {{ inp.value = ''; inp.click(); }}
 }}
 
-function _handleBinImport(inp) {{
-    const file = inp.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => _parseBinImport(e.target.result);
-    reader.readAsText(file);
+let _binImportQueue = [];
+let _binImportTotal = 0;
+
+function _readFileAsText(file) {{
+    return new Promise((resolve, reject) => {{
+        const reader = new FileReader();
+        reader.onload  = e => resolve(e.target.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(file);
+    }});
+}}
+
+// Importing is file-at-a-time (a note conflict shows one modal at a time),
+// so several files picked together are queued and drained sequentially —
+// each file reuses the exact same single-file path below, just one after
+// another, rather than a separate batch-import pipeline.
+async function _handleBinImport(inp) {{
+    const files = Array.from(inp.files || []);
+    if (!files.length) return;
+    try {{
+        _binImportQueue = await Promise.all(files.map(_readFileAsText));
+    }} catch(e) {{
+        alert('Could not read file: ' + e.message);
+        return;
+    }}
+    _binImportTotal = _binImportQueue.length;
+    await _processNextBinImport();
+}}
+
+async function _processNextBinImport() {{
+    if (!_binImportQueue.length) {{
+        if (_binImportTotal > 1) {{
+            const list = document.getElementById('bin-modal-list');
+            if (list) {{
+                const n = document.createElement('div');
+                n.className = 'bin-import-notice';
+                n.textContent = 'Imported ' + _binImportTotal + ' bins.';
+                list.prepend(n);
+            }}
+        }}
+        _binImportTotal = 0;
+        return;
+    }}
+    const text = _binImportQueue.shift();
+    await _parseBinImport(text);
 }}
 
 function _unionNames(a, b) {{
@@ -9394,10 +9457,14 @@ async function _importMissingAddedTakes(addedTakes) {{
 async function _parseBinImport(text) {{
     let data;
     try {{ data = JSON.parse(text); }} catch(e) {{
-        alert('Invalid JSON file: ' + e.message); return;
+        alert('Invalid JSON file: ' + e.message);
+        await _processNextBinImport();
+        return;
     }}
     if (data.format !== 'vfx_bin') {{
-        alert('Not a valid bin export file.'); return;
+        alert('Not a valid bin export file.');
+        await _processNextBinImport();
+        return;
     }}
     if (!OFFLINE_MODE) {{
         await _importMissingAddedTakes(data.added_takes || []);
@@ -9447,6 +9514,7 @@ async function _parseBinImport(text) {{
         _showConflictModal(pending);
     }} else {{
         await _applyBinImport(pending);
+        await _processNextBinImport();
     }}
 }}
 
@@ -9488,17 +9556,21 @@ function _setBcAll(val) {{
     }});
 }}
 
-function _cancelBinImport() {{
+async function _cancelBinImport() {{
     const overlay = document.getElementById('bin-conflict-overlay');
     if (overlay) overlay.style.display = 'none';
     window._pendingBinImport = null;
+    await _processNextBinImport();
 }}
 
 async function _confirmBinImport() {{
     const p = window._pendingBinImport;
     if (!p) return;
-    _cancelBinImport();
+    const overlay = document.getElementById('bin-conflict-overlay');
+    if (overlay) overlay.style.display = 'none';
+    window._pendingBinImport = null;
     await _applyBinImport(p);
+    await _processNextBinImport();
 }}
 
 async function _applyBinImport(pending) {{
